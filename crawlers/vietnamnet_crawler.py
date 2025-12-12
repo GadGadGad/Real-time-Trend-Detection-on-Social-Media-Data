@@ -91,7 +91,7 @@ class VietnamNetCrawler:
         category_slug = category_slug.strip("/")
 
         for p in range(1, pages + 1):
-            # VietnamNet Pagination: /thoi-su (p1) -> /thoi-su-page2 (p2)
+
             if p == 1:
                 url = f"{BASE}/{category_slug}"
             else:
@@ -104,7 +104,7 @@ class VietnamNetCrawler:
 
             soup = BeautifulSoup(html, "lxml")
 
-            # Selectors: VietnamNet generic classes
+
             items = soup.select(".verticalPost, .horizontalPost, .feature-box, .vnn-title")
 
             for item in items:
@@ -150,16 +150,16 @@ class VietnamNetCrawler:
             for g in content_el.select(".inner-article, .related-box, .box-hightlight, .table-content"):
                 g.decompose()
 
-        # Breadcrumb
+
         bread = soup.select(".bread-crumb-detail ul li a")
         cat_text = bread[-1].text.strip() if bread else category_source
 
-        # Author (VietnamNet authors are messy, usually bold text at end)
+
         author_text = ""
         if content_el:
             last_p = content_el.find_all('p')
             if last_p:
-                 # Check last paragraphs for bold/strong/em
+
                  last = last_p[-1]
                  if last.find("strong") or last.find("b"):
                      author_text = last.text.strip()

@@ -1,7 +1,8 @@
 """
 nld_csv_crawler.py (STEP 1: DISCOVERER - Nguoi Lao Dong "Robust" Edition)
 - Crawls nld.com.vn categories.
-- Improved Selectors for better article detection.
+- Uses Selenium to click the 'Xem thêm' (View more) button to load more content.
+  (NLD doesn't expose traditional pagination URLs)
 - INPUTS: Category slugs (e.g., 'thoi-su', 'kinh-te')
 - OUTPUTS: articles.csv
 """
@@ -10,6 +11,7 @@ import argparse
 import csv
 import json
 import logging
+import os
 import random
 import time
 import toml
@@ -19,6 +21,12 @@ from bs4 import BeautifulSoup
 import concurrent.futures
 from typing import List, Optional
 from contextlib import nullcontext
+
+# Selenium imports for dynamic content loading
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.common.by import By
 
 import rich.logging
 from rich.console import Console
@@ -58,10 +66,12 @@ DEFAULT_OUTPUT = files_cfg.get("default_output_dir", "data_nld")
 MAX_WORKERS = crawler_cfg.get("max_workers", 10)
 
 class NLDCrawler:
-    def __init__(self, output_dir: Path, use_cache=True):
+    def __init__(self, output_dir: Path, use_cache=True, browser_type: str = "firefox"):
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
+        self.browser_type = browser_type
+        self.driver = None  # Will be initialized when needed
         self.cache = Cache(output_dir / ".cache_nld", enabled=use_cache)
         self.start_time = time.time()
         self.stats = {"cache_hits": 0, "articles_saved": 0}
@@ -70,6 +80,40 @@ class NLDCrawler:
         self.seen_articles = set()
         self._load_seen()
         self._init_csvs()
+
+    def _create_browser(self):
+        """Creates a Selenium browser driver for dynamic content loading."""
+        if self.browser_type == "firefox":
+            log.info("🦊 Initializing Firefox browser for 'Xem thêm' button clicks...")
+            options = FirefoxOptions()
+            options.add_argument("--headless")
+            options.set_preference("general.useragent.override", HEADERS["User-Agent"])
+            return webdriver.Firefox(options=options)
+        elif self.browser_type in ["chrome", "chromium"]:
+            log.info("🌐 Initializing Chrome/Chromium browser for 'Xem thêm' button clicks...")
+            options = ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument(f"--user-agent={HEADERS['User-Agent']}")
+            if self.browser_type == "chromium":
+                chromium_paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/snap/bin/chromium"]
+                for path in chromium_paths:
+                    if os.path.exists(path):
+                        options.binary_location = path
+                        break
+            return webdriver.Chrome(options=options)
+        else:
+            raise ValueError(f"Unsupported browser: {self.browser_type}")
+
+    def _close_browser(self):
+        """Closes the browser driver if it's open."""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
 
     def _load_seen(self):
         if self.seen_file.exists():
@@ -102,50 +146,110 @@ class NLDCrawler:
         return None
 
     def discover_articles(self, category_slug: str, pages: int = 2, progress_context=None, task_id=None) -> List[dict]:
+        """
+        Discovers articles from category pages using Selenium.
+        NLD uses a 'Xem thêm' (View more) button to load more content.
+        The 'pages' parameter is repurposed as the number of button click iterations.
+        """
         articles_data = []
+        if category_slug == "the-gioi":
+            category_slug = "quoc-te"
         category_slug = category_slug.replace(".htm", "").strip("/")
 
-        for p in range(1, pages + 1):
-            if p == 1:
-                url = f"{BASE}/{category_slug}.htm"
-            else:
-                url = f"{BASE}/{category_slug}/trang-{p}.htm"
-
-            html = self.safe_get(url)
-            if not html:
-                if progress_context: progress_context.update(task_id, advance=1)
-                continue
-
+        # Use base URL (page 1)
+        url = f"{BASE}/{category_slug}.htm"
+        
+        log.info(f"Using Selenium with 'Xem thêm' button clicks on [cyan]{url}[/cyan]")
+        
+        # Initialize browser if not already done
+        if not self.driver:
+            self.driver = self._create_browser()
+        
+        try:
+            self.driver.get(url)
+            time.sleep(2)  # Wait for initial page load
+            
+            click_count = 0
+            no_button_count = 0
+            
+            # Click "Xem thêm" button multiple times to load more content
+            while click_count < pages:
+                try:
+                    # Scroll down a bit to ensure the button is visible
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight - 500);")
+                    time.sleep(0.5)
+                    
+                    # Find and click the "Xem thêm" button
+                    # Using multiple selectors for robustness
+                    view_more_btn = None
+                    selectors = [
+                        "a.view-more",
+                        "a[class*='view-more']",
+                        ".btn-viewmore",
+                        "//a[contains(text(), 'Xem thêm')]",
+                        "//button[contains(text(), 'Xem thêm')]",
+                    ]
+                    
+                    for selector in selectors:
+                        try:
+                            if selector.startswith("//"):
+                                view_more_btn = self.driver.find_element(By.XPATH, selector)
+                            else:
+                                view_more_btn = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            if view_more_btn and view_more_btn.is_displayed():
+                                break
+                        except:
+                            continue
+                    
+                    if view_more_btn and view_more_btn.is_displayed():
+                        # Click the button using JavaScript for reliability
+                        self.driver.execute_script("arguments[0].click();", view_more_btn)
+                        click_count += 1
+                        no_button_count = 0
+                        log.info(f"Clicked 'Xem thêm' button ({click_count}/{pages})")
+                        time.sleep(random.uniform(1.5, 2.5))  # Wait for content to load
+                        
+                        if progress_context and task_id:
+                            progress_context.update(task_id, advance=1)
+                    else:
+                        no_button_count += 1
+                        if no_button_count >= 3:
+                            log.info(f"'Xem thêm' button no longer available after {click_count} clicks")
+                            break
+                        time.sleep(1)
+                        
+                except Exception as e:
+                    no_button_count += 1
+                    if no_button_count >= 3:
+                        log.info(f"Could not find 'Xem thêm' button after {click_count} clicks: {e}")
+                        break
+                    time.sleep(1)
+            
+            # Parse all loaded articles from the page source
+            html = self.driver.page_source
             soup = BeautifulSoup(html, "lxml")
 
-            # --- CHIẾN THUẬT QUÉT RỘNG (ROBUST SELECTORS) ---
-            # Thay vì tìm div cha, tìm thẳng thẻ a có chứa tiêu đề
-            # NLD hay dùng: h2.title-news a, h3.title-news a, .news-item__title a
             link_elements = soup.select(
                 "h2.title-news a, h3.title-news a, .news-item__title a, .box-category-item .box-category-link-title"
             )
 
-            found_on_page = 0
             for link_el in link_elements:
                 href = link_el.get("href")
                 title = link_el.get("title") or link_el.text.strip()
 
                 if not href: continue
 
-                # Xử lý link tương đối/tuyệt đối
                 if href.startswith("/"):
                     href = BASE + href
                 elif not href.startswith("http"):
-                    continue # Bỏ qua link javascript hoặc rác
+                    continue
 
-                # Lọc rác (Video, Magazine, Quảng cáo)
+
                 if "nld.com.vn" not in href or "/video" in href or "e-magazine" in href:
                     continue
 
-                url = normalize_url(href)
+                article_url = normalize_url(href)
 
-                # Tìm đoạn mô tả ngắn (Sapo) - Cố gắng tìm thẻ p hoặc div sapo gần link đó nhất
-                # Cách này hơi hacky: Tìm cha của link, rồi tìm sapo trong cha đó
                 short_desc = ""
                 parent = link_el.find_parent(["div", "li"], class_=lambda x: x and ("news" in x or "item" in x))
                 if parent:
@@ -153,21 +257,18 @@ class NLDCrawler:
                     if desc_el:
                         short_desc = desc_el.text.strip()
 
-                if url not in self.seen_articles:
+                if article_url not in self.seen_articles:
                     articles_data.append({
-                        "url": url,
+                        "url": article_url,
                         "short_description": short_desc,
                         "category_source": category_slug
                     })
-                    found_on_page += 1
 
-            # Debug log nếu trang rỗng (giúp ông biết sai ở đâu)
-            if found_on_page == 0:
-                log.warning(f"⚠️ Không tìm thấy bài nào tại: {url} (Check lại Slug category xem đúng chưa?)")
-
-            if progress_context: progress_context.update(task_id, advance=1)
-            time.sleep(random.uniform(MIN_SLEEP, MAX_SLEEP))
-
+            log.info(f"Found {len(articles_data)} articles after {click_count} 'Xem thêm' clicks")
+            
+        except Exception as e:
+            log.error(f"Error during Selenium discovery: {e}")
+        
         return articles_data
 
     def fetch_article(self, url: str, short_description: str, category_source: str) -> Optional[dict]:
@@ -177,37 +278,34 @@ class NLDCrawler:
 
         soup = BeautifulSoup(html, "lxml")
 
-        # 1. Title (Thường là h1)
+
         title = soup.select_one("h1.title-content, h1.title-detail")
 
-        # 2. Date
+
         published = soup.select_one(".date-time, .ad-item-time")
 
-        # 3. Content (Quan trọng nhất)
-        # NLD nội dung nằm trong .content-news-detail hoặc .detail-content
         content_el = soup.select_one(".content-news-detail, .detail-content, .news-content")
 
         if content_el:
-            # Xóa rác: Quảng cáo, Tin liên quan chèn giữa bài
+
             for garbage in content_el.select(".box-ads, .news-relate, .VCSortableInPreviewMode, .related-container"):
                 garbage.decompose()
 
 
 
-        # 5. Breadcrumb / Category
+
         category_text = category_source
         bread = soup.select(".breadcrumb-item a, .breadcrumb a")
         if bread:
             category_text = bread[-1].text.strip()
 
-        # 6. Author
+
         author_text = ""
-        # Tên tác giả thường ở cuối hoặc đầu
         author_el = soup.select_one(".author-info .name, .author")
         if author_el:
             author_text = author_el.text.strip()
         elif content_el:
-             # Fallback: Tìm đoạn văn cuối cùng in đậm hoặc căn phải
+             # Fallback
              last_p = content_el.find_all('p')
              if last_p:
                  txt = last_p[-1].text.strip()
@@ -239,7 +337,7 @@ class NLDCrawler:
         except Exception: pass
 
     def crawl(self, categories: list[str], pages: int = 2, workers: int = MAX_WORKERS):
-        log.info(f"Starting NLD Crawler (Robust Mode): {categories}")
+        log.info(f"Starting NLD Crawler (Selenium Mode): {categories}")
 
         with Progress(
             TextColumn("[progress.description]{task.description}"),
@@ -247,7 +345,7 @@ class NLDCrawler:
             TimeRemainingColumn(), console=console
         ) as progress:
 
-            # Phase 1: Discovery
+            # Discovery
             all_articles = []
             disc_task = progress.add_task("Discovering...", total=len(categories)*pages)
             for cat in categories:
@@ -257,7 +355,7 @@ class NLDCrawler:
                 log.warning("Không tìm thấy bài nào. Kiểm tra lại slug category hoặc IP có bị chặn không.")
                 return
 
-            # Phase 2: Fetch & Save
+            # Fetch & Save
             unique = [a for i, a in enumerate(all_articles) if a['url'] not in self.seen_articles and a['url'] not in [x['url'] for x in all_articles[:i]]]
 
             if not unique:
@@ -273,14 +371,19 @@ class NLDCrawler:
                     if res: self.save_article(res)
                     progress.update(save_task, advance=1)
 
+
+        self._close_browser()
+        
         console.print(Panel(f"Done. Saved: {self.stats['articles_saved']}", title="NLD Summary", style="green"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--category", nargs="+", required=True)
-    parser.add_argument("-p", "--pages", type=int, default=2)
+    parser.add_argument("-p", "--pages", type=int, default=5, help="Number of 'Xem thêm' button clicks")
     parser.add_argument("-o", "--output", default="data_nld")
     parser.add_argument("-w", "--workers", type=int, default=MAX_WORKERS)
+    parser.add_argument("-b", "--browser", type=str, choices=["firefox", "chrome", "chromium"], default="firefox",
+        help="Browser to use for scrolling (default: firefox)")
     args = parser.parse_args()
 
-    NLDCrawler(Path(args.output)).crawl(args.category, args.pages, args.workers)
+    NLDCrawler(Path(args.output), browser_type=args.browser).crawl(args.category, args.pages, args.workers)

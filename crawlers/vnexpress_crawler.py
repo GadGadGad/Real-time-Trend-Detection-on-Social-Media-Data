@@ -73,7 +73,7 @@ class VnExpressCrawler:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
 
-        # Use imported Cache
+
         self.cache = Cache(output_dir / ".cache", enabled=use_cache)
 
         self.start_time = time.time()
@@ -121,7 +121,7 @@ class VnExpressCrawler:
                     log.warning(f"Failed to get {url} (Status: {r.status_code}). Retrying...")
             except Exception as e:
                 log.warning(f"Error getting {url}: {e}. Retrying...")
-            time.sleep(MIN_SLEEP + (i * MIN_SLEEP)) # Backoff
+            time.sleep(MIN_SLEEP + (i * MIN_SLEEP))
 
         log.error(f"Failed to get {url} after {RETRY_COUNT} retries.")
         return None
@@ -157,8 +157,7 @@ class VnExpressCrawler:
         articles_data = []
         seen_urls_in_session = set()
 
-        # `category_id` is the category name in standard mode,
-        # and the category ID (e.g., 1001002) in date range mode.
+
 
         for p in range(1, pages + 1):
 
@@ -229,7 +228,7 @@ class VnExpressCrawler:
         if category_el_list:
             category_text = category_el_list[-1].text.strip()
         else:
-            category_text = category_source # Fallback to the category we found it in
+            category_text = category_source
 
         author_text = ""
         end_span = soup.select_one("span#article-end")
@@ -241,7 +240,7 @@ class VnExpressCrawler:
                     author_text = (strong_tag.text.strip() if strong_tag else p_tag.text.strip())
                     break
 
-        if not author_text: # Fallback
+        if not author_text:
             author_el = soup.select_one(".author_mail, .author")
             if author_el:
                 author_text = author_el.text.strip()
@@ -345,7 +344,7 @@ class VnExpressCrawler:
                     log.error("[bold red]LỖI: Không có category ID hợp lệ nào để xử lý. Dừng lại.[/bold red]")
                     return
             else:
-                # Ở chế độ standard, chúng ta dùng thẳng tên
+
                 categories_to_process = categories
 
 

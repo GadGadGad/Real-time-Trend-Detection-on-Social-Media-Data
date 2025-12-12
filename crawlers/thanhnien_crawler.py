@@ -37,7 +37,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# --- CONFIG LOADING ---
+
 try:
     config = toml.load("config.toml")
     crawler_cfg = config.get("crawler", {})
@@ -63,7 +63,7 @@ class ThanhNienCrawler:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
 
-        # Cache riêng cho Thanh Niên
+
         self.cache = Cache(output_dir / ".cache_thanhnien", enabled=use_cache)
 
         self.start_time = time.time()
@@ -120,11 +120,11 @@ class ThanhNienCrawler:
         articles_data = []
         seen_urls_in_session = set()
 
-        # Clean input: remove .htm if user typed it, remove slashes
+        # Clean input
         category_slug = category_slug.replace(".htm", "").strip("/")
 
         for p in range(1, pages + 1):
-            # URL Construction
+
             if p == 1:
                 url = f"{BASE}/{category_slug}.htm"
             else:
@@ -139,8 +139,6 @@ class ThanhNienCrawler:
             soup = BeautifulSoup(html, "lxml")
             found_on_page = 0
 
-            # Thanh Nien Selectors for List Items
-            # Usually .box-category-item or .story
             items = soup.select(".box-category-item, .story, .timeline-item")
 
             for item in items:
@@ -155,7 +153,7 @@ class ThanhNienCrawler:
                     if href.startswith("/"):
                         href = BASE + href
 
-                    # Skip video, podcast, magazine (longform) if structure is too weird
+            # Skip video, podcast, magazine
                     if "/video/" in href or "/podcast/" in href:
                         continue
 
@@ -187,43 +185,39 @@ class ThanhNienCrawler:
 
         soup = BeautifulSoup(html, "lxml")
 
-        # 1. Title
+
         title = soup.select_one(".detail-title, .main-title")
 
-        # 2. Date
+
         published = soup.select_one(".detail-time, .meta-time")
 
-        # 3. Content
-        # Thanh Nien content is usually in .detail-content or #cnt-content
         content_el = soup.select_one(".detail-content, #cnt-content, .content-detail")
 
         if content_el:
-            # Cleanup unwanted elements inside content
+
             for garbage in content_el.select(".more-news, .relate-news, .box-ads, .VCSortableInPreviewMode, .player-control"):
                 garbage.decompose()
 
 
 
-        # 5. Category (Breadcrumb)
+
         category_text = category_source
         breadcrumb = soup.select(".breadcrumbs .breadcrumb-item a, .breadcrumb a")
         if breadcrumb:
             category_text = breadcrumb[-1].text.strip()
 
-        # 6. Author
+
         author_text = ""
-        # Sometimes at bottom, sometimes top
         author_el = soup.select_one(".detail-author, .author-info .name, .bottom-info .author")
         if author_el:
             author_text = author_el.text.strip()
 
-        # Fallback if author is strong tag at end of content
         if not author_text and content_el:
-             # Find last paragraph
+
             paragraphs = content_el.find_all('p')
             if paragraphs:
                 last_p_text = paragraphs[-1].get_text().strip()
-                if len(last_p_text) < 50: # Likely a signature
+                if len(last_p_text) < 50:
                     author_text = last_p_text
 
         article = {

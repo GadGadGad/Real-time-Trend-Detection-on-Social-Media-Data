@@ -1,9 +1,10 @@
 """
 tuoitre_csv_crawler.py (STEP 1: DISCOVERER - Tuoi Tre Edition)
 - Crawls TuoiTre.vn categories to discover articles.
-- Focuses on PAGINATION (Standard Mode) as TuoiTre doesn't expose public date-range URLs easily.
-- Uses Threading for concurrent fetching.
-- INPUTS: A list of categories (slugs) and page depth.
+- Uses Selenium to click the 'Xem thêm' (View more) button to load more content.
+  (TuoiTre doesn't expose traditional pagination URLs - accessing /trang-2.htm redirects to page 1)
+- Uses Threading for concurrent article fetching.
+- INPUTS: A list of categories (slugs) and number of 'Xem thêm' clicks.
 - OUTPUTS: articles.csv (the "to-do list")
 """
 
@@ -15,12 +16,21 @@ import random
 import time
 import toml
 import sys
+import os
 from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
 from typing import List, Optional
 from contextlib import nullcontext
+
+# Selenium imports for infinite scroll handling
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 import rich.logging
 from rich.console import Console
@@ -58,12 +68,14 @@ MAX_WORKERS = crawler_cfg.get("max_workers", 10)
 
 
 class TuoiTreCrawler:
-    def __init__(self, output_dir: Path, use_cache=True):
+    def __init__(self, output_dir: Path, use_cache=True, browser_type: str = "firefox"):
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
+        self.browser_type = browser_type
+        self.driver = None
 
-        # Use imported Cache
+
         self.cache = Cache(output_dir / ".cache_tuoitre", enabled=use_cache)
 
         self.start_time = time.time()
@@ -75,6 +87,40 @@ class TuoiTreCrawler:
 
         self._load_seen()
         self._init_csvs()
+
+    def _create_browser(self):
+        """Creates a Selenium browser driver for infinite scroll handling."""
+        if self.browser_type == "firefox":
+            log.info("🦊 Initializing Firefox browser for scroll-based pagination...")
+            options = FirefoxOptions()
+            options.add_argument("--headless")  # Run in headless mode
+            options.set_preference("general.useragent.override", HEADERS["User-Agent"])
+            return webdriver.Firefox(options=options)
+        elif self.browser_type in ["chrome", "chromium"]:
+            log.info("🌐 Initializing Chrome/Chromium browser for scroll-based pagination...")
+            options = ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument(f"--user-agent={HEADERS['User-Agent']}")
+            if self.browser_type == "chromium":
+                chromium_paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/snap/bin/chromium"]
+                for path in chromium_paths:
+                    if os.path.exists(path):
+                        options.binary_location = path
+                        break
+            return webdriver.Chrome(options=options)
+        else:
+            raise ValueError(f"Unsupported browser: {self.browser_type}")
+
+    def _close_browser(self):
+        """Closes the browser driver if it's open."""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
 
     def _load_seen(self):
         """Loads previously scraped URLs to enable resuming."""
@@ -119,35 +165,90 @@ class TuoiTreCrawler:
         return None
 
     def discover_articles(self, category_slug: str, pages: int = 2, progress_context=None, task_id=None) -> List[dict]:
-        """Discovers articles from category pages."""
+        """
+        Discovers articles from category pages using Selenium.
+        TuoiTre uses a 'Xem thêm' (View more) button to load more content.
+        The 'pages' parameter is repurposed as the number of button click iterations.
+        """
         articles_data = []
         seen_urls_in_session = set()
 
         # Clean slug input (e.g., remove .htm if user added it)
         category_slug = category_slug.replace(".htm", "").strip("/")
-
-        for p in range(1, pages + 1):
-            # Tuoi Tre URL Logic:
-            # Page 1: https://tuoitre.vn/the-gioi.htm
-            # Page 2: https://tuoitre.vn/the-gioi/trang-2.htm
-            if p == 1:
-                url = f"{BASE}/{category_slug}.htm"
-            else:
-                url = f"{BASE}/{category_slug}/trang-{p}.htm"
-
-            html = self.safe_get(url)
-            if not html:
-                if progress_context and task_id:
-                    progress_context.update(task_id, advance=1)
-                continue
-
+        
+        # Use base URL (page 1) - TuoiTre redirects all trang-X URLs to page 1 anyway
+        url = f"{BASE}/{category_slug}.htm"
+        
+        log.info(f"Using Selenium with 'Xem thêm' button clicks on [cyan]{url}[/cyan]")
+        
+        # Initialize browser if not already done
+        if not self.driver:
+            self.driver = self._create_browser()
+        
+        try:
+            self.driver.get(url)
+            time.sleep(2)  # Wait for initial page load
+            
+            click_count = 0
+            no_button_count = 0
+            
+            # Click "Xem thêm" button multiple times to load more content
+            while click_count < pages:
+                try:
+                    # Scroll down a bit to ensure the button is visible
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight - 500);")
+                    time.sleep(0.5)
+                    
+                    # Find and click the "Xem thêm" button
+                    view_more_btn = None
+                    selectors = [
+                        "a.view-more",
+                        "a[class*='view-more']",
+                        "//a[contains(text(), 'Xem thêm')]",
+                    ]
+                    
+                    for selector in selectors:
+                        try:
+                            if selector.startswith("//"):
+                                view_more_btn = self.driver.find_element(By.XPATH, selector)
+                            else:
+                                view_more_btn = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            if view_more_btn and view_more_btn.is_displayed():
+                                break
+                        except:
+                            continue
+                    
+                    if view_more_btn and view_more_btn.is_displayed():
+                        # Click the button
+                        self.driver.execute_script("arguments[0].click();", view_more_btn)
+                        click_count += 1
+                        no_button_count = 0
+                        log.info(f"Clicked 'Xem thêm' button ({click_count}/{pages})")
+                        time.sleep(random.uniform(1.5, 2.5))  # Wait for content to load
+                        
+                        if progress_context and task_id:
+                            progress_context.update(task_id, advance=1)
+                    else:
+                        no_button_count += 1
+                        if no_button_count >= 3:
+                            log.info(f"'Xem thêm' button no longer available after {click_count} clicks")
+                            break
+                        time.sleep(1)
+                        
+                except Exception as e:
+                    no_button_count += 1
+                    if no_button_count >= 3:
+                        log.info(f"Could not find 'Xem thêm' button after {click_count} clicks: {e}")
+                        break
+                    time.sleep(1)
+            
+            # Parse all loaded articles
+            html = self.driver.page_source
             soup = BeautifulSoup(html, "lxml")
-            found_on_page = 0
+            
 
-            # Tuoi Tre often uses .box-category-item or .news-item depending on the layout
-            # We select strictly to avoid video/ads if possible
             items = soup.select(".box-category-item, .list-news-content .news-item, .box-news-layout")
-
+            
             for item in items:
                 link_el = item.select_one("a.box-category-link-title, a.focus-link, a.box-name-link")
                 desc_el = item.select_one(".box-content-brief, .sapo")
@@ -164,22 +265,21 @@ class TuoiTreCrawler:
                     if "tuoitre.vn/video" in href or "tuoitre.vn/podcast" in href:
                         continue
 
-                    url = normalize_url(href)
-                    if url not in seen_urls_in_session and url not in self.seen_articles:
-                        seen_urls_in_session.add(url)
+                    article_url = normalize_url(href)
+                    if article_url not in seen_urls_in_session and article_url not in self.seen_articles:
+                        seen_urls_in_session.add(article_url)
                         description = desc_el.text.strip() if desc_el else ""
                         articles_data.append({
-                            "url": url,
+                            "url": article_url,
                             "short_description": description,
                             "category_source": category_slug
                         })
-                        found_on_page += 1
-
-            if progress_context and task_id:
-                progress_context.update(task_id, advance=1)
-
-            time.sleep(random.uniform(MIN_SLEEP, MAX_SLEEP))
-
+            
+            log.info(f"Found {len(articles_data)} articles after {click_count} 'Xem thêm' clicks")
+            
+        except Exception as e:
+            log.error(f"Error during Selenium discovery: {e}")
+        
         return articles_data
 
 
@@ -194,37 +294,35 @@ class TuoiTreCrawler:
 
         soup = BeautifulSoup(html, "lxml")
 
-        # 1. Title
+
         title = soup.select_one("h1.detail-title, h1.article-title")
 
-        # 2. Published Date
+
         published = soup.select_one(".detail-time, .date-time")
 
-        # 3. Content
-        # Tuoi Tre content is usually in #main-detail-body or .detail-content
         content_el = soup.select_one("#main-detail-body, .detail-content, .fck_detail")
 
-        # Remove irrelevant parts inside content (ads, related news boxes)
+
         if content_el:
             for garbage in content_el.select(".VCSortableInPreviewMode, .relate-container, .box-hightlight"):
                 garbage.decompose()
 
 
 
-        # 5. Category (Breadcrumb)
+
         category_text = category_source
         breadcrumb = soup.select("ul.bread-crumbs li a, .breadcrumbs a")
         if breadcrumb:
-            # Usually the last one or second to last is the specific category
+
             category_text = breadcrumb[-1].text.strip()
 
-        # 6. Author
+
         author_text = ""
         author_el = soup.select_one(".author-info, .author")
         if author_el:
             author_text = author_el.text.strip()
 
-        # Fallback author check at end of content
+
         if not author_text and content_el:
             last_p = content_el.select("p")
             if last_p:
@@ -310,7 +408,7 @@ class TuoiTreCrawler:
         with progress_manager as progress:
             all_articles_data = []
 
-            log.info("Running in Standard Mode (Pagination).")
+            log.info("Running with Selenium-based infinite scroll pagination.")
             discover_task_id = progress.add_task(f"[cyan]Discovering...", total=len(categories) * pages) if not no_progress else None
 
             for category in categories:
@@ -351,6 +449,9 @@ class TuoiTreCrawler:
                 else:
                     for _ in results: pass
 
+
+        self._close_browser()
+        
         log.info("Crawl complete.")
         self.print_summary()
 
@@ -365,14 +466,16 @@ if __name__ == "__main__":
         nargs="+",
         help="Categories slugs (e.g., 'the-gioi', 'cong-nghe')"
     )
-    parser.add_argument("--pages", "-p", type=int, default=2, help="Number of pages to crawl per category")
+    parser.add_argument("--pages", "-p", type=int, default=5, help="Number of scroll iterations per category (default: 5)")
     parser.add_argument("--output", "-o", default=DEFAULT_OUTPUT, help=f"Output directory (default: {DEFAULT_OUTPUT})")
     parser.add_argument("--workers", "-w", type=int, default=MAX_WORKERS, help=f"Workers (default: {MAX_WORKERS})")
+    parser.add_argument("--browser", "-b", type=str, choices=["firefox", "chrome", "chromium"], default="firefox",
+        help="Browser to use for scrolling (default: firefox)")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching")
 
     args = parser.parse_args()
 
     console.rule(f"[bold]Tuoi Tre Crawler[/bold]: [cyan]{', '.join(args.category)}[/cyan]")
 
-    c = TuoiTreCrawler(Path(args.output), use_cache=(not args.no_cache))
+    c = TuoiTreCrawler(Path(args.output), use_cache=(not args.no_cache), browser_type=args.browser)
     c.crawl(args.category, args.pages, workers=args.workers)

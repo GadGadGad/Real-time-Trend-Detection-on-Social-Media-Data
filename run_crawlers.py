@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 # Import crawler classes
-# Note: We need to add 'crawlers' to sys.path or run from root
+
 sys.path.append(str(Path(__file__).parent / "crawlers"))
 
 try:
@@ -21,7 +21,7 @@ except ImportError as e:
     print("Make sure you are running this script from the project root.")
     sys.exit(1)
 
-# Setup logging
+
 console = Console()
 logging.basicConfig(
     level=logging.INFO,
@@ -99,10 +99,10 @@ def main():
     crawler_cfg = config.get("crawler", {})
     files_cfg = config.get("files", {})
 
-    # Determine workers
+
     workers = args.workers if args.workers else crawler_cfg.get("max_workers", 5)
     
-    # Determine output base
+
     output_base = args.output_base if args.output_base else files_cfg.get("default_output_dir", "data")
     output_base_path = Path(output_base)
 
@@ -120,7 +120,6 @@ def main():
         crawler_cls = CRAWLER_MAP[name]
         
         # Create specific output dir for this crawler
-        # e.g. data/vnexpress
         crawler_output_dir = output_base_path / name
         
         log.info(f"\n[bold green]>>> Running {name} crawler...[/bold green]")
