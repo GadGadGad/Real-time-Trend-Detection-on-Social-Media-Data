@@ -1,0 +1,71 @@
+flowchart TD
+    subgraph "1. DATA COLLECTION"
+        A1[Google Trends CSV] --> D1[trending_VN_*.csv]
+        A2[Facebook Pages] --> D2[fb_data.json]
+        A3[News Sites] --> D3[articles.csv]
+    end
+
+    subgraph "2. DATA LOADING"
+        D1 --> L1[load_trends]
+        D2 --> L2[load_facebook_data]
+        D3 --> L3[load_news_articles]
+        L1 --> |Dict: trend → keywords| TR[652 Google Trends]
+        L2 --> ALL[All Posts]
+        L3 --> ALL
+    end
+
+    subgraph "3. ALIAS NORMALIZATION"
+        TR --> ALIAS[Build Alias Dictionary]
+        ALIAS --> |trend keywords become aliases| NORM
+        ALL --> |Truncate 500 chars| NORM[Normalize with Aliases]
+    end
+
+    subgraph "4. EMBEDDING"
+        NORM --> |paraphrase-multilingual-mpnet-base-v2| EMB[🧠 Sentence Embeddings]
+    end
+
+    subgraph "5. SEMANTIC MATCHING"
+        EMB --> SIM[Cosine Similarity Matrix]
+        SIM --> |threshold > 0.55| ASSIGN[Assign to Best Trend]
+        ASSIGN --> MATCHED[Matched Posts]
+    end
+
+    subgraph "6. TREND COVERAGE FILTER"
+        MATCHED --> COUNT[Count posts per trend]
+        COUNT --> |>= 3 posts| VALID[28 Valid Trends]
+        COUNT --> |< 3 posts| DROP[Drop low-coverage trends]
+    end
+
+    subgraph "7. SCORING"
+        VALID --> SC[Score Calculator]
+        SC --> G[G: Google Volume]
+        SC --> F[F: FB Engagement]
+        SC --> N[N: News Count]
+        G --> COMP[Composite = 0.4G + 0.35F + 0.25N]
+        F --> COMP
+        N --> COMP
+    end
+
+    subgraph "8. CLASSIFICATION"
+        COMP --> CLASS{Classify by G/F/N}
+        CLASS --> C1[Strong Multi-source]
+        CLASS --> C2[Social & News]
+        CLASS --> C3[Social-Driven]
+        CLASS --> C4[News-Driven]
+        CLASS --> C5[Emerging]
+    end
+
+    subgraph "9. OUTPUT"
+        C1 --> |Strong Multi-source| OUTPUT[Final Trend Report]
+        C2 --> |Social & News| OUTPUT
+        C3 --> |Social-Driven| OUTPUT
+        C4 --> |News-Driven| OUTPUT
+        C5 --> |Emerging| OUTPUT
+    end
+
+    %% Notes
+    subgraph "❌ WHY NOT HDBSCAN?"
+        NOTE1[Data has 652 small topics - no density peaks]
+        NOTE2[Already have labels from Google Trends]
+        NOTE3[Direct assignment works better]
+    end

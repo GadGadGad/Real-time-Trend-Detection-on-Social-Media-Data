@@ -1,3 +1,13 @@
+"""
+Multi-Source Trend Analysis Pipeline
+Matches social & news posts to Google Trends using semantic similarity.
+
+Key Features:
+- Alias-based text normalization (using Google Trends keywords)
+- Multilingual sentence embeddings
+- Direct trend assignment (no HDBSCAN clustering needed)
+"""
+
 import json
 import csv
 import os
@@ -7,19 +17,35 @@ from rich.console import Console
 import argparse
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
+
+try:
+    from crawlers.alias_normalizer import build_alias_dictionary, batch_normalize_texts
+except ImportError:
+    from alias_normalizer import build_alias_dictionary, batch_normalize_texts
+
+# Optional NER support
+try:
+    from crawlers.ner_extractor import batch_enrich_texts, HAS_NER
+except ImportError:
+    try:
+        from ner_extractor import batch_enrich_texts, HAS_NER
+    except ImportError:
+        HAS_NER = False
+        def batch_enrich_texts(texts, weight_factor=2):
+            return texts
+
+# Best model for Vietnamese semantic similarity
+DEFAULT_MODEL = "paraphrase-multilingual-mpnet-base-v2"
 
 console = Console()
 
-# ... (load_json, load_news_articles, load_trends function definitions remain the same) ...
-
-console = Console()
 
 def load_json(filepath):
     """Load Facebook data from JSON."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # Normalize to unified structure
             unified = []
             for item in data:
                 unified.append({
@@ -35,6 +61,7 @@ def load_json(filepath):
         console.print(f"[red]Error loading JSON {filepath}: {e}[/red]")
         return []
 
+
 def load_news_articles(data_dir):
     """Load news articles from CSV files in subdirectories."""
     unified = []
@@ -45,16 +72,12 @@ def load_news_articles(data_dir):
     
     for filepath in csv_files:
         try:
-            # Extract source from parent directory name
             source_name = os.path.basename(os.path.dirname(filepath)).upper()
-            
             with open(filepath, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     content = row.get('content', '')
                     title = row.get('title', '')
-                    
-                    # Combine title and content for better matching context
                     full_text = f"{title}\n{content}"
                     
                     unified.append({
@@ -70,6 +93,7 @@ def load_news_articles(data_dir):
             
     return unified
 
+
 def load_trends(csv_files):
     """Load trends from multiple CSV files."""
     trends = {}
@@ -82,18 +106,16 @@ def load_trends(csv_files):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
-                header = next(reader) # Skip header
+                header = next(reader)
                 
                 for row in reader:
-                    if len(row) < 5: continue
+                    if len(row) < 5: 
+                        continue
                     
                     main_trend = row[0].strip()
                     related_keywords = row[4].split(',')
-                    
-                    # Clean up related keywords
                     clean_keywords = [k.strip() for k in related_keywords if k.strip()]
                     
-                    # Add main trend to keyword list if not present
                     if main_trend not in clean_keywords:
                         clean_keywords.insert(0, main_trend)
                         
@@ -104,40 +126,64 @@ def load_trends(csv_files):
             
     return trends
 
-def find_matches(posts, trends, threshold=0.58, min_interactions=10, model_name='all-MiniLM-L6-v2', save_all=False): 
+
+def find_matches(posts, trends, model_name=None, threshold=0.55, 
+                 min_interactions=10, use_aliases=True, use_ner=False, save_all=False):
     """
-    Find matches using Semantic Similarity (Embeddings).
-    Filters:
-    - Cosine Similarity > threshold (default 0.58 for stricter matching)
-    - Total Interactions (Likes+Comments+Shares) > min_interactions (default 10)
+    Find matches using Semantic Similarity with text enrichment.
+    
+    Args:
+        posts: List of post dictionaries
+        trends: Dictionary of trends with keywords
+        model_name: HuggingFace model for embeddings
+        threshold: Cosine similarity threshold
+        min_interactions: Minimum engagement for FB posts
+        use_aliases: Whether to use alias normalization (default)
+        use_ner: Whether to use NER enrichment (alternative to aliases)
+        save_all: Save unmatched posts too
     """
+    if model_name is None:
+        model_name = DEFAULT_MODEL
+    
     matches = []
     
-    # 1. Prepare Trend Strings (Main Trend + Keywords joined)
+    # Build alias dictionary from trends (for alias mode)
+    if use_aliases and not use_ner:
+        build_alias_dictionary(trends)
+    
+    # Prepare texts
     trend_keys = list(trends.keys())
-    trend_texts = []
-    for t in trend_keys:
-        # Join main trend and top 3 keywords to form a descriptive text
-        keywords = trends[t]
-        context = f"{t} " + " ".join(keywords[:5]) 
-        trend_texts.append(context)
+    trend_texts = [f"{t} " + " ".join(trends[t][:5]) for t in trend_keys]
+    post_contents = [p.get('content', '')[:500] for p in posts]
+    
+    # Apply text enrichment
+    if use_ner and HAS_NER:
+        console.print("[bold magenta]🏷️ Enriching texts with NER (underthesea)...[/bold magenta]")
+        trend_texts = batch_enrich_texts(trend_texts, weight_factor=2)
+        post_contents = batch_enrich_texts(post_contents, weight_factor=2)
+        console.print("[green]✅ NER enrichment complete![/green]")
+    elif use_ner and not HAS_NER:
+        console.print("[yellow]⚠️ NER requested but underthesea not installed. Falling back to aliases.[/yellow]")
+        build_alias_dictionary(trends)
+        trend_texts = batch_normalize_texts(trend_texts, show_progress=False)
+        post_contents = batch_normalize_texts(post_contents, show_progress=True)
+    elif use_aliases:
+        console.print("[bold magenta]🔄 Normalizing texts with trend aliases...[/bold magenta]")
+        trend_texts = batch_normalize_texts(trend_texts, show_progress=False)
+        post_contents = batch_normalize_texts(post_contents, show_progress=True)
+        console.print("[green]✅ Normalization complete![/green]")
 
-    # 2. Encode Trends
+    # Encode
     console.print(f"[bold cyan]🧠 Encoding {len(trend_texts)} Trends with {model_name}...[/bold cyan]")
     model = SentenceTransformer(model_name)
     trend_embeddings = model.encode(trend_texts, show_progress_bar=True)
 
-    # 3. Encode Posts
     console.print(f"[bold cyan]🧠 Encoding {len(posts)} Posts...[/bold cyan]")
-    post_contents = [p.get('content', '')[:500] for p in posts] # Truncate for speed/noise reduction
     post_embeddings = model.encode(post_contents, show_progress_bar=True)
-
 
     console.print("[bold cyan]📐 Calculating Cosine Similarity...[/bold cyan]")
     similarity_matrix = cosine_similarity(post_embeddings, trend_embeddings)
 
-    # For each post, find the Trend with the MAX similarity.
-    
     count_matched = 0
     count_unmatched = 0
 
@@ -145,12 +191,8 @@ def find_matches(posts, trends, threshold=0.58, min_interactions=10, model_name=
         stats = post.get('stats', {'likes': 0, 'comments': 0, 'shares': 0})
         total_interactions = stats.get('likes', 0) + stats.get('comments', 0) + stats.get('shares', 0)
         
-        # Filter by Engagement (only for Facebook posts, identified by Source starting with Face or having stats)
-        # News articles usually have 0 stats in this dataset, so we might skip this filter for them 
-        # or assume if stats are missing/zero it's a News article (checked by source name).
         is_facebook = 'Face' in post.get('source', '')
         
-        # If save_all is False, apply strict filters early
         if not save_all and is_facebook and total_interactions < min_interactions:
             continue
             
@@ -176,56 +218,98 @@ def find_matches(posts, trends, threshold=0.58, min_interactions=10, model_name=
             matches.append(match_data)
             count_matched += 1
         elif save_all:
-            # Add Unmatched items if save_all is True
-            # Optional: Relax interaction filter for saved unmatched items? 
-            # For now, keeping everything if save_all is True allows clustering to decide.
             match_data.update({
                 "trend": "Unassigned",
                 "keyword": "none", 
-                "score": float(best_score), # Store best score anyway to see "closeness"
+                "score": float(best_score),
                 "closest_trend": trend_keys[best_trend_idx],
                 "is_matched": False
             })
             matches.append(match_data)
             count_unmatched += 1
 
-    # Statistics for Score Distribution
+    # Stats
     scores = [m['score'] for m in matches if m.get('is_matched')]
     if scores:
-        avg_score = sum(scores)/len(scores)
-        console.print(f"[bold yellow]📊 Sem Sim Stats: Min={min(scores):.2f}, Max={max(scores):.2f}, Avg={avg_score:.2f}[/bold yellow]")
+        console.print(f"[bold yellow]📊 Score Stats: Min={min(scores):.2f}, Max={max(scores):.2f}, Avg={sum(scores)/len(scores):.2f}[/bold yellow]")
     
-    console.print(f"[dim]Stats: Matched={count_matched}, Unmatched (Saved)={count_unmatched}[/dim]")
+    console.print(f"[dim]Stats: Matched={count_matched}, Unmatched={count_unmatched}[/dim]")
 
     return matches
 
 
+def analyze_trend_coverage(matches, trends, min_posts=3):
+    """
+    Analyze which trends have actual coverage in data.
+    
+    Args:
+        matches: List of matched items
+        trends: Original trends dictionary
+        min_posts: Minimum posts for a valid trend
+        
+    Returns:
+        Dictionary of valid trends with their post counts
+    """
+    trend_coverage = Counter([m['trend'] for m in matches if m.get('is_matched')])
+    
+    console.print("\n[bold cyan]📊 Trend Coverage Analysis[/bold cyan]")
+    console.print(f"   Total Google Trends: {len(trends)}")
+    console.print(f"   Trends with matches: {len(trend_coverage)}")
+    console.print(f"   Trends with NO data: {len(trends) - len(trend_coverage)}")
+    
+    valid_trends = {t: c for t, c in trend_coverage.items() if c >= min_posts}
+    console.print(f"\n[green]✅ Valid trends (>= {min_posts} posts): {len(valid_trends)}[/green]")
+    
+    # Show top trends
+    console.print("\n[bold]🔥 TOP 20 REAL TRENDS:[/bold]")
+    for i, (trend, count) in enumerate(sorted(valid_trends.items(), key=lambda x: -x[1])[:20]):
+        console.print(f"   {i+1}. {trend}: {count} posts")
+    
+    return valid_trends
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Analyze Search Trends vs Social Data")
-    parser.add_argument("--model", type=str, default="all-MiniLM-L6-v2", 
-                        help="HuggingFace model name for embeddings (e.g. 'paraphrase-multilingual-mpnet-base-v2')")
-    parser.add_argument("--threshold", type=float, default=0.58, 
-                        help="Similarity threshold for matching (default: 0.58)")
-    parser.add_argument("--output", default="results.json", type=str, help="Path to save matched results (JSON)")
-    parser.add_argument("--input", type=str, help="Path to load matched results from (JSON), skipping matching process")
-    parser.add_argument("--save-all", action="store_true", help="Save all posts (including unmatched) for unsupervised clustering")
+    parser = argparse.ArgumentParser(description="Multi-Source Trend Analysis")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, 
+                        help=f"HuggingFace model for embeddings (default: {DEFAULT_MODEL})")
+    parser.add_argument("--threshold", type=float, default=0.55, 
+                        help="Similarity threshold for matching (default: 0.55)")
+    parser.add_argument("--output", default="results.json", type=str, 
+                        help="Path to save matched results (JSON)")
+    parser.add_argument("--input", type=str, 
+                        help="Path to load existing results (skip matching)")
+    parser.add_argument("--no-aliases", action="store_true", default=False,
+                        help="Disable alias normalization")
+    parser.add_argument("--use-ner", action="store_true", default=False,
+                        help="Use NER enrichment instead of aliases (requires underthesea)")
+    parser.add_argument("--save-all", action="store_true", 
+                        help="Save all posts including unmatched")
+    parser.add_argument("--min-posts", type=int, default=3,
+                        help="Minimum posts for a valid trend (default: 3)")
     return parser.parse_args()
+
 
 def main():
     args = parse_args()
     
     matches = []
+    trends = {}
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir) # Loop back to project root
+    project_root = os.path.dirname(script_dir)
     
     fb_file = os.path.join(script_dir, "facebook", "fb_data.json")
     news_data_dir = os.path.join(project_root, "data")
     
-    csv_files = [
-        os.path.join(script_dir, "trending_VN_7d_20251208-1451.csv"),
-        os.path.join(script_dir, "trending_VN_7d_20251208-1452.csv")
-    ]
+    # Find all trend CSV files
+    csv_pattern = os.path.join(script_dir, "trending_VN_*.csv")
+    csv_files = glob.glob(csv_pattern)
+    
+    if not csv_files:
+        console.print("[yellow]No trend CSV files found. Using default paths.[/yellow]")
+        csv_files = [
+            os.path.join(script_dir, "trending_VN_7d_20251208-1451.csv"),
+        ]
 
     if args.input:
         if os.path.exists(args.input):
@@ -236,10 +320,8 @@ def main():
         else:
             console.print(f"[bold red]❌ Input file not found: {args.input}[/bold red]")
             return
-            
-        # Ensure we have trends dict for coloring if possible, or infer from matches
-        # For simplicity, we'll reload trends from source to get the full list for stats
-        trends = load_trends(csv_files) 
+        
+        trends = load_trends(csv_files)
 
     else:
         # Load all data
@@ -251,13 +333,21 @@ def main():
         console.print(f"[bold cyan]🤖 Using Model: {args.model}[/bold cyan]")
         
         trends = load_trends(csv_files)
+        console.print(f"[bold]Loaded Trends:[/bold] {len(trends)} trends from {len(csv_files)} CSV files")
         
         if not all_data or not trends:
             console.print("[red]No data to analyze![/red]")
             return
 
-        # Pass model name to find_matches
-        matches = find_matches(all_data, trends, model_name=args.model, threshold=args.threshold, save_all=args.save_all)
+        matches = find_matches(
+            all_data, 
+            trends, 
+            model_name=args.model, 
+            threshold=args.threshold, 
+            use_aliases=not args.no_aliases,
+            use_ner=args.use_ner,
+            save_all=args.save_all
+        )
         
         if args.output:
             console.print(f"[bold green]💾 Saving results to: {args.output}[/bold green]")
@@ -268,9 +358,13 @@ def main():
         console.print("[yellow]No matches found between trends and data.[/yellow]")
         return
     
-    console.print(f"\n[bold green]✅ Analysis complete! Found {len(matches)} matches.[/bold green]")
-    console.print(f"[dim]Run evaluate_trends.py for visualization and metrics:[/dim]")
-    console.print(f"[cyan]  python crawlers/evaluate_trends.py --input {args.output} --filter-routine --show-routine[/cyan]")
+    # Analyze trend coverage
+    valid_trends = analyze_trend_coverage(matches, trends, min_posts=args.min_posts)
+    
+    console.print(f"\n[bold green]✅ Analysis complete![/bold green]")
+    console.print(f"[dim]Run evaluate_trends.py for visualization:[/dim]")
+    console.print(f"[cyan]  python crawlers/evaluate_trends.py --input {args.output}[/cyan]")
+
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,32 @@
+# Core
+requests
+beautifulsoup4
+lxml
+toml
+rich
+python-dateutil
+pandas
+numpy
 
+# Crawling
+selenium
+selenium-stealth
+playwright
+playwright-stealth==1.0.6
+
+# ML & NLP
 scikit-learn
 sentence-transformers
+transformers>=4.30.0
+umap-learn
+hdbscan
+
+# NER (optional)
+underthesea>=6.8.0
+
+# Visualization
+matplotlib
+seaborn
+
+# Development
+jupyter
