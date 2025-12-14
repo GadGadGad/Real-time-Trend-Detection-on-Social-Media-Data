@@ -20,6 +20,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter
 
 try:
+    from crawlers.vectorizers import get_embeddings
+except ImportError:
+    from vectorizers import get_embeddings
+
+try:
     from crawlers.alias_normalizer import build_alias_dictionary, batch_normalize_texts
 except ImportError:
     from alias_normalizer import build_alias_dictionary, batch_normalize_texts
@@ -128,18 +133,20 @@ def load_trends(csv_files):
 
 
 def find_matches(posts, trends, model_name=None, threshold=0.55, 
-                 min_interactions=10, use_aliases=True, use_ner=False, save_all=False):
+                 min_interactions=10, use_aliases=True, use_ner=False, 
+                 embedding_method="sentence-transformer", save_all=False):
     """
     Find matches using Semantic Similarity with text enrichment.
     
     Args:
         posts: List of post dictionaries
         trends: Dictionary of trends with keywords
-        model_name: HuggingFace model for embeddings
+        model_name: HuggingFace model for embeddings (sentence-transformer only)
         threshold: Cosine similarity threshold
         min_interactions: Minimum engagement for FB posts
         use_aliases: Whether to use alias normalization (default)
         use_ner: Whether to use NER enrichment (alternative to aliases)
+        embedding_method: 'sentence-transformer', 'tfidf', 'bow', or 'glove'
         save_all: Save unmatched posts too
     """
     if model_name is None:
@@ -174,12 +181,19 @@ def find_matches(posts, trends, model_name=None, threshold=0.55,
         console.print("[green]✅ Normalization complete![/green]")
 
     # Encode
-    console.print(f"[bold cyan]🧠 Encoding {len(trend_texts)} Trends with {model_name}...[/bold cyan]")
-    model = SentenceTransformer(model_name)
-    trend_embeddings = model.encode(trend_texts, show_progress_bar=True)
-
-    console.print(f"[bold cyan]🧠 Encoding {len(posts)} Posts...[/bold cyan]")
-    post_embeddings = model.encode(post_contents, show_progress_bar=True)
+    all_texts = trend_texts + post_contents
+    
+    if embedding_method == "sentence-transformer":
+        console.print(f"[bold cyan]🧠 Encoding with Sentence Transformer: {model_name}...[/bold cyan]")
+        model = SentenceTransformer(model_name)
+        trend_embeddings = model.encode(trend_texts, show_progress_bar=True)
+        post_embeddings = model.encode(post_contents, show_progress_bar=True)
+    else:
+        console.print(f"[bold cyan]📊 Encoding with {embedding_method.upper()}...[/bold cyan]")
+        # For TF-IDF/BoW, we need to fit on all texts together
+        all_embeddings = get_embeddings(all_texts, method=embedding_method)
+        trend_embeddings = all_embeddings[:len(trend_texts)]
+        post_embeddings = all_embeddings[len(trend_texts):]
 
     console.print("[bold cyan]📐 Calculating Cosine Similarity...[/bold cyan]")
     similarity_matrix = cosine_similarity(post_embeddings, trend_embeddings)
@@ -282,6 +296,9 @@ def parse_args():
                         help="Disable alias normalization")
     parser.add_argument("--use-ner", action="store_true", default=False,
                         help="Use NER enrichment instead of aliases (requires underthesea)")
+    parser.add_argument("--embedding", type=str, default="sentence-transformer",
+                        choices=["sentence-transformer", "tfidf", "bow", "glove"],
+                        help="Embedding method (default: sentence-transformer)")
     parser.add_argument("--save-all", action="store_true", 
                         help="Save all posts including unmatched")
     parser.add_argument("--min-posts", type=int, default=3,
@@ -346,6 +363,7 @@ def main():
             threshold=args.threshold, 
             use_aliases=not args.no_aliases,
             use_ner=args.use_ner,
+            embedding_method=args.embedding,
             save_all=args.save_all
         )
         
