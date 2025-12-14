@@ -605,15 +605,19 @@ if __name__ == "__main__":
         "https://m.facebook.com/laodongonline",       # Báo Lao Động
         "https://m.facebook.com/nhandanonline",       # Báo Nhân Dân
         "https://m.facebook.com/profile.php?id=100089883616175",
-        "https://m.facebook.com/hhsb.vn/",
+        # "https://m.facebook.com/hhsb.vn/",
         "https://m.facebook.com/tintucvietnammoinong/",
+        "https://www.facebook.com/tintucvtv24",
+        "https://www.facebook.com/doisongvnn",
+        "https://www.facebook.com/VnProCon",
+        "https://www.facebook.com/tapchitrithucznews.vn",
     ]
 
     parser.add_argument("-b", "--browser", type=str, choices=["firefox", "chrome", "chromium"], default="firefox", help="Chọn trình duyệt (mặc định: firefox)")
     parser.add_argument("-u", "--urls", type=str, nargs="+", default=default_urls, help="Danh sách URL cần crawl")
     parser.add_argument("-o", "--output", type=str, default="fb_data.json", help="Đường dẫn file output JSON")
-    parser.add_argument("--min-posts", type=int, default=200, help="Số bài viết tối thiểu mỗi page")
-    parser.add_argument("--max-scrolls", type=int, default=40, help="Số lần scroll tối đa")
+    parser.add_argument("--min-posts", type=int, default=500, help="Số bài viết tối thiểu mỗi page")
+    parser.add_argument("--max-scrolls", type=int, default=200, help="Số lần scroll tối đa")
     parser.add_argument("--scroll-pause", type=int, default=3, help="Thời gian chờ sau mỗi lần scroll (giây)")
     parser.add_argument("--profile-path", type=str, default="my_firefox_profile", help="Đường dẫn thư mục profile (nếu không set, tự động tạo theo browser)")
     
