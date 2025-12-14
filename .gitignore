@@ -1,1 +1,29 @@
-my_firefox_profile/*
+# Python
+__pycache__
+*.pyc
+.ipynb_checkpoints/
+
+# IDE
+.idea
+.vscode
+
+# Virtual Environment
+venv
+env
+
+# System
+.DS_Store
+Thumbs.db
+
+# Other
+*.log
+*.lock
+
+# Data
+data/
+results/
+my_firefox_profile/
+fb_data.json
+debug_*.html
+geckodriver.log
+*.csv

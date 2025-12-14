@@ -274,7 +274,7 @@ def parse_args():
                         help=f"HuggingFace model for embeddings (default: {DEFAULT_MODEL})")
     parser.add_argument("--threshold", type=float, default=0.55, 
                         help="Similarity threshold for matching (default: 0.55)")
-    parser.add_argument("--output", default="results.json", type=str, 
+    parser.add_argument("--output", default="results/results.json", type=str, 
                         help="Path to save matched results (JSON)")
     parser.add_argument("--input", type=str, 
                         help="Path to load existing results (skip matching)")

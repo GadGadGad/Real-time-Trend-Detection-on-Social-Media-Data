@@ -307,7 +307,7 @@ def display_results(clusters: dict, title: str = "TREND RANKINGS"):
     return sorted_clusters
 
 
-def plot_trends(sorted_clusters: list, output_file: str = "trend_analysis.png"):
+def plot_trends(sorted_clusters: list, output_file: str = "results/trend_analysis.png"):
     """Plot top trends bar chart."""
     if not sorted_clusters:
         return
@@ -330,7 +330,7 @@ def plot_trends(sorted_clusters: list, output_file: str = "trend_analysis.png"):
     console.print(f"[green]📊 Chart saved: {output_file}[/green]")
 
 
-def plot_tsne(matches: list, clusters: dict, model_name: str, output_file: str = "trend_tsne.png"):
+def plot_tsne(matches: list, clusters: dict, model_name: str, output_file: str = "results/trend_tsne.png"):
     """Visualize trends with t-SNE, colored by trend assignment."""
     valid_trends = set(clusters.keys())
     filtered = [m for m in matches if m.get('trend') in valid_trends]

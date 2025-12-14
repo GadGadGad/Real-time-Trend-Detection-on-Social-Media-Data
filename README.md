@@ -2,7 +2,7 @@
 
 Real-time trend detection từ multiple sources: Google Trends, Facebook, News sites.
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 ├── crawlers/                   # Core analysis modules
@@ -14,6 +14,11 @@ Real-time trend detection từ multiple sources: Google Trends, Facebook, News s
 │   ├── vnexpress_crawler.py    # VNExpress news crawler
 │   ├── thanhnien_crawler.py    # Thanh Nien news crawler
 │   └── facebook/               # Facebook page crawler
+│
+├── results/                    # Output files (gitignored)
+│   ├── results.json            # Matched trends data
+│   ├── trend_analysis.png      # Top trends chart
+│   └── trend_tsne.png          # t-SNE visualization
 │
 ├── notebooks/                  # Jupyter notebooks
 │   └── kaggle_trend_analysis.ipynb  # Kaggle-ready notebook
