@@ -148,6 +148,35 @@
   \textbf{Hướng tiếp cận:} Kết hợp \textbf{tín hiệu đa nguồn} (Search--Social--News) và NLP để \textbf{gom topic}, \textbf{chấm điểm xu hướng} từ đó nắm bắt được tình trạng, phản ứng của mọi người về các xu hướng mới nhất.
 \end{frame}
 
+%============================================================
+\begin{frame}{Ví dụ cụ thể: Theo dõi phản ứng xã hội theo thời gian thực}
+  \justifying
+  \begin{block}{Ví dụ: Dự kiến đánh thuế hộ kinh doanh thu nhập 200 triệu/năm}
+    Thông tin dự kiến đánh thuế được lan truyền nhanh trên mạng xã hội,
+    kèm theo nhiều cách diễn đạt khác nhau và cảm xúc trái chiều.
+  \end{block}
+
+  \begin{itemize}
+    \item Hệ thống cho thấy:
+      \begin{itemize}
+        \item \textbf{Diễn biến sự việc:} từ thông tin ban đầu $\rightarrow$ lan truyền $\rightarrow$ phản hồi chính thức.
+        \item \textbf{Cảm xúc chủ đạo của người dân:} lo lắng, bức xúc, hoang mang.
+        \item \textbf{Mức độ lan rộng:} thảo luận tăng mạnh trong thời gian ngắn.
+      \end{itemize}
+
+    \item Khi kết hợp với báo chí:
+      \begin{itemize}
+        \item Xác định thời điểm thông tin được \textbf{đính chính / làm rõ}.
+      \end{itemize}
+  \end{itemize}
+
+  \begin{alertblock}{Ý nghĩa}
+    Giúp cơ quan quản lý \textbf{nắm bắt phản ứng xã hội sớm},
+    chủ động truyền thông để tránh hiểu sai và giảm bức xúc dư luận.
+  \end{alertblock}
+\end{frame}
+
+
 \begin{frame}{Phân loại sự kiện (Taxonomy)}
   \justifying
   Hệ thống tập trung vào 7 loại sự kiện/xu hướng chính (phục vụ lọc nhiễu và gán nhãn đánh giá):
@@ -169,29 +198,73 @@
 
 %------------------------------------------------------------
 \section{Dữ liệu \& Thu thập}
-\begin{frame}[fragile]{Nguồn dữ liệu 1: Mạng xã hội (Social Media)}
+
+%============================================================
+\begin{frame}[fragile]{Nguồn dữ liệu 1: Mạng xã hội (Facebook)}
   \justifying
   \begin{itemize}
-    \item \textbf{Nguồn:} Các fanpage lớn / trang tin trên Facebook (ví dụ: Theanh28, Thông tin Chính Phủ, ...).
-    \item \textbf{Định dạng:} JSON (nội dung, thời gian đăng, chỉ số tương tác).
-    \item \textbf{Tín hiệu trend:} likes/comments/shares (có thể chuẩn hoá theo thời gian).
-    \item \textbf{Trạng thái:} \textbf{Đã hoàn thành crawl} và đưa về schema thống nhất.
+    \item \textbf{Nguồn:} Fanpage lớn / trang tin Facebook (Theanh28, Dân trí, \ldots).
+    \item \textbf{Định dạng:} JSON (nội dung + thời gian đăng + tương tác).
+    \item \textbf{Tín hiệu trend:} likes / comments / shares.
+    \item \textbf{Trạng thái:} Đã crawl và đưa về schema thống nhất.
   \end{itemize}
 
-  \begin{exampleblock}{Mẫu dữ liệu JSON (Crawl từ Facebook)}
-    {\footnotesize
-    \begin{verbatim}
-    {
-      "page_name": "Theanh28",
-      "published_time": "2025-12-15T01:54:10",
-      "content": "Vào 100 đám cưới xin đồ ăn nuôi 120 mèo hoang...",
-      "stats": { "likes": 3800, "comments": 99, "shares": 10 }
-    }
-    \end{verbatim}
-    }
+  \begin{alertblock}{Hạn chế}
+    Crawl thủ công \textbf{không luôn lấy được giờ/phút chính xác} với bài đăng cũ
+    $\rightarrow$ ảnh hưởng đánh giá xu hướng theo thời gian.
+  \end{alertblock}
+
+  \begin{exampleblock}{Schema hiện tại (rút gọn)}
+{\footnotesize
+\begin{verbatim}
+{
+  "page_name": "Theanh28",
+  "published_time": "2025-12-15T01:54:10",
+  "content": "...",
+  "stats": { "likes": 3800, "comments": 99, "shares": 10 }
+}
+\end{verbatim}
+}
   \end{exampleblock}
-    
 \end{frame}
+
+
+%============================================================
+\begin{frame}[fragile]{Nguồn dữ liệu 1: Facebook – Định hướng nâng chất lượng (Apify)}
+  \justifying
+  \begin{block}{Mục tiêu}
+    Sử dụng \textbf{Apify} để crawl Facebook với \textbf{timestamp chính xác}
+    (giờ/phút/giây) cho cả bài cũ.
+  \end{block}
+
+  \begin{itemize}
+    \item Lấy được \textbf{time ISO + epoch timestamp}.
+    \item Giữ thông tin postId, url, pageName, link bài báo.
+    \item Đầy đủ tương tác: likes / comments / shares.
+  \end{itemize}
+
+  \begin{exampleblock}{Schema Apify (các trường chính)}
+{\footnotesize
+\begin{verbatim}
+{
+  "pageName": "baodantridientu",
+  "postId": "1191254559782876",
+  "time": "2025-12-15T09:41:09.000Z",
+  "timestamp": 1765791669,
+  "text": "...",
+  "likes": 9, "comments": 1, "shares": 1
+}
+\end{verbatim}
+}
+  \end{exampleblock}
+
+  \begin{exampleblock}{Lợi ích}
+    Tính \textbf{engagement theo thời gian} chính xác hơn
+    $\rightarrow$ phát hiện trend sớm hơn.
+  \end{exampleblock}
+\end{frame}
+
+
 
 \begin{frame}[fragile]{Nguồn dữ liệu 2: Tin tức (News)}
   \justifying
@@ -273,48 +346,59 @@
   \end{itemize}
 \end{frame}
 
-%------------------------------------------------------------
 \begin{frame}{So sánh trực quan: Clustering với NER}
   \justifying
 
+  \begin{minipage}{\linewidth}
   \begin{block}{Thiết lập}
-    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{NER enrichment (underthesea)}  
+    {\footnotesize
+    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{NER enrichment (underthesea)}
     $\rightarrow$ UMAP + HDBSCAN.
+    }
   \end{block}
+  \end{minipage}
 
   \begin{figure}
     \centering
-    \includegraphics[width=0.5\textwidth]{assets/images/ner.png}
-    \caption{Phân bố cụm khi tăng cường ngữ cảnh bằng Named Entity Recognition}
+    \includegraphics[width=0.55\textwidth]{assets/images/ner.png}
+    \caption{\footnotesize Phân bố cụm khi tăng cường ngữ cảnh bằng Named Entity Recognition}
   \end{figure}
 
-  \begin{itemize}
-    \item Các bài viết cùng \textbf{thực thể chính} có xu hướng gom lại tốt hơn.
-    \item Tuy nhiên vẫn xuất hiện \textbf{cụm lớn do nội dung lặp/ngày}.
-  \end{itemize}
+  % {\footnotesize
+  % \begin{itemize}
+  %   \item Các bài viết cùng \textbf{thực thể chính} có xu hướng gom lại tốt hơn.
+  %   \item Tuy nhiên vẫn xuất hiện \textbf{cụm lớn do nội dung lặp/ngày}.
+  % \end{itemize}
+  % }
 \end{frame}
 
 
-%------------------------------------------------------------
 \begin{frame}{So sánh trực quan: Clustering với Alias từ Google Trends}
   \justifying
 
+  \begin{minipage}{\linewidth}
   \begin{block}{Thiết lập}
-    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{Alias normalization từ Google Trends}  
+    {\footnotesize
+    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{Alias normalization từ Google Trends}
     $\rightarrow$ UMAP + HDBSCAN.
+    }
   \end{block}
+  \end{minipage}
 
   \begin{figure}
     \centering
-    \includegraphics[width=0.5\textwidth]{assets/images/ggtrend.png}
-    \caption{Phân bố cụm khi mở rộng biến thể từ khoá từ Google Trends}
+    \includegraphics[width=0.55\textwidth]{assets/images/ggtrend.png}
+    \caption{\footnotesize Phân bố cụm khi mở rộng biến thể từ khoá từ Google Trends}
   \end{figure}
 
-  \begin{itemize}
-    \item Tăng \textbf{độ bao phủ (recall)} cho các sự kiện có nhiều cách gọi.
-    \item Một số cụm rõ ràng hơn nhưng vẫn cần \textbf{lọc nhiễu bổ sung}.
-  \end{itemize}
+  % {\footnotesize
+  % \begin{itemize}
+  %   \item Tăng \textbf{độ bao phủ (recall)} cho các sự kiện có nhiều cách gọi.
+  %   \item Một số cụm rõ ràng hơn nhưng vẫn cần \textbf{lọc nhiễu bổ sung}.
+  % \end{itemize}
+  % }
 \end{frame}
+
 
 
 \begin{frame}{Trend Scoring \& Phân loại trend (theo đề xuất)}
@@ -388,6 +472,13 @@
 \section{Khó khăn \& Kế hoạch}
 \begin{frame}{Khó khăn hiện tại}
   \justifying
+
+  \textit{Trong thực tế, việc phát hiện một xu hướng ``thật sự'' là bài toán khó,
+  do các thảo luận trên mạng xã hội thường bùng phát nhanh, nhiễu nhiều,
+  và không phải lúc nào mức độ lan truyền cũng phản ánh đúng tầm quan trọng của sự kiện.}
+
+  \vspace{0.5em}
+
   \begin{enumerate}
     \item \textbf{Vấn đề Phân cụm (Clustering):}
       \begin{itemize}
@@ -407,6 +498,7 @@
   \end{enumerate}
 \end{frame}
 
+
 \begin{frame}{Kế hoạch tiếp theo (Timeline)}
   \justifying
   \begin{table}
@@ -417,9 +509,9 @@
       \textbf{Task} & \textbf{Mô tả} & \textbf{Trạng thái} \\
       \midrule
       Task 1 & Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate) & Đang làm \\
-      Task 2 & Thu thập dữ liệu (Crawler) & \textbf{Hoàn thành} \\
-      Task 3 & Semantic matching (embedding) + alias/NER enrichment & Đang làm \\
-      Task 4 & Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & TBD \\
+      Task 2 & Thu thập dữ liệu (Crawler) & Đã Hoàn thành các bộ Crawl \\
+      Task 3 & Semantic matching (embedding) + alias/NER enrichment & Đang thử nghiệm \\
+      Task 4 & Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & Đang tìm giải pháp tối ưu hơn \\
       Task 5 & Trend scoring + phân loại trend đa nguồn & TBD \\
       Task 6 & Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming & TBD \\
       \bottomrule
