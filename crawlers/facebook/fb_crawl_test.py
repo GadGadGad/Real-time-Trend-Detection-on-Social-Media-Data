@@ -466,7 +466,7 @@ if __name__ == "__main__":
         "https://m.facebook.com/Theanh28",
         "https://m.facebook.com/kienkhongngu.vn", 
         "https://m.facebook.com/thongtinchinhphu",
-        "https://m.facebook.com/VnExpress",
+        "https://www.facebook.com/congdongvnexpress",
         "https://m.facebook.com/baotuoitre",
         "https://m.facebook.com/thanhnien",
         "https://m.facebook.com/vietnamnet.vn",
