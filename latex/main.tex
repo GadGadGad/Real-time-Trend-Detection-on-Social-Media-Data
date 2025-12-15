@@ -184,7 +184,7 @@
   \justifying
   Hệ thống tập trung vào 7 loại sự kiện/xu hướng chính (phục vụ lọc nhiễu và gán nhãn đánh giá):
   \begin{enumerate}
-    \item \textbf{Social Controversy:} Tranh cãi xã hội, bê bối (Ưu tiên cao cho CP).
+    \item \textbf{Social Controversy:} Tranh cãi xã hội, sự kiện nóng, bê bối (Ưu tiên cao cho CP).
     \item \textbf{Civil Unrest:} Biểu tình, đình công.
     \item \textbf{Natural Disaster:} Thiên tai, lũ lụt, môi trường.
     \item \textbf{Public Safety:} Tai nạn, cháy nổ.
@@ -300,11 +300,9 @@
 
 \end{frame}
 
-%------------------------------------------------------------
-\section{Phương pháp \& Kiến trúc dự kiến}
 \begin{frame}{Kiến trúc hệ thống dự kiến}
   \justifying
-  Hệ thống chia làm 2 pha chính (phục vụ phát hiện xu hướng và vận hành thời gian thực):
+  Hệ thống chia làm 2 pha chính (phục vụ phát hiện xu hướng và phân tích phản ứng cộng đồng theo thời gian thực):
   \begin{columns}
     \column{0.5\textwidth}
     \textbf{Phase 1: Offline Discovery}
@@ -312,7 +310,7 @@
       \item Thu thập dữ liệu lịch sử đa nguồn.
       \item Chuẩn hoá \& tiền xử lý tiếng Việt.
       \item Vector hoá (embedding) và \textbf{clustering}.
-      \item Tạo luật/gán nhãn bán giám sát để phân loại trend.
+      \item Tạo luật/gán nhãn bán giám sát để phát hiện và phân loại trend.
     \end{itemize}
 
     \column{0.5\textwidth}
@@ -321,15 +319,17 @@
       \item Thu thập định kỳ/streaming.
       \item Ghép bài viết vào topic + phát hiện topic mới.
       \item Chấm điểm xu hướng theo thời gian.
+      \item \textbf{Phân tích cảm xúc / tâm lý cộng đồng theo từng trend}.
       \item Cảnh báo \& lưu trữ cho dashboard.
     \end{itemize}
   \end{columns}
 
   \vspace{0.35em}
   \begin{block}{Trọng tâm hiện tại}
-    \textbf{Phát hiện xu hướng} (semantic matching + clustering + lọc nhiễu) là phần khó và tốn công nhất.
+    \textbf{Phát hiện xu hướng là bước nền tảng}; phân tích cảm xúc/tâm lý được thực hiện sau khi trend đã được xác định rõ.
   \end{block}
 \end{frame}
+
 
 \begin{frame}{Pipeline NLP phát hiện xu hướng (đang phát triển)}
   \justifying
@@ -338,7 +338,7 @@
   \end{block}
 
   \begin{itemize}
-    \item \textbf{Tiền xử lý:} chuẩn hoá Unicode, loại boilerplate, làm sạch ký tự/emoji.
+    \item \textbf{Tiền xử lý:} chuẩn hoá Unicode, loại nội dung mẫu lặp, làm sạch ký tự/emoji.
     \item \textbf{Biểu diễn ngữ nghĩa:} dùng \textbf{embedding tiếng Việt} (PhoBERT / Vietnamese bi-encoder).
     \item \textbf{Tăng cường ngữ cảnh (2 hướng thử nghiệm):}
           \begin{itemize}
@@ -404,7 +404,7 @@
 
 
 
-\begin{frame}{Trend Scoring \& Phân loại trend (theo đề xuất)}
+\begin{frame}{Trend Scoring \& Phân loại trend (ý tưởng)}
   \justifying
   Với mỗi \textbf{topic}, hệ thống tổng hợp 3 tín hiệu:
   \begin{itemize}
@@ -460,7 +460,7 @@
       \begin{itemize}
         \item \textbf{Cụm lớn bất thường} do nhiễu (daily/spam) ``nuốt'' dữ liệu.
         \item \textbf{Overlap giữa cụm} khi nội dung na ná (bán hàng, câu view).
-        \item Ngưỡng similarity nhạy: thay đổi nhỏ có thể làm lệch tỉ lệ matched/unmatched.
+        \item \textbf{Phụ thuộc danh sách từ khoá xu hướng, nên kém hiệu quả với các trend mới hoàn toàn.}
       \end{itemize}
     \end{alertblock}
   \end{columns}
@@ -507,21 +507,34 @@
   \begin{table}
     \centering
     \small
-    \begin{tabular}{p{0.12\textwidth} p{0.62\textwidth} p{0.20\textwidth}}
+    \begin{tabular}
+    {@{\hspace{6pt}}p{0.1\textwidth}
+     p{0.58\textwidth}
+     p{0.22\textwidth}@{\hspace{6pt}}}
       \toprule
-      \textbf{Task} & \textbf{Mô tả}                                               & \textbf{Trạng thái}           \\
+      \textbf{Task} & \textbf{Mô tả} & \textbf{Trạng thái} \\
       \midrule
-      Task 1        & Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate)     & Đang làm                      \\
-      Task 2        & Thu thập dữ liệu (Crawler)                                   & Đã Hoàn thành các bộ Crawl    \\
-      Task 3        & Semantic matching (embedding) + alias/NER enrichment         & Đang thử nghiệm               \\
-      Task 4        & Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & Đang tìm giải pháp tối ưu hơn \\
-      Task 5        & Trend scoring + phân loại trend đa nguồn                     & TBD                           \\
-      Task 6        & Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming      & TBD                           \\
+      Task 1 & \raggedright Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate) & Đang làm \\
+
+      Task 2 & \raggedright Thu thập dữ liệu (Crawler) & \textbf{Đã hoàn thành} \\
+
+      Task 3 & \raggedright Semantic matching (embedding) + alias/NER enrichment & Đang thử nghiệm \\
+
+      Task 4 & \raggedright Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & Đang tìm giải pháp tối ưu hơn \\
+
+      Task 5 & \raggedright Xác định tên trend và tóm tắt thông tin cốt lõi của trend & TBD \\
+
+      Task 6 & \raggedright Phân tích cảm xúc, tâm lý từ trend đã phát hiện & TBD \\
+
+      Task 7 & \raggedright Trend scoring + phân loại trend đa nguồn & TBD \\
+
+      Task 8 & \raggedright Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming & TBD \\
       \bottomrule
     \end{tabular}
     \caption{Tiến độ thực hiện dự án}
   \end{table}
 \end{frame}
+
 
 %------------------------------------------------------------
 \section{Tài liệu tham khảo}
