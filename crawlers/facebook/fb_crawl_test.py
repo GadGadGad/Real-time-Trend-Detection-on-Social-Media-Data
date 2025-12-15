@@ -263,95 +263,105 @@ def save_to_json(new_posts, page_name, file_output):
 
 # ================= CORE LOGIC ĐƯỢC SỬA ĐỔI =================
 
-def process_page_scrolling(driver, page_name_slug, file_output, min_posts, max_attempts, scroll_pause_time):
-    console.print(f"  [cyan]📜 Đang quét bài viết (Mục tiêu: {min_posts} bài)...[/cyan]")
-    
+def process_page_scrolling(driver, page_name_slug, file_output, min_posts, max_attempts, scroll_pause_time, until_date=None):
+    # Cấu hình chế độ chạy
+    if until_date:
+        console.print(f"  [cyan]📅 CHẾ ĐỘ DATE: Crawl từ bài mới nhất lùi về đến ngày {until_date.date()}...[/cyan]")
+        limit_posts = float('inf')    # Vô hiệu hóa giới hạn bài
+        limit_scrolls = float('inf')  # Vô hiệu hóa giới hạn scroll
+        target_desc = f"đến khi gặp bài cũ hơn {until_date.date()}"
+    else:
+        console.print(f"  [cyan]🔢 CHẾ ĐỘ SỐ LƯỢNG: Crawl {min_posts} bài...[/cyan]")
+        limit_posts = min_posts
+        limit_scrolls = max_attempts
+        target_desc = f"đủ {min_posts} bài"
+
     total_saved = 0
     processed_signatures = set()
     last_height = driver.execute_script("return document.body.scrollHeight")
-    stuck_count = 0 # Đếm số lần bị kẹt liên tiếp
+    stuck_count = 0 
+    scroll_count = 0
+    stop_signal = False # Cờ dừng khi gặp ngày cũ hơn
 
-    # Helper: Cuộn xuống từ từ thay vì nhảy cóc
+    # --- Helper Scroll & Unstuck (Giữ nguyên) ---
     def human_scroll_down(step_delay=0.5):
-        # Lấy chiều cao màn hình hiện tại
         viewport_height = driver.execute_script("return window.innerHeight")
         current_pos = driver.execute_script("return window.pageYOffset")
         doc_height = driver.execute_script("return document.body.scrollHeight")
-        
-        # Cuộn từng đoạn bằng 80% chiều cao màn hình
         while current_pos < doc_height:
             current_pos += int(viewport_height * 0.8)
             driver.execute_script(f"window.scrollTo(0, {current_pos});")
-            time.sleep(step_delay) # Nghỉ ngắn giữa mỗi cú vuốt
-            
-            # Cập nhật lại doc_height vì có thể FB đã load thêm ngay trong lúc đang vuốt
+            time.sleep(step_delay)
             new_doc_height = driver.execute_script("return document.body.scrollHeight")
-            if new_doc_height > doc_height:
-                doc_height = new_doc_height
-            
-            # Nếu đã chạm đáy thực tế
-            if current_pos >= doc_height:
-                break
+            if new_doc_height > doc_height: doc_height = new_doc_height
+            if current_pos >= doc_height: break
 
-    # Helper: Thao tác giải cứu khi bị kẹt
     def unstuck_maneuver():
-        console.print("    [yellow]⚠️ Có vẻ bị kẹt, đang thử cuộn ngược để kích hoạt...[/yellow]")
-        # Cuộn lên 1 khoảng khá xa (khoảng 3 màn hình)
+        console.print("    [yellow]⚠️ Có vẻ bị kẹt, đang thử cuộn ngược...[/yellow]")
         driver.execute_script("window.scrollBy(0, -1500);")
         time.sleep(2)
-        # Cuộn từ từ xuống lại đáy
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
+    # --------------------------------------------
 
-    loop_count = 0
-    while total_saved < min_posts and loop_count < max_attempts:
-        loop_count += 1
+    while total_saved < limit_posts and scroll_count < limit_scrolls:
+        scroll_count += 1
         
-        # 1. THỰC HIỆN CUỘN
-        # Nếu đang bị kẹt, dùng biện pháp mạnh, nếu không thì cuộn bình thường
-        if stuck_count >= 1:
-            unstuck_maneuver()
-        else:
-            human_scroll_down(step_delay=0.2)
-        
+        # 1. Scroll
+        if stuck_count >= 1: unstuck_maneuver()
+        else: human_scroll_down(step_delay=0.2)
         time.sleep(scroll_pause_time)
         
-        # 2. KIỂM TRA CHIỀU CAO ĐỂ BIẾT CÓ LOAD THÊM KHÔNG
+        # 2. Check Height
         new_height = driver.execute_script("return document.body.scrollHeight")
-        if new_height == last_height:
-            stuck_count += 1
+        if new_height == last_height: stuck_count += 1
         else:
-            stuck_count = 0 # Reset nếu đã load được thêm
+            stuck_count = 0
             last_height = new_height
             
-        # 3. EXPAND & PARSE (Giữ nguyên logic cũ)
+        # 3. Parse & Save
         expand_all(driver)
         raw_posts = parse_stream(driver, page_name_slug)
         
         new_batch = []
         for p in raw_posts:
-            # Check trùng lặp
             content_sig = "\n".join(p["text"])[:50]
             unique_key = f"{p['time_text']}_{content_sig}"
             
             if unique_key not in processed_signatures:
+                # --- LOGIC KIỂM TRA NGÀY (QUAN TRỌNG) ---
+                if until_date:
+                    # Tính toán thời gian thực của bài viết
+                    pub_time_str = calculate_publish_time(p["time_text"])
+                    if pub_time_str:
+                        pub_dt = datetime.fromisoformat(pub_time_str)
+                        # So sánh: Nếu ngày đăng < ngày mục tiêu (tức là cũ hơn) -> DỪNG
+                        if pub_dt.date() < until_date.date():
+                            console.print(f"    [bold red]🛑 Đã gặp bài viết ngày {pub_dt.date()} (Cũ hơn {until_date.date()}). Dừng lại![/bold red]")
+                            stop_signal = True
+                            # Không add bài này vào batch nếu muốn strict (hoặc add nốt tùy bạn)
+                            # Ở đây tôi break luôn để không lưu bài quá cũ
+                            break
+                # ----------------------------------------
+
                 processed_signatures.add(unique_key)
                 new_batch.append(p)
         
         if new_batch:
             saved_count = save_to_json(new_batch, page_name_slug, file_output)
             total_saved += saved_count
-            # Nếu lưu được bài mới, coi như không bị kẹt, reset stuck_count
             stuck_count = 0
         
-        console.print(f"    [dim]Lần {loop_count}: Thêm {len(new_batch)} bài. Tổng: {total_saved}/{min_posts}. (Stuck: {stuck_count})[/dim]")
+        console.print(f"    [dim]Lần {scroll_count}: Thêm {len(new_batch)} bài. Tổng: {total_saved} ({target_desc}).[/dim]")
         
-        if total_saved >= min_posts:
-            console.print(f"  [bold green]✅ Đã thu thập đủ {total_saved} bài![/bold green]")
+        # 4. Kiểm tra các điều kiện dừng
+        if stop_signal: break # Dừng vì gặp ngày cũ
+        if total_saved >= limit_posts: # Dừng vì đủ số lượng (nếu không dùng mode date)
+            console.print(f"  [bold green]✅ Đã thu thập đủ số lượng yêu cầu![/bold green]")
             break
             
-    if total_saved < min_posts:
-        console.print(f"  [yellow]⚠️ Dừng vòng lặp. Đã lưu: {total_saved}[/yellow]")
+    if not stop_signal and total_saved < limit_posts and scroll_count >= limit_scrolls:
+        console.print(f"  [yellow]⚠️ Dừng vì hết lượt scroll.[/yellow]")
 
     return total_saved
 
@@ -400,10 +410,20 @@ def create_browser(browser_type, profile_path=None):
     else:
         raise ValueError(f"Browser không được hỗ trợ: {browser_type}")
 
-def run_crawler(browser_type="firefox", target_urls=None, file_output="fb_data.json", min_posts=20, max_scrolls=15, scroll_pause=3, profile_path=None):
+def run_crawler(browser_type="firefox", target_urls=None, file_output="fb_data.json", min_posts=20, max_scrolls=15, scroll_pause=3, profile_path=None, until_date_str=None):
     if target_urls is None: target_urls = []
-    init_json(file_output)
     
+    # Xử lý ngày tháng input
+    until_date = None
+    if until_date_str:
+        try:
+            # Chấp nhận format YYYY-MM-DD (VD: 2023-12-31)
+            until_date = datetime.strptime(until_date_str, "%Y-%m-%d")
+        except ValueError:
+            console.print(f"[bold red]❌ Định dạng ngày không hợp lệ: {until_date_str}. Vui lòng dùng YYYY-MM-DD[/bold red]")
+            return
+
+    init_json(file_output)
     driver = create_browser(browser_type, profile_path)
     
     try:
@@ -411,20 +431,9 @@ def run_crawler(browser_type="firefox", target_urls=None, file_output="fb_data.j
         driver.get("https://m.facebook.com")
         time.sleep(3)
         
-        def is_logged_in():
-            current_url = driver.current_url.lower()
-            page_source = driver.page_source.lower()
-            login_url_keywords = ["login", "checkpoint", "recover", "identify"]
-            if any(kw in current_url for kw in login_url_keywords): return False
-            login_indicators = ['name="email"', 'name="pass"', 'id="loginbutton"', 'data-sigil="login_button"']
-            if any(indicator in page_source for indicator in login_indicators): return False
-            return True
-        
-        if not is_logged_in():
-            console.print("[bold yellow]⚠️ CHƯA ĐĂNG NHẬP![/bold yellow]")
-            console.print("[yellow]👉 Hãy đăng nhập Facebook thủ công, sau đó quay lại đây và bấm Enter...[/yellow]")
-            input()
-            time.sleep(2)
+        # ... (Giữ nguyên đoạn check login) ...
+        # (Để ngắn gọn tôi ẩn đoạn check login đi, bạn giữ nguyên code cũ nhé)
+        # ...
         
         for url in target_urls:
             page_name_slug = url.split('/')[-1]
@@ -434,14 +443,14 @@ def run_crawler(browser_type="firefox", target_urls=None, file_output="fb_data.j
             driver.get(url)
             time.sleep(5)
             
-            # Gọi hàm process mới (Vừa scroll vừa lưu)
             process_page_scrolling(
                 driver=driver,
                 page_name_slug=page_name_slug,
                 file_output=file_output,
                 min_posts=min_posts,
                 max_attempts=max_scrolls,
-                scroll_pause_time=scroll_pause
+                scroll_pause_time=scroll_pause,
+                until_date=until_date  # Truyền biến này vào
             )
 
     except Exception as e:
@@ -479,6 +488,9 @@ if __name__ == "__main__":
     parser.add_argument("--scroll-pause", type=int, default=3)
     parser.add_argument("--profile-path", type=str, default="my_firefox_profile")
     
+    # === THÊM DÒNG NÀY ===
+    parser.add_argument("--until-date", type=str, default=None, help="Crawl đến ngày này thì dừng (Format: YYYY-MM-DD). VD: 2023-01-01. Nếu dùng cờ này, min-posts và max-scrolls sẽ bị bỏ qua.")
+    
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -493,5 +505,6 @@ if __name__ == "__main__":
         min_posts=args.min_posts,
         max_scrolls=args.max_scrolls,
         scroll_pause=args.scroll_pause,
-        profile_path=args.profile_path
+        profile_path=args.profile_path,
+        until_date_str=args.until_date # Truyền vào đây
     )
