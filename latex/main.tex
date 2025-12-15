@@ -12,10 +12,22 @@
 \renewcommand{\familydefault}{\sfdefault}
 
 %========================
-% 2) Theme
+% 2) Theme (giữ Madrid, làm gọn & hiện đại hơn)
 %========================
 \usetheme{Madrid}
-\usecolortheme{default}
+\usecolortheme{dolphin} % tông hiện đại, vẫn "sạch" và an toàn
+\setbeamertemplate{navigation symbols}{} % bỏ icon điều hướng cho gọn
+
+% Font/spacing tinh chỉnh
+\setbeamerfont{title}{size=\Large,series=\bfseries}
+\setbeamerfont{subtitle}{size=\normalsize}
+\setbeamerfont{frametitle}{size=\large,series=\bfseries}
+\setbeamerfont{block title}{series=\bfseries}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\setbeamertemplate{itemize items}[circle]
+\setbeamertemplate{enumerate items}[default]
+\setbeamercovered{transparent}
 
 %========================
 % 3) Packages cần thiết
@@ -25,6 +37,7 @@
 \usepackage{ragged2e}
 \usepackage{xcolor}
 \usepackage{csquotes}
+\usepackage{microtype} % chữ "mượt" hơn (pdfLaTeX)
 
 % (caption trong beamer đôi khi gây phiền; nếu không thật sự cần, nên bỏ)
 % \usepackage{caption}
@@ -77,8 +90,13 @@
 \DeclareLanguageMapping{vietnamese}{english}
 \setbeamertemplate{bibliography item}[text]
 
+%========================
+% 6) Table cosmetics
+%========================
+\renewcommand{\arraystretch}{1.15}
+
 %------------------------------------------------------------
-% THÔNG TIN BÀI THUYẾT TRÌNH
+% THÔNG TIN BÀI THUYẾT TRÌNH (GIỮ ĐÚNG TÊN ĐỀ TÀI)
 %------------------------------------------------------------
 \title[Phát hiện Xu hướng \& Phân tích Tâm lý]
 {Phát hiện Xu hướng và Phân tích Tâm lý theo Thời gian thực}
@@ -86,7 +104,7 @@
 \subtitle{Báo cáo tiến độ dự án - SE363.Q11}
 
 \author[Tăng Nhất, Lê Minh Nhựt]
-{\textbf{Thực hiện:} \break Tăng Nhất\inst{1} \and Lê Minh Nhựt\inst{1} \break \textbf{GVHD}: TS. Đỗ Trọng Hợp\inst{1}}
+{\textbf{Thực hiện:} \break Tăng Nhất\inst{1} \and Lê Minh Nhựt\inst{1} \break \textbf{GVHD}: TS. Đỗ Trọng Hợp \break Thầy Nguyễn Ngọc Quí}
 
 \institute[VNU-UIT]{
   \inst{1} Khoa Khoa học Máy tính\\
@@ -114,24 +132,25 @@
 \end{frame}
 
 %------------------------------------------------------------
-\section{Tổng quan dự án (Overview)}
+\section{Tổng quan dự án}
 \begin{frame}{Mục tiêu đề tài}
   \justifying
-  Xây dựng hệ thống \textbf{Real-time Event Detection} trên mạng xã hội nhằm thu hẹp khoảng cách giữa dữ liệu thô và thông tin chi tiết có thể hành động.
+  Xây dựng hệ thống \textbf{phát hiện xu hướng/sự kiện theo thời gian thực} từ dữ liệu mạng xã hội và báo chí,
+  nhằm rút ngắn khoảng cách giữa \textit{dữ liệu thô} và \textit{thông tin có thể hành động}.
 
   \begin{block}{Hai nhóm đối tượng chính}
     \begin{itemize}
-      \item \textbf{Chính phủ/An toàn công cộng:} Phát hiện sớm các rủi ro xã hội, biểu tình, tin giả (Social Risk).
-      \item \textbf{Doanh nghiệp/Marketing:} Nắm bắt nhanh các xu hướng tiêu dùng, viral trends (Market Opportunity).
+      \item \textbf{Chính phủ/An toàn công cộng:} Phát hiện sớm rủi ro xã hội, thiệt hại thiên tai, biểu tình, tin giả, ... (\textit{Social Risk}).
+      \item \textbf{Doanh nghiệp/Marketing:} Nắm bắt nhanh xu hướng tiêu dùng, viral trends, ... (\textit{Market Opportunity}).
     \end{itemize}
   \end{block}
 
-  \textbf{Phương pháp tiếp cận:}
-  Kết hợp Học bán giám sát (Semi-Supervised Learning) để xử lý dữ liệu stream thiếu nhãn.
+  \textbf{Hướng tiếp cận:} Kết hợp \textbf{tín hiệu đa nguồn} (Search--Social--News) và NLP để \textbf{gom topic}, \textbf{chấm điểm xu hướng} từ đó nắm bắt được tình trạng, phản ứng của mọi người về các xu hướng mới nhất.
 \end{frame}
 
 \begin{frame}{Phân loại sự kiện (Taxonomy)}
-  Hệ thống tập trung vào 7 loại sự kiện chính:
+  \justifying
+  Hệ thống tập trung vào 7 loại sự kiện/xu hướng chính (phục vụ lọc nhiễu và gán nhãn đánh giá):
   \begin{enumerate}
     \item \textbf{Social Controversy:} Tranh cãi xã hội, bê bối (Ưu tiên cao cho CP).
     \item \textbf{Civil Unrest:} Biểu tình, đình công.
@@ -141,113 +160,224 @@
     \item \textbf{Viral Lifestyle:} Xu hướng ăn uống, thời trang (Ưu tiên cho Marketing).
     \item \textbf{Entertainment:} Giải trí, văn hóa đại chúng.
   \end{enumerate}
+
+  \vspace{0.25em}
+  \begin{alertblock}{Vì sao cần đa nguồn?}
+    Search phản ánh \textit{ý định}, Social phản ánh \textit{độ lan truyền} nhưng nhiễu, News phản ánh \textit{tính xác thực} nhưng có độ trễ.
+  \end{alertblock}
 \end{frame}
 
 %------------------------------------------------------------
-\section{Dữ liệu \& Thu thập (Data Collection)}
+\section{Dữ liệu \& Thu thập}
 \begin{frame}[fragile]{Nguồn dữ liệu 1: Mạng xã hội (Social Media)}
+  \justifying
   \begin{itemize}
-    \item \textbf{Nguồn:} Các Fanpage lớn (Ví dụ: Theanh28, Beatvn...)
-    \item \textbf{Định dạng:} JSON (Content, Media, Stats).
-    \item \textbf{Trạng thái:} Đã hoàn thành crawl.
+    \item \textbf{Nguồn:} Các fanpage lớn / trang tin trên Facebook (ví dụ: Theanh28, Thông tin Chính Phủ, ...).
+    \item \textbf{Định dạng:} JSON (nội dung, thời gian đăng, chỉ số tương tác).
+    \item \textbf{Tín hiệu trend:} likes/comments/shares (có thể chuẩn hoá theo thời gian).
+    \item \textbf{Trạng thái:} \textbf{Đã hoàn thành crawl} và đưa về schema thống nhất.
   \end{itemize}
 
   \begin{exampleblock}{Mẫu dữ liệu JSON (Crawl từ Facebook)}
-\begin{lstlisting}[language=json]
-{
-  "page_name": "Theanh28",
-  "published_time": "2025-12-15T01:54:10",
-  "content": "Vào 100 đám cưới xin đồ ăn nuôi 120 mèo hoang...",
-  "stats": { "likes": 3800, "comments": 99 }
-}
-\end{lstlisting}
+    {\footnotesize
+    \begin{verbatim}
+    {
+      "page_name": "Theanh28",
+      "published_time": "2025-12-15T01:54:10",
+      "content": "Vào 100 đám cưới xin đồ ăn nuôi 120 mèo hoang...",
+      "stats": { "likes": 3800, "comments": 99, "shares": 10 }
+    }
+    \end{verbatim}
+    }
   \end{exampleblock}
+    
 \end{frame}
 
 \begin{frame}[fragile]{Nguồn dữ liệu 2: Tin tức (News)}
+  \justifying
   \begin{itemize}
-    \item \textbf{Nguồn:} Báo Thanh Niên, Tuổi Trẻ, VnExpress, Vietnamnet...
-    \item \textbf{Định dạng:} CSV (Title, Description, Content, Author).
-    \item \textbf{Mục đích:} Dùng làm dữ liệu nền (baseline) hoặc kiểm chứng thông tin.
+    \item \textbf{Nguồn:} Báo Thanh Niên, Tuổi Trẻ, VnExpress, Vietnamnet, ...
+    \item \textbf{Định dạng:} CSV (title, content, publish time, url, ...).
+    \item \textbf{Vai trò:} Kiểm chứng sự kiện + tín hiệu \textbf{mật độ đưa tin} theo thời gian.
+    \item \textbf{Trạng thái:} \textbf{Đã crawl} và hợp nhất vào pipeline chung.
   \end{itemize}
 
-  \begin{exampleblock}{Mẫu dữ liệu CSV}
-\begin{lstlisting}
-article_id, url, title, content
-"7287b...", "vietnamnet.vn/...", "Nhật Bản đau đầu...",
-"Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen..."
-\end{lstlisting}
-  \end{exampleblock}
+
+  \begin{exampleblock}{Mẫu dữ liệu bài báo (News)}
+    {\scriptsize
+    \begin{table}
+    \centering
+    \begin{tabular}{p{1.1cm} p{1.8cm} p{1.8cm} p{2.5cm} p{1.1cm}}
+    \toprule
+    \textbf{ID} & \textbf{URL} & \textbf{Tiêu đề} & \textbf{Nội dung} & \textbf{Thời gian} \\
+    \midrule
+    7287b... &
+    vietnamnet.vn/... &
+    Nhật Bản đau đầu với ngân sách &
+    Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen từ các nguồn thu bất thường, gây tranh luận lớn trong nội bộ... &
+    09/12/2025 10:37 \\
+    \bottomrule
+    \end{tabular}
+    \end{table}
+    }
+    \end{exampleblock}    
+
 \end{frame}
 
 %------------------------------------------------------------
-\section{Phương pháp \& Kiến trúc (Methodology)}
+\section{Phương pháp \& Kiến trúc dự kiến}
 \begin{frame}{Kiến trúc hệ thống dự kiến}
-  Hệ thống chia làm 2 pha chính:
+  \justifying
+  Hệ thống chia làm 2 pha chính (phục vụ phát hiện xu hướng và vận hành thời gian thực):
   \begin{columns}
     \column{0.5\textwidth}
     \textbf{Phase 1: Offline Discovery}
     \begin{itemize}
-      \item Crawl dữ liệu quá khứ.
-      \item Tiền xử lý \& Vector hóa.
-      \item Phân cụm (Clustering).
-      \item Gán nhãn bán giám sát (Label Propagation).
+      \item Thu thập dữ liệu lịch sử đa nguồn.
+      \item Chuẩn hoá \& tiền xử lý tiếng Việt.
+      \item Vector hoá (embedding) và \textbf{clustering}.
+      \item Tạo luật/gán nhãn bán giám sát để phân loại trend.
     \end{itemize}
 
     \column{0.5\textwidth}
     \textbf{Phase 2: Online Real-time}
     \begin{itemize}
-      \item Streaming Ingestion (Kafka).
-      \item Inference thời gian thực.
-      \item Cảnh báo \& Lưu trữ.
+      \item Thu thập định kỳ/streaming.
+      \item Ghép bài viết vào topic + phát hiện topic mới.
+      \item Chấm điểm xu hướng theo thời gian.
+      \item Cảnh báo \& lưu trữ cho dashboard.
     \end{itemize}
   \end{columns}
+
+  \vspace{0.35em}
+  \begin{block}{Trọng tâm hiện tại}
+    \textbf{Phát hiện xu hướng} (semantic matching + clustering + lọc nhiễu) là phần khó và tốn công nhất.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Pipeline NLP phát hiện xu hướng (đang phát triển)}
+  \justifying
+  \begin{block}{Mục tiêu kỹ thuật}
+    Gom các biểu đạt khác nhau (Facebook/News/Search) nhưng cùng một sự kiện thành \textbf{một topic thống nhất}.
+  \end{block}
+
+  \begin{itemize}
+    \item \textbf{Tiền xử lý:} chuẩn hoá Unicode, loại boilerplate, làm sạch ký tự/emoji.
+    \item \textbf{Biểu diễn ngữ nghĩa:} dùng \textbf{embedding tiếng Việt} (PhoBERT / Vietnamese bi-encoder).
+    \item \textbf{Tăng cường ngữ cảnh (2 hướng thử nghiệm):}
+      \begin{itemize}
+        \item \textbf{NER (underthesea):} trích xuất thực thể để tăng độ khớp khi gom nhóm.
+        \item \textbf{Alias từ Google Trends:} mở rộng biến thể từ khoá để tăng recall khi khác cách diễn đạt.
+      \end{itemize}
+    \item \textbf{Ghép \& gom topic:} cosine similarity (matching) + UMAP (giảm chiều) + HDBSCAN (clustering).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Trend Scoring \& Phân loại trend (theo đề xuất)}
+  \justifying
+  Với mỗi \textbf{topic}, hệ thống tổng hợp 3 tín hiệu:
+  \begin{itemize}
+    \item \textbf{Google Search Score (G):} mức quan tâm/tăng trưởng tìm kiếm.
+    \item \textbf{Facebook Engagement Score (F):} mức tương tác được chuẩn hoá theo thời gian.
+    \item \textbf{News Coverage Score (N):} mật độ bài báo theo thời gian.
+  \end{itemize}
+
+  \begin{block}{Unified Trend Score}
+    \[
+      T = w_G \cdot G + w_F \cdot F + w_N \cdot N
+    \]
+    Trọng số có thể điều chỉnh theo mục tiêu (ưu tiên viral / xác thực / ý định tìm kiếm).
+  \end{block}
+
+  \begin{exampleblock}{Phân loại xu hướng}
+    Search-only / Social-only / News-only / Multi-source confirmed / Emerging / Fading.
+  \end{exampleblock}
 \end{frame}
 
 \begin{frame}{Thay đổi \& Cập nhật mô hình}
+  \justifying
   Sau quá trình thử nghiệm (08/12/2025), nhóm đã thực hiện các điều chỉnh:
 
   \begin{alertblock}{Vấn đề gặp phải}
-    Dữ liệu "Daily basis" quá nhiều (Dự báo thời tiết hàng ngày, giá vàng, xổ số...) gây nhiễu lớn.
+    Dữ liệu \textbf{lặp hàng ngày} (thời tiết, giá vàng, xổ số, \ldots) xuất hiện dày đặc, tạo \textbf{topic giả} và gây nhiễu lớn.
   \end{alertblock}
 
-  \begin{block}{Giải pháp điều chỉnh}
+  \begin{block}{Giải pháp điều chỉnh (đã/đang áp dụng)}
     \begin{itemize}
-      \item \textbf{Thay đổi Model:} Chuyển từ mini-LLM sang \textbf{PhoBERT} để xử lý tiếng Việt tốt hơn.
-      \item \textbf{Bổ sung NER:} Trích xuất thực thể để lọc nội dung rác và gom nhóm chính xác hơn.
+      \item \textbf{Embedding tiếng Việt:} ưu tiên PhoBERT/Vietnamese bi-encoder để ghép ngữ nghĩa ổn định.
+      \item \textbf{Bổ sung NER:} tăng độ chính xác khi gom nhóm + hỗ trợ lọc rác theo thực thể.
+      \item \textbf{Bổ sung alias:} khai thác bộ từ khoá liên quan từ Google Trends để tăng khả năng match.
     \end{itemize}
   \end{block}
 \end{frame}
 
+% === SLIDE MỚI THEO YÊU CẦU ===
+\begin{frame}{Kết quả thử nghiệm bước đầu}
+  \justifying
+  \begin{columns}
+    \column{0.52\textwidth}
+    \begin{block}{Những điểm đã đạt được}
+      \begin{itemize}
+        \item Đã chạy được pipeline: \textbf{chuẩn hoá} $\rightarrow$ \textbf{embedding} $\rightarrow$ \textbf{matching} $\rightarrow$ \textbf{clustering}.
+        \item Embedding tiếng Việt cho thấy khả năng gom các câu gần nghĩa tốt hơn so với so khớp từ khoá thuần.
+        \item Alias từ Google Trends giúp tăng độ bao phủ khi cùng sự kiện nhưng khác cách gọi.
+      \end{itemize}
+    \end{block}
+
+    \column{0.48\textwidth}
+    \begin{alertblock}{Vấn đề còn tồn tại}
+      \begin{itemize}
+        \item \textbf{Cụm lớn bất thường} do nhiễu (daily/spam) ``nuốt'' dữ liệu.
+        \item \textbf{Overlap giữa cụm} khi nội dung na ná (bán hàng, câu view).
+        \item Ngưỡng similarity nhạy: thay đổi nhỏ có thể làm lệch tỉ lệ matched/unmatched.
+      \end{itemize}
+    \end{alertblock}
+  \end{columns}
+
+  \vspace{0.35em}
+  \begin{exampleblock}{Hướng cải thiện ngay}
+    Lọc nhiễu theo chu kỳ + từ khoá đặc trưng, tuning UMAP/HDBSCAN, và bổ sung đánh giá chất lượng cụm (kết hợp thủ công + chỉ số nội bộ).
+  \end{exampleblock}
+\end{frame}
+
 %------------------------------------------------------------
-\section{Khó khăn \& Kế hoạch (Challenges \& Plan)}
+\section{Khó khăn \& Kế hoạch}
 \begin{frame}{Khó khăn hiện tại}
+  \justifying
   \begin{enumerate}
     \item \textbf{Vấn đề Phân cụm (Clustering):}
       \begin{itemize}
-        \item Chất lượng phân cụm chưa cao.
-        \item Cụm bị chồng lấn bởi bài viết tương tự (bán hàng, spam) nhưng không cùng sự kiện.
+        \item Chất lượng phân cụm chưa cao; topic bị chồng lấn.
+        \item Một số cụm quá lớn do ``nuốt'' dữ liệu nhiễu (daily/spam).
       \end{itemize}
     \item \textbf{Xử lý nhiễu (Noise filtering):}
       \begin{itemize}
-        \item Chưa có cơ chế triệt để loại bỏ tin lặp hàng ngày (giá vàng, thời tiết) khỏi luồng sự kiện nóng.
+        \item Chưa có cơ chế triệt để loại bỏ tin lặp (giá vàng, thời tiết, xổ số, \ldots).
+        \item Cần kết hợp rule-based (chu kỳ/từ khoá) và thống kê theo thời gian.
+      \end{itemize}
+    \item \textbf{Đồng bộ thời gian đa nguồn:}
+      \begin{itemize}
+        \item Social nhanh, News có độ trễ, Search phản ánh ý định theo ngữ cảnh.
+        \item Cần chuẩn hoá theo \textbf{time-binning} để chấm điểm công bằng.
       \end{itemize}
   \end{enumerate}
 \end{frame}
 
 \begin{frame}{Kế hoạch tiếp theo (Timeline)}
+  \justifying
   \begin{table}
     \centering
-    \begin{tabular}{l l l}
+    \small
+    \begin{tabular}{p{0.12\textwidth} p{0.62\textwidth} p{0.20\textwidth}}
       \toprule
       \textbf{Task} & \textbf{Mô tả} & \textbf{Trạng thái} \\
       \midrule
-      Task 1 & Phân tích yêu cầu \& Thiết kế & Đang làm \\
+      Task 1 & Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate) & Đang làm \\
       Task 2 & Thu thập dữ liệu (Crawler) & \textbf{Hoàn thành} \\
-      Task 3 & Nghiên cứu NLP (PhoBERT/NER) & TBD \\
-      Task 4 & Cải thiện thuật toán Clustering & TBD \\
-      Task 5 & Huấn luyện mô hình phân loại & TBD \\
-      Task 6 & Tích hợp Pipeline Streaming & TBD \\
+      Task 3 & Semantic matching (embedding) + alias/NER enrichment & Đang làm \\
+      Task 4 & Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & TBD \\
+      Task 5 & Trend scoring + phân loại trend đa nguồn & TBD \\
+      Task 6 & Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming & TBD \\
       \bottomrule
     \end{tabular}
     \caption{Tiến độ thực hiện dự án}
