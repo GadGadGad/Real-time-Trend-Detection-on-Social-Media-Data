@@ -1,2 +1,12 @@
 my_firefox_profile/*
 data/
+latex/main.aux
+latex/main.bcf
+latex/main.log
+latex/main.nav
+latex/main.out
+latex/main.run.xml
+latex/main.snm
+latex/main.synctex.gz
+latex/main.toc
+latex/main.vrb
