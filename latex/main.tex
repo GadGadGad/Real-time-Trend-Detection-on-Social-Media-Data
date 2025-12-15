@@ -273,6 +273,50 @@
   \end{itemize}
 \end{frame}
 
+%------------------------------------------------------------
+\begin{frame}{So sánh trực quan: Clustering với NER}
+  \justifying
+
+  \begin{block}{Thiết lập}
+    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{NER enrichment (underthesea)}  
+    $\rightarrow$ UMAP + HDBSCAN.
+  \end{block}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.5\textwidth]{assets/images/ner.png}
+    \caption{Phân bố cụm khi tăng cường ngữ cảnh bằng Named Entity Recognition}
+  \end{figure}
+
+  \begin{itemize}
+    \item Các bài viết cùng \textbf{thực thể chính} có xu hướng gom lại tốt hơn.
+    \item Tuy nhiên vẫn xuất hiện \textbf{cụm lớn do nội dung lặp/ngày}.
+  \end{itemize}
+\end{frame}
+
+
+%------------------------------------------------------------
+\begin{frame}{So sánh trực quan: Clustering với Alias từ Google Trends}
+  \justifying
+
+  \begin{block}{Thiết lập}
+    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{Alias normalization từ Google Trends}  
+    $\rightarrow$ UMAP + HDBSCAN.
+  \end{block}
+
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.5\textwidth]{assets/images/ggtrend.png}
+    \caption{Phân bố cụm khi mở rộng biến thể từ khoá từ Google Trends}
+  \end{figure}
+
+  \begin{itemize}
+    \item Tăng \textbf{độ bao phủ (recall)} cho các sự kiện có nhiều cách gọi.
+    \item Một số cụm rõ ràng hơn nhưng vẫn cần \textbf{lọc nhiễu bổ sung}.
+  \end{itemize}
+\end{frame}
+
+
 \begin{frame}{Trend Scoring \& Phân loại trend (theo đề xuất)}
   \justifying
   Với mỗi \textbf{topic}, hệ thống tổng hợp 3 tín hiệu:
