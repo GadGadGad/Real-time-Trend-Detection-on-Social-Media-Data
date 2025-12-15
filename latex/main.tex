@@ -104,14 +104,17 @@
 \subtitle{Báo cáo tiến độ dự án - SE363.Q11}
 
 \author[Tăng Nhất, Lê Minh Nhựt]
-{\textbf{Thực hiện:} \break Tăng Nhất\inst{1} \and Lê Minh Nhựt\inst{1} \break \textbf{GVHD}: TS. Đỗ Trọng Hợp \break Thầy Nguyễn Ngọc Quí}
+{\textbf{Thực hiện:} \break Tăng Nhất\inst{1} \and Lê Minh Nhựt\inst{1} \break \textbf{GVHD}: TS. Đỗ Trọng Hợp\inst{2} \break Nguyễn Ngọc Quí\inst{2}}
 
 \institute[VNU-UIT]{
   \inst{1} Khoa Khoa học Máy tính\\
   Trường Đại học Công nghệ Thông tin
+
+  \inst{2} Khoa Khoa học và Kỹ thuật thông tin \\
+  Trường Đại học Công nghệ Thông tin
 }
 
-\date[\today]{Tháng 12 năm 2025}
+\date[\today]{Ngày 16 Tháng 12 năm 2025}
 
 %------------------------------------------------------------
 \begin{document}
@@ -157,17 +160,17 @@
   \end{block}
 
   \begin{itemize}
-    \item Hệ thống cho thấy:
-      \begin{itemize}
-        \item \textbf{Diễn biến sự việc:} từ thông tin ban đầu $\rightarrow$ lan truyền $\rightarrow$ phản hồi chính thức.
-        \item \textbf{Cảm xúc chủ đạo của người dân:} lo lắng, bức xúc, hoang mang.
-        \item \textbf{Mức độ lan rộng:} thảo luận tăng mạnh trong thời gian ngắn.
-      \end{itemize}
+    \item Mục tiêu hệ thống:
+          \begin{itemize}
+            \item \textbf{Tóm tắt sự việc:} từ thông tin ban đầu $\rightarrow$ lan truyền $\rightarrow$ phản hồi chính thức.
+            \item \textbf{Cảm xúc chủ đạo của người dân:} lo lắng, bức xúc, hoang mang.
+            \item \textbf{Mức độ lan rộng:} thảo luận tăng mạnh trong thời gian ngắn.
+          \end{itemize}
 
-    \item Khi kết hợp với báo chí:
-      \begin{itemize}
-        \item Xác định thời điểm thông tin được \textbf{đính chính / làm rõ}.
-      \end{itemize}
+          % \item Khi kết hợp với báo chí:
+          %       \begin{itemize}
+          %         \item Xác định thời điểm thông tin được \textbf{đính chính / làm rõ}.
+          %       \end{itemize}
   \end{itemize}
 
   \begin{alertblock}{Ý nghĩa}
@@ -215,8 +218,8 @@
   \end{alertblock}
 
   \begin{exampleblock}{Schema hiện tại (rút gọn)}
-{\footnotesize
-\begin{verbatim}
+    {\footnotesize
+      \begin{verbatim}
 {
   "page_name": "Theanh28",
   "published_time": "2025-12-15T01:54:10",
@@ -224,7 +227,7 @@
   "stats": { "likes": 3800, "comments": 99, "shares": 10 }
 }
 \end{verbatim}
-}
+    }
   \end{exampleblock}
 \end{frame}
 
@@ -244,8 +247,8 @@
   \end{itemize}
 
   \begin{exampleblock}{Schema Apify (các trường chính)}
-{\footnotesize
-\begin{verbatim}
+    {\footnotesize
+      \begin{verbatim}
 {
   "pageName": "baodantridientu",
   "postId": "1191254559782876",
@@ -255,7 +258,7 @@
   "likes": 9, "comments": 1, "shares": 1
 }
 \end{verbatim}
-}
+    }
   \end{exampleblock}
 
   \begin{exampleblock}{Lợi ích}
@@ -278,22 +281,22 @@
 
   \begin{exampleblock}{Mẫu dữ liệu bài báo (News)}
     {\scriptsize
-    \begin{table}
-    \centering
-    \begin{tabular}{p{1.1cm} p{1.8cm} p{1.8cm} p{2.5cm} p{1.1cm}}
-    \toprule
-    \textbf{ID} & \textbf{URL} & \textbf{Tiêu đề} & \textbf{Nội dung} & \textbf{Thời gian} \\
-    \midrule
-    7287b... &
-    vietnamnet.vn/... &
-    Nhật Bản đau đầu với ngân sách &
-    Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen từ các nguồn thu bất thường, gây tranh luận lớn trong nội bộ... &
-    09/12/2025 10:37 \\
-    \bottomrule
-    \end{tabular}
-    \end{table}
+      \begin{table}
+        \centering
+        \begin{tabular}{p{1.1cm} p{1.8cm} p{1.8cm} p{2.5cm} p{1.1cm}}
+          \toprule
+          \textbf{ID}                                                                                                             & \textbf{URL} & \textbf{Tiêu đề} & \textbf{Nội dung} & \textbf{Thời gian} \\
+          \midrule
+          7287b...                                                                                                                &
+          vietnamnet.vn/...                                                                                                       &
+          Nhật Bản đau đầu với ngân sách                                                                                          &
+          Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen từ các nguồn thu bất thường, gây tranh luận lớn trong nội bộ... &
+          09/12/2025 10:37                                                                                                                                                                                   \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
     }
-    \end{exampleblock}    
+  \end{exampleblock}
 
 \end{frame}
 
@@ -338,10 +341,10 @@
     \item \textbf{Tiền xử lý:} chuẩn hoá Unicode, loại boilerplate, làm sạch ký tự/emoji.
     \item \textbf{Biểu diễn ngữ nghĩa:} dùng \textbf{embedding tiếng Việt} (PhoBERT / Vietnamese bi-encoder).
     \item \textbf{Tăng cường ngữ cảnh (2 hướng thử nghiệm):}
-      \begin{itemize}
-        \item \textbf{NER (underthesea):} trích xuất thực thể để tăng độ khớp khi gom nhóm.
-        \item \textbf{Alias từ Google Trends:} mở rộng biến thể từ khoá để tăng recall khi khác cách diễn đạt.
-      \end{itemize}
+          \begin{itemize}
+            \item \textbf{NER (underthesea):} trích xuất thực thể để tăng độ khớp khi gom nhóm.
+            \item \textbf{Alias từ Google Trends:} mở rộng biến thể từ khoá để tăng recall khi khác cách diễn đạt.
+          \end{itemize}
     \item \textbf{Ghép \& gom topic:} cosine similarity (matching) + UMAP (giảm chiều) + HDBSCAN (clustering).
   \end{itemize}
 \end{frame}
@@ -350,12 +353,12 @@
   \justifying
 
   \begin{minipage}{\linewidth}
-  \begin{block}{Thiết lập}
-    {\footnotesize
-    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{NER enrichment (underthesea)}
-    $\rightarrow$ UMAP + HDBSCAN.
-    }
-  \end{block}
+    \begin{block}{Thiết lập}
+      {\footnotesize
+        Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{NER enrichment (underthesea)}
+        $\rightarrow$ UMAP + HDBSCAN.
+      }
+    \end{block}
   \end{minipage}
 
   \begin{figure}
@@ -377,12 +380,12 @@
   \justifying
 
   \begin{minipage}{\linewidth}
-  \begin{block}{Thiết lập}
-    {\footnotesize
-    Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{Alias normalization từ Google Trends}
-    $\rightarrow$ UMAP + HDBSCAN.
-    }
-  \end{block}
+    \begin{block}{Thiết lập}
+      {\footnotesize
+        Embedding tiếng Việt (PhoBERT / bi-encoder) + \textbf{Alias normalization từ Google Trends}
+        $\rightarrow$ UMAP + HDBSCAN.
+      }
+    \end{block}
   \end{minipage}
 
   \begin{figure}
@@ -474,27 +477,27 @@
   \justifying
 
   \textit{Trong thực tế, việc phát hiện một xu hướng ``thật sự'' là bài toán khó,
-  do các thảo luận trên mạng xã hội thường bùng phát nhanh, nhiễu nhiều,
-  và không phải lúc nào mức độ lan truyền cũng phản ánh đúng tầm quan trọng của sự kiện.}
+    do các thảo luận trên mạng xã hội thường bùng phát nhanh, nhiễu nhiều,
+    và không phải lúc nào mức độ lan truyền cũng phản ánh đúng tầm quan trọng của sự kiện.}
 
   \vspace{0.5em}
 
   \begin{enumerate}
     \item \textbf{Vấn đề Phân cụm (Clustering):}
-      \begin{itemize}
-        \item Chất lượng phân cụm chưa cao; topic bị chồng lấn.
-        \item Một số cụm quá lớn do ``nuốt'' dữ liệu nhiễu (daily/spam).
-      \end{itemize}
+          \begin{itemize}
+            \item Chất lượng phân cụm chưa cao; topic bị chồng lấn.
+            \item Một số cụm quá lớn do ``nuốt'' dữ liệu nhiễu (daily/spam).
+          \end{itemize}
     \item \textbf{Xử lý nhiễu (Noise filtering):}
-      \begin{itemize}
-        \item Chưa có cơ chế triệt để loại bỏ tin lặp (giá vàng, thời tiết, xổ số, \ldots).
-        \item Cần kết hợp rule-based (chu kỳ/từ khoá) và thống kê theo thời gian.
-      \end{itemize}
+          \begin{itemize}
+            \item Chưa có cơ chế triệt để loại bỏ tin lặp (giá vàng, thời tiết, xổ số, \ldots).
+            \item Cần kết hợp rule-based (chu kỳ/từ khoá) và thống kê theo thời gian.
+          \end{itemize}
     \item \textbf{Đồng bộ thời gian đa nguồn:}
-      \begin{itemize}
-        \item Social nhanh, News có độ trễ, Search phản ánh ý định theo ngữ cảnh.
-        \item Cần chuẩn hoá theo \textbf{time-binning} để chấm điểm công bằng.
-      \end{itemize}
+          \begin{itemize}
+            \item Social nhanh, News có độ trễ, Search phản ánh ý định theo ngữ cảnh.
+            \item Cần chuẩn hoá theo \textbf{time-binning} để chấm điểm công bằng.
+          \end{itemize}
   \end{enumerate}
 \end{frame}
 
@@ -506,14 +509,14 @@
     \small
     \begin{tabular}{p{0.12\textwidth} p{0.62\textwidth} p{0.20\textwidth}}
       \toprule
-      \textbf{Task} & \textbf{Mô tả} & \textbf{Trạng thái} \\
+      \textbf{Task} & \textbf{Mô tả}                                               & \textbf{Trạng thái}           \\
       \midrule
-      Task 1 & Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate) & Đang làm \\
-      Task 2 & Thu thập dữ liệu (Crawler) & Đã Hoàn thành các bộ Crawl \\
-      Task 3 & Semantic matching (embedding) + alias/NER enrichment & Đang thử nghiệm \\
-      Task 4 & Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & Đang tìm giải pháp tối ưu hơn \\
-      Task 5 & Trend scoring + phân loại trend đa nguồn & TBD \\
-      Task 6 & Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming & TBD \\
+      Task 1        & Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate)     & Đang làm                      \\
+      Task 2        & Thu thập dữ liệu (Crawler)                                   & Đã Hoàn thành các bộ Crawl    \\
+      Task 3        & Semantic matching (embedding) + alias/NER enrichment         & Đang thử nghiệm               \\
+      Task 4        & Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & Đang tìm giải pháp tối ưu hơn \\
+      Task 5        & Trend scoring + phân loại trend đa nguồn                     & TBD                           \\
+      Task 6        & Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming      & TBD                           \\
       \bottomrule
     \end{tabular}
     \caption{Tiến độ thực hiện dự án}
