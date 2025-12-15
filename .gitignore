@@ -1,29 +1,12 @@
-# Python
-__pycache__
-*.pyc
-.ipynb_checkpoints/
-
-# IDE
-.idea
-.vscode
-
-# Virtual Environment
-venv
-env
-
-# System
-.DS_Store
-Thumbs.db
-
-# Other
-*.log
-*.lock
-
-# Data
+my_firefox_profile/*
 data/
-results/
-my_firefox_profile/
-fb_data.json
-debug_*.html
-geckodriver.log
-*.csv
+latex/main.aux
+latex/main.bcf
+latex/main.log
+latex/main.nav
+latex/main.out
+latex/main.run.xml
+latex/main.snm
+latex/main.synctex.gz
+latex/main.toc
+latex/main.vrb
