@@ -200,7 +200,7 @@
 \end{frame}
 
 %------------------------------------------------------------
-\section{Dữ liệu \& Thu thập}
+\section{Dữ liệu \& Hướng thử nghiệm}
 
 %============================================================
 \begin{frame}[fragile]{Nguồn dữ liệu 1: Mạng xã hội (Facebook)}
@@ -425,22 +425,22 @@
   \end{exampleblock}
 \end{frame}
 
-\begin{frame}{Thay đổi \& Cập nhật mô hình}
-  \justifying
-  Sau quá trình thử nghiệm (08/12/2025), nhóm đã thực hiện các điều chỉnh:
+% \begin{frame}{Thay đổi \& Cập nhật mô hình}
+%   \justifying
+%   Sau quá trình thử nghiệm (08/12/2025), nhóm đã thực hiện các điều chỉnh:
 
-  \begin{alertblock}{Vấn đề gặp phải}
-    Dữ liệu \textbf{lặp hàng ngày} (thời tiết, giá vàng, xổ số, \ldots) xuất hiện dày đặc, tạo \textbf{topic giả} và gây nhiễu lớn.
-  \end{alertblock}
+%   \begin{alertblock}{Vấn đề gặp phải}
+%     Dữ liệu \textbf{lặp hàng ngày} (thời tiết, giá vàng, xổ số, \ldots) xuất hiện dày đặc, tạo \textbf{topic giả} và gây nhiễu lớn.
+%   \end{alertblock}
 
-  \begin{block}{Giải pháp điều chỉnh (đã/đang áp dụng)}
-    \begin{itemize}
-      \item \textbf{Embedding tiếng Việt:} ưu tiên PhoBERT/Vietnamese bi-encoder để ghép ngữ nghĩa ổn định.
-      \item \textbf{Bổ sung NER:} tăng độ chính xác khi gom nhóm + hỗ trợ lọc rác theo thực thể.
-      \item \textbf{Bổ sung alias:} khai thác bộ từ khoá liên quan từ Google Trends để tăng khả năng match.
-    \end{itemize}
-  \end{block}
-\end{frame}
+%   \begin{block}{Giải pháp điều chỉnh (đã/đang áp dụng)}
+%     \begin{itemize}
+%       \item \textbf{Embedding tiếng Việt:} ưu tiên PhoBERT/Vietnamese bi-encoder để ghép ngữ nghĩa ổn định.
+%       \item \textbf{Bổ sung NER:} tăng độ chính xác khi gom nhóm + hỗ trợ lọc rác theo thực thể.
+%       \item \textbf{Bổ sung alias:} khai thác bộ từ khoá liên quan từ Google Trends để tăng khả năng match.
+%     \end{itemize}
+%   \end{block}
+% \end{frame}
 
 % === SLIDE MỚI THEO YÊU CẦU ===
 \begin{frame}{Kết quả thử nghiệm bước đầu}
@@ -460,7 +460,7 @@
       \begin{itemize}
         \item \textbf{Cụm lớn bất thường} do nhiễu (daily/spam) ``nuốt'' dữ liệu.
         \item \textbf{Overlap giữa cụm} khi nội dung na ná (bán hàng, câu view).
-        \item \textbf{Phụ thuộc danh sách từ khoá xu hướng, nên kém hiệu quả với các trend mới hoàn toàn.}
+        \item \textbf{Nếu phụ thuộc quá vào từ khóa google trend, sẽ kém hiệu quả với các trend mới hoàn toàn.}
       \end{itemize}
     \end{alertblock}
   \end{columns}
@@ -495,8 +495,7 @@
           \end{itemize}
     \item \textbf{Đồng bộ thời gian đa nguồn:}
           \begin{itemize}
-            \item Social nhanh, News có độ trễ, Search phản ánh ý định theo ngữ cảnh.
-            \item Cần chuẩn hoá theo \textbf{time-binning} để chấm điểm công bằng.
+            \item Social nhanh, News có độ trễ, Search phản ánh ý định theo ngữ cảnh cần có cơ chế đồng bộ công bằng.
           \end{itemize}
   \end{enumerate}
 \end{frame}
@@ -514,19 +513,19 @@
       \toprule
       \textbf{Task} & \textbf{Mô tả} & \textbf{Trạng thái} \\
       \midrule
-      Task 1 & \raggedright Chuẩn hoá schema + làm sạch cơ bản (Unicode/boilerplate) & Đang làm \\
+      Task 1 & \raggedright Chuẩn hoá schema + làm sạch dữ liệu (Unicode, nội dung mẫu lặp) & Đang làm \\
 
-      Task 2 & \raggedright Thu thập dữ liệu (Crawler) & \textbf{Đã hoàn thành} \\
+      Task 2 & \raggedright Thu thập dữ liệu đa nguồn (Crawler / Apify / News) & \textbf{Đã hoàn thành} \\
 
-      Task 3 & \raggedright Semantic matching (embedding) + alias/NER enrichment & Đang thử nghiệm \\
+      Task 3 & \raggedright Semantic matching (embedding) + tăng cường ngữ cảnh (NER / alias) & Đang thử nghiệm \\
 
       Task 4 & \raggedright Tối ưu Clustering (UMAP + HDBSCAN) + đánh giá chất lượng cụm & Đang tìm giải pháp tối ưu hơn \\
 
-      Task 5 & \raggedright Xác định tên trend và tóm tắt thông tin cốt lõi của trend & TBD \\
+      Task 5 & \raggedright Đặt tên trend và tóm tắt thông tin cốt lõi cho mỗi cụm & TBD \\
 
-      Task 6 & \raggedright Phân tích cảm xúc, tâm lý từ trend đã phát hiện & TBD \\
+      Task 6 & \raggedright Trend scoring + phân loại trend đa nguồn & TBD \\
 
-      Task 7 & \raggedright Trend scoring + phân loại trend đa nguồn & TBD \\
+      Task 7 & \raggedright Phân tích cảm xúc, tâm lý cộng đồng theo từng trend & TBD \\
 
       Task 8 & \raggedright Dashboard/báo cáo + tích hợp pipeline định kỳ/streaming & TBD \\
       \bottomrule
