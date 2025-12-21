@@ -196,8 +196,36 @@ def load_news_data(files):
 
 
 
+def parse_trend_volume(vol_str):
+    """
+    Parse Google Trends volume string (e.g., '100 N+', '20 N+') to integer.
+    'N+' roughly translates to '000+'.
+    """
+    if not vol_str:
+        return 0
+        
+    try:
+        # Remove non-numeric except 'N' or 'K' or 'M' if they exist, but typical VN format is "100 N+"
+        clean_str = vol_str.upper().replace(',', '').replace('.', '')
+        
+        multiplier = 1
+        if 'N' in clean_str: # "Ngàn" ~ Thousand
+            multiplier = 1000
+        elif 'TR' in clean_str or 'M' in clean_str: # "Triệu" ~ Million
+            multiplier = 1000000
+        elif 'K' in clean_str:
+            multiplier = 1000
+            
+        # Extract numbers
+        num_part = re.findall(r'\d+', clean_str)
+        if num_part:
+            return int(num_part[0]) * multiplier
+        return 0
+    except:
+        return 0
+
 def load_trends(csv_files):
-    """Load trends from multiple CSV files."""
+    """Load trends from multiple CSV files. Returns dict with keywords and volume."""
     trends = {}
     
     for filepath in csv_files:
@@ -215,13 +243,19 @@ def load_trends(csv_files):
                         continue
                     
                     main_trend = row[0].strip()
+                    volume_str = row[1].strip() # Assuming 2nd column is volume "100 N+"
                     related_keywords = row[4].split(',')
                     clean_keywords = [k.strip() for k in related_keywords if k.strip()]
                     
                     if main_trend not in clean_keywords:
                         clean_keywords.insert(0, main_trend)
+                    
+                    volume = parse_trend_volume(volume_str)
                         
-                    trends[main_trend] = clean_keywords
+                    trends[main_trend] = {
+                        "keywords": clean_keywords,
+                        "volume": volume
+                    }
                     
         except Exception as e:
             console.print(f"[red]Error loading CSV {filepath}: {e}[/red]")
@@ -238,19 +272,9 @@ def find_matches(posts, trends, model_name=None, threshold=0.35,
                  max_days=None):
     """
     Find matches using Semantic Similarity with text enrichment.
-    
-    Args:
-        posts: List of post dictionaries
-        trends: Dictionary of trends with keywords
-        model_name: HuggingFace model for embeddings (sentence-transformer only)
-        threshold: Cosine similarity threshold
-        min_interactions: Minimum engagement for FB posts
-        use_aliases: Whether to use alias normalization (default)
-        use_ner: Whether to use NER enrichment (alternative to aliases)
-        embedding_method: 'sentence-transformer', 'tfidf', 'bow', or 'glove'
-        save_all: Save unmatched posts too
     """
     start_time = datetime.now()
+    matches = []
     
     # 0. Date Filtering
     if max_days is not None:
@@ -258,50 +282,36 @@ def find_matches(posts, trends, model_name=None, threshold=0.35,
         cutoff_date = start_time - timedelta(days=max_days)
         filtered_posts = []
         for p in posts:
-            # Parse time (handles ISO and timestamps)
             t_str = str(p.get('time', ''))
             p_time = None
             try:
-                # Try ISO format first
-                # Handle "2025-12-15T09:27:49.000Z"
-                p_time = parser.parse(t_str).replace(tzinfo=None) # naive filtering
+                p_time = parser.parse(t_str).replace(tzinfo=None)
             except:
-                # Try epoch if distinct
-                pass
-                
-            # If parsing failed or empty, decided keep or drop? 
-            # Let's assume keep if unknown, or drop? Drop is safer for "deprecated".
-            # For simplicity, if we can't parse, we ignore this filter (keep it) except if it's clearly old.
-            # But Apify data usually has valid ISO time.
-            
-            if p_time:
-                if p_time >= cutoff_date:
-                    filtered_posts.append(p)
-            else:
-                # Try timestamp if available
                 ts = p.get('timestamp')
                 if ts:
                     try:
-                        p_time = datetime.fromtimestamp(int(ts)) # local time
-                        if p_time >= cutoff_date:
-                            filtered_posts.append(p)
+                        p_time = datetime.fromtimestamp(int(ts))
                     except:
-                        filtered_posts.append(p) # Keep if unknown
-                else:
-                    filtered_posts.append(p) # Keep if unknown
-                    
-        console.print(f"[dim]Dropped {len(posts) - len(filtered_posts)} old posts. remaining: {len(filtered_posts)}[/dim]")
+                        pass
+            
+            if p_time and p_time < cutoff_date:
+                continue
+            filtered_posts.append(p)
         posts = filtered_posts
-    
-    matches = []
-    
-    # Build alias dictionary from trends (for alias mode)
+
+    # Build alias dictionary from trends (using keywords from new structure)
     if use_aliases and not use_ner:
-        build_alias_dictionary(trends)
+        # Re-build alias dict using the new structure if needed, 
+        # but build_alias_dictionary expects {trend: [keywords]}.
+        # We need to adapt it or pass a simplified dict.
+        simple_trends = {k: v['keywords'] for k, v in trends.items()}
+        build_alias_dictionary(simple_trends)
     
     # Prepare texts
     trend_keys = list(trends.keys())
-    trend_texts = [f"{t} " + " ".join(trends[t][:5]) for t in trend_keys]
+    # Access keywords from new structure
+    trend_texts = [f"{t} " + " ".join(trends[t]['keywords'][:5]) for t in trend_keys]
+    
     post_contents = [p.get('content', '')[:500] for p in posts]
     
     # Apply text enrichment
@@ -309,115 +319,82 @@ def find_matches(posts, trends, model_name=None, threshold=0.35,
         console.print("[bold magenta]🏷️ Enriching texts with NER (underthesea)...[/bold magenta]")
         trend_texts = batch_enrich_texts(trend_texts, weight_factor=2)
         post_contents = batch_enrich_texts(post_contents, weight_factor=2)
-        console.print("[green]✅ NER enrichment complete![/green]")
-    elif use_ner and not HAS_NER:
-        console.print("[yellow]⚠️ NER requested but underthesea not installed. Falling back to aliases.[/yellow]")
-        build_alias_dictionary(trends)
-        trend_texts = batch_normalize_texts(trend_texts, show_progress=False)
-        post_contents = batch_normalize_texts(post_contents, show_progress=True)
-    elif use_aliases:
-        console.print("[bold magenta]🔄 Normalizing texts with trend aliases...[/bold magenta]")
-        trend_texts = batch_normalize_texts(trend_texts, show_progress=False)
-        post_contents = batch_normalize_texts(post_contents, show_progress=True)
-        console.print("[green]✅ Normalization complete![/green]")
+    elif use_aliases and not use_ner:
+        console.print("[bold magenta]🏷️ Enriching texts with Alias Normalization...[/bold magenta]")
+        # normalize_with_aliases uses the global dict built above
+        post_contents = batch_normalize_texts(post_contents)
 
-    # Encode
-    all_texts = trend_texts + post_contents
+    console.print(f"[cyan]🔄 Generating embeddings for {len(posts)} posts and {len(trends)} trends...[/cyan]")
     
-    if embedding_method == "sentence-transformer":
-        console.print(f"[bold cyan]🧠 Encoding with Sentence Transformer: {model_name}...[/bold cyan]")
-        model = SentenceTransformer(model_name)
-        trend_embeddings = model.encode(trend_texts, show_progress_bar=True)
-        post_embeddings = model.encode(post_contents, show_progress_bar=True)
-    else:
-        console.print(f"[bold cyan]📊 Encoding with {embedding_method.upper()}...[/bold cyan]")
-        # For TF-IDF/BoW, we need to fit on all texts together
-        all_embeddings = get_embeddings(all_texts, method=embedding_method)
-        trend_embeddings = all_embeddings[:len(trend_texts)]
-        post_embeddings = all_embeddings[len(trend_texts):]
-
-    # --- NEW: Unsupervised Clustering ---
-    console.print("[bold cyan]🧩 Running Unsupervised Clustering (Discovery)...[/bold cyan]")
-    if len(post_embeddings) > 10: # Only cluster if enough data
-        # Use HDBSCAN from clustering module
-        cluster_labels = cluster_data(post_embeddings, min_cluster_size=5)
-        # Name clusters
-        cluster_names = extract_cluster_labels(post_contents, cluster_labels)
-    else:
-        cluster_labels = [-1] * len(post_embeddings)
-        cluster_names = {}
-
-    # --- NEW: Sentiment Analysis ---
-    console.print("[bold cyan]😊 Running Sentiment Analysis...[/bold cyan]")
-    sentiments = batch_analyze_sentiment(post_contents)
-
-    console.print("[bold cyan]📐 Calculating Cosine Similarity...[/bold cyan]")
+    # Generate embeddings
+    post_embeddings = get_embeddings(post_contents, method=embedding_method, model_name=model_name)
+    trend_embeddings = get_embeddings(trend_texts, method=embedding_method, model_name=model_name)
+    
+    # Calculate Similarity
+    console.print("[bold cyan]➗ Computing Cosine Similarity...[/bold cyan]")
     similarity_matrix = cosine_similarity(post_embeddings, trend_embeddings)
-
-    count_matched = 0
-    count_unmatched = 0
-
+    
+    matched_indices = set()
+    
     for i, post in enumerate(posts):
-        stats = post.get('stats', {'likes': 0, 'comments': 0, 'shares': 0})
+        best_trend_idx = np.argmax(similarity_matrix[i])
+        best_score = similarity_matrix[i][best_trend_idx]
+        
+        # Check interactions
+        stats = post.get('stats', {})
         total_interactions = stats.get('likes', 0) + stats.get('comments', 0) + stats.get('shares', 0)
         
-        is_facebook = 'Face' in post.get('source', '')
+        is_matched = False
+        topic = "Unassigned"
         
-        if not save_all and is_facebook and total_interactions < min_interactions:
-            continue
+        if best_score >= threshold and total_interactions >= min_interactions:
+            topic = trend_keys[best_trend_idx]
+            is_matched = True
+            matched_indices.add(i)
+        
+        if is_matched or save_all:
+            matches.append({
+                "source": post.get('source'),
+                "time": post.get('time'),
+                "post_content": post.get('content'),
+                "trend": topic,
+                "score": float(best_score),
+                "is_matched": is_matched,
+                "interactions": total_interactions
+            })
             
-        sim_scores = similarity_matrix[i]
-        best_trend_idx = np.argmax(sim_scores)
-        best_score = sim_scores[best_trend_idx]
-        
-        match_data = {
-            "post_content": post.get('content', ''),
-            "source": post.get('source', 'Unknown'),
-            "time": post.get('time', 'Unknown'),
-            "stats": stats,
-            "processed_content": post_contents[i], # Visualizing normalization/NER
-            "entities": str(post_contents[i]) if use_ner else "" # Rudimentary entity capture (post_contents IS enriched text)
-        }
-
-        # Adaptive Threshold: If no match found but score is decent, take it?
-        # NO, just use the lower threshold globally.
-        # But let's log best potential match for debugging
-        
-        if best_score > threshold:
-            trend_name = trend_keys[best_trend_idx]
-            match_data.update({
-                "trend": trend_name,
-                "keyword": "semantic-match", 
-                "score": float(best_score),
-                "is_matched": True,
-                "cluster_id": int(cluster_labels[i]),
-                "cluster_name": cluster_names.get(cluster_labels[i], "Unclustered"),
-                "sentiment": sentiments[i]
-            })
-            matches.append(match_data)
-            count_matched += 1
-        elif save_all:
-            match_data.update({
-                "trend": "Unassigned",
-                "keyword": "none", 
-                "score": float(best_score),
-                "closest_trend": trend_keys[best_trend_idx],
-                "is_matched": False,
-                "cluster_id": int(cluster_labels[i]),
-                "cluster_name": cluster_names.get(cluster_labels[i], "Unclustered"),
-                "sentiment": sentiments[i]
-            })
-            matches.append(match_data)
-            count_unmatched += 1
-
-    # Stats
-    scores = [m['score'] for m in matches if m.get('is_matched')]
-    if scores:
-        console.print(f"[bold yellow]📊 Score Stats: Min={min(scores):.2f}, Max={max(scores):.2f}, Avg={sum(scores)/len(scores):.2f}[/bold yellow]")
-    
-    console.print(f"[dim]Stats: Matched={count_matched}, Unmatched={count_unmatched}[/dim]")
-
     return matches
+
+
+def calculate_unified_score(trend_data, posts_in_cluster, w_g=0.3, w_f=0.5, w_n=0.2):
+    """
+    Calculate Unified Trend Score (T) = w_G*G + w_F*F + w_N*N.
+    Normalize components to 0-100 scale roughly.
+    """
+    # G-Score: Google Search Volume
+    g_raw = trend_data.get('volume', 0)
+    # Log scale for G because it can be 100k+
+    # 100k -> 5, 10k -> 4. Map to 0-100?
+    # Let's say 200k+ is max (100). 
+    g_score = min(100, (np.log10(g_raw + 1) / 6.0) * 100) if g_raw > 0 else 0
+    
+    # F-Score: Facebook Interactions
+    f_raw = sum([
+        p.get('stats', {}).get('likes', 0) + 
+        p.get('stats', {}).get('comments', 0) + 
+        p.get('stats', {}).get('shares', 0) 
+        for p in posts_in_cluster if 'Face' in p.get('source', '')
+    ])
+    # Cap at 10k interactions?
+    f_score = min(100, (f_raw / 5000) * 100)
+    
+    # N-Score: News Count
+    n_raw = sum([1 for p in posts_in_cluster if 'Face' not in p.get('source', '')])
+    # Cap at 20 articles
+    n_score = min(100, (n_raw / 10) * 100)
+    
+    final_score = (w_g * g_score) + (w_f * f_score) + (w_n * n_score)
+    return round(final_score, 2), {"G": round(g_score,1), "F": round(f_score,1), "N": round(n_score,1)}
 
 
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
@@ -425,11 +402,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                          embedding_method="sentence-transformer", save_all=False,
                         rerank=True, min_cluster_size=5, labeling_method="semantic"):
     """
-    Cluster-First approach with Cross-Encoder Reranking.
-    1. Cluster all data (Unsupervised).
-    2. Convert clusters to text vectors.
-    3. Bi-Encoder: Top-10 Retrieval per cluster.
-    4. Cross-Encoder: Rerank Top-10 to find precise match > 0.5.
+    Cluster-First approach with Cross-Encoder Reranking + Scoring + Sentiment.
     """
     if not posts:
         return []
@@ -440,11 +413,6 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     reranker = None
     if rerank:
         console.print("[bold yellow]⚡ Loading Cross-Encoder for Precision Reranking...[/bold yellow]")
-        reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
-
-    trend_keys = list(trends.keys())
-    trend_texts = [f"{t} " + " ".join(trends[t][:5]) for t in trend_keys]
-    post_contents = [p.get('content', '')[:500] for p in posts]
 
     if use_ner and HAS_NER:
         console.print("[bold magenta]🏷️ Enriching texts with NER...[/bold magenta]")

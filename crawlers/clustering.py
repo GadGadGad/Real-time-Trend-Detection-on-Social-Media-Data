@@ -49,6 +49,7 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic"):
     Args:
         method: 'semantic' (KeyBERT-style) or 'tfidf' (Frequency-based)
     """
+    # Group texts by cluster
     cluster_texts = {}
     for text, label in zip(texts, labels):
         if label == -1: continue
@@ -58,51 +59,64 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic"):
         
     cluster_names = {}
     
+    if not cluster_texts:
+        return {}
+
     console.print(f"[cyan]🏷️ Generating labels for {len(cluster_texts)} clusters (method={method})...[/cyan]")
     
-    for label, texts_in_cluster in cluster_texts.items():
+    # Pre-process all clusters into single docs for c-TF-IDF
+    unique_labels = sorted(cluster_texts.keys())
+    cluster_docs = [" ".join(cluster_texts[l]) for l in unique_labels]
+    
+    # Calculate c-TF-IDF (TF-IDF where document = cluster)
+    # This finds words that are specific to ONE cluster vs others
+    vectorizer = TfidfVectorizer(ngram_range=(1, 3), 
+                                 max_features=1000, 
+                                 stop_words=None) # Assume stop words handled in embedding or negligible
+    
+    try:
+        tfidf_matrix = vectorizer.fit_transform(cluster_docs)
+        feature_names = vectorizer.get_feature_names_out()
+    except ValueError:
+        # Fallback for empty vocabulary
+        return {l: f"Cluster {l}" for l in unique_labels}
+
+    for i, label in enumerate(unique_labels):
         try:
-            # 1. Combine texts to represent the cluster doc
-            full_text = " ".join(texts_in_cluster)
-            
-            # 2. Extract candidate n-grams (phrases)
-            vectorizer = CountVectorizer(ngram_range=(1, 3), stop_words=None) 
-            vectorizer.fit([full_text])
-            candidates = list(vectorizer.vocabulary_.keys())
+            # Get top TF-IDF keywords for this cluster
+            row = tfidf_matrix[i].toarray().flatten()
+            top_indices = row.argsort()[-20:][::-1] # Top 20 candidates by distinctiveness
+            candidates = [feature_names[idx] for idx in top_indices if row[idx] > 0]
             
             if not candidates:
-                cluster_names[label] = f"Cluster {label}"
-                continue
-                
-            # METHOD 1: Simple Frequency / TF-IDF (Fast)
-            if method == "tfidf" or model is None:
-                 # Just take top freq words (CountVectorizer already counts them)
-                 # Or use TF-IDF if we wanted to penalize common corpus words, 
-                 # but here we only have the cluster text.
-                 # Let's count occurrence in full_text
-                 top_3 = sorted(candidates, key=lambda x: full_text.count(x), reverse=True)[:3]
-                 cluster_names[label] = ", ".join(top_3)
+                 cluster_names[label] = f"Cluster {label}"
                  continue
 
-            # METHOD 2: Semantic (KeyBERT-style)
-            # Embed Cluster Centroid
-            doc_embedding = model.encode([full_text])
+            full_text = cluster_docs[i] # Representation for embedding
             
-            # Embed candidates (Limit to top 20 by frequency for speed)
-            top_candidates = sorted(candidates, key=lambda x: full_text.count(x), reverse=True)[:20]
-            candidate_embeddings = model.encode(top_candidates)
+            # METHOD 1: TF-IDF Only
+            if method == "tfidf" or model is None:
+                 cluster_names[label] = ", ".join(candidates[:3])
+                 continue
+            
+            # METHOD 2: Semantic (Hybrid: c-TF-IDF candidates + Embedding Rerank)
+            # Embed Cluster Centroid (Approximation: First 1000 chars of combined text)
+            doc_embedding = model.encode([full_text[:1000]])
+            
+            # Embed candidates
+            candidate_embeddings = model.encode(candidates)
             
             # Cosine Similarity
             distances = cosine_similarity(doc_embedding, candidate_embeddings)
             
             # Get top 1 keyword
             best_idx = distances.argmax()
-            best_keyword = top_candidates[best_idx]
+            best_keyword = candidates[best_idx]
             
             cluster_names[label] = best_keyword.title()
             
         except Exception as e:
-            # console.print(f"[red]Labeling error: {e}[/red]")
+            # console.print(f"[red]Labeling error cluster {label}: {e}[/red]")
             cluster_names[label] = f"Cluster {label}"
             
     return cluster_names
