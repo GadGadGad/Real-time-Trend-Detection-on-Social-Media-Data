@@ -397,12 +397,23 @@ def calculate_unified_score(trend_data, posts_in_cluster, w_g=0.3, w_f=0.5, w_n=
     return round(final_score, 2), {"G": round(g_score,1), "F": round(f_score,1), "N": round(n_score,1)}
 
 
+# Import Taxonomy Classifier
+try:
+    from crawlers.taxonomy_classifier import TaxonomyClassifier
+except ImportError:
+    try:
+        from taxonomy_classifier import TaxonomyClassifier
+    except ImportError:
+        TaxonomyClassifier = None
+        console.print("[yellow]⚠️ TaxonomyClassifier module not found. Skipping categorization.[/yellow]")
+
+
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
                         use_aliases=True, use_ner=False, 
                          embedding_method="sentence-transformer", save_all=False,
                         rerank=True, min_cluster_size=5, labeling_method="semantic"):
     """
-    Cluster-First approach with Cross-Encoder Reranking + Scoring + Sentiment.
+    Cluster-First approach with Cross-Encoder Reranking + Scoring + Sentiment + Taxonomy.
     """
     if not posts:
         return []
@@ -410,183 +421,174 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     # --- 0. Initialize Models ---
     embedder = SentenceTransformer(model_name or DEFAULT_MODEL)
     
+    # Initialize Taxonomy Classifier
+    taxonomy_clf = None
+    if TaxonomyClassifier:
+        taxonomy_clf = TaxonomyClassifier(embedding_model=embedder)
+    
     reranker = None
     if rerank:
         console.print("[bold yellow]⚡ Loading Cross-Encoder for Precision Reranking...[/bold yellow]")
+        try:
+            reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2') 
+        except Exception as e:
+             console.print(f"[red]Failed to load CrossEncoder: {e}. Skipping rerank.[/red]")
+             reranker = None
 
+    # --- 1. Preprocessing & Enrichment ---
+    console.print("[bold cyan]🧹 Preprocessing & Enriching Texts...[/bold cyan]")
+    post_contents = [p.get('content', '')[:500] for p in posts]
+    
     if use_ner and HAS_NER:
-        console.print("[bold magenta]🏷️ Enriching texts with NER...[/bold magenta]")
-        trend_texts = batch_enrich_texts(trend_texts, weight_factor=2)
-        post_contents = batch_enrich_texts(post_contents, weight_factor=2)
+        post_contents_enriched = batch_enrich_texts(post_contents, weight_factor=2)
     elif use_aliases:
-        console.print("[bold magenta]🔄 Normalizing texts with aliases...[/bold magenta]")
-        trend_texts = batch_normalize_texts(trend_texts, show_progress=False)
-        post_contents = batch_normalize_texts(post_contents, show_progress=True)
-
-    # Encode All
-    console.print(f"[bold cyan]🧠 Encoding {len(post_contents)} posts for Hybrid Analysis (method={embedding_method})...[/bold cyan]")
-    
-    # 1. Embeddings for CLUSTERING (Variable: TF-IDF, BoW, or SentenceTransformer)
-    clustering_embeddings = get_embeddings(post_contents, method=embedding_method, model_name=model_name or DEFAULT_MODEL)
-    
-    # 2. Embeddings for MATCHING (Always SentenceTransformer for Semantic Match)
-    # We need these later for matching clusters to trends
-    if embedding_method == "sentence-transformer":
-        post_embeddings = clustering_embeddings # Reuse if same
+        # Build dictionary from new trend structure
+        simple_trends = {k: v['keywords'] for k, v in trends.items()}
+        build_alias_dictionary(simple_trends)
+        post_contents_enriched = batch_normalize_texts(post_contents)
     else:
-        # If clustering with TF-IDF/BoW, we still need dense matching embeddings later?
-        # Actually, Step 3 matches Cluster Keywords -> Trends.
-        # But for 'Discovery', we might want dense embeddings?
-        # Let's keep it simple: Matching uses string-based Bi-Encoder query.
-        pass
+        post_contents_enriched = post_contents
 
-    # 2. Cluster Everything (HDBSCAN)
-    console.print(f"[bold cyan]🧩 Running HDBSCAN on ALL posts (min_size={min_cluster_size})...[/bold cyan]")
-    cluster_labels = cluster_data(clustering_embeddings, min_cluster_size=min_cluster_size)
+    # --- 2. Generate Embeddings (for Clustering) ---
+    console.print(f"[bold cyan]🧠 Generating Embeddings ({embedding_method})...[/bold cyan]")
+    post_embeddings = get_embeddings(post_contents_enriched, method=embedding_method, model_name=model_name)
     
-    # Use Semantic Labeling (KeyBERT-style) or TF-IDF
-    cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method) 
+    # --- 3. Clustering (Discovery) ---
+    console.print(f"[bold cyan]🧩 Running Hybrid Clustering (Min Size={min_cluster_size})...[/bold cyan]")
+    cluster_labels = cluster_data(post_embeddings, min_cluster_size=min_cluster_size)
     
-    # 3. Match Clusters to Trends (Bi-Encoder Retrieval + Reranking) ---
-    # cluster_names is a dict {cluster_id: "keywords"}
-    # trend_keys is a list of trend names
+    unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
+    console.print(f"[green]Found {len(unique_labels)} clusters.[/green]")
+
+    # --- 4. Sentiment Analysis (Batch) ---
+    console.print("[bold cyan]😊 Analyzing Sentiment...[/bold cyan]")
+    sentiments = batch_analyze_sentiment(post_contents) # Analyze original text
+
+    # --- 5. Match Clusters to Trends ---
+    # Prepare Trend Embeddings (Keywords)
+    trend_keys = list(trends.keys())
+    trend_queries = [" ".join(trends[t]['keywords']) for t in trend_keys]
     
-    # Filter out noise cluster (-1) for matching
-    unique_labels = [label for label in cluster_names.keys() if label != -1]
+    if trend_queries:
+        console.print(f"[dim]Encoding {len(trend_queries)} trends for matching...[/dim]")
+        trend_embeddings = embedder.encode(trend_queries)
+    else:
+        trend_embeddings = []
+
+    # Get Cluster Labels (Smart Labeling)
+    cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method)
+
+    # Map cluster_label to assigned trend and score
+    cluster_mapping = {}
     
-    cluster_queries = [cluster_names[label] for label in unique_labels]
-    trend_corpus = trend_keys # Use the actual trend names as the corpus
-    
-    console.print(f"[bold cyan]🎯 Matching {len(cluster_queries)} clusters to {len(trend_corpus)} trends...[/bold cyan]")
-    
-    # Encode clusters (Query) and Trends (Corpus)
-    cluster_embeddings = embedder.encode(cluster_queries)
-    trend_embeddings = embedder.encode(trend_corpus)
-    
-    # Bi-Encoder Retrieval (Top-K)
-    TOP_K = 10
-    bi_scores = cosine_similarity(cluster_embeddings, trend_embeddings)
-    
-    # Map cluster_label to assigned trend
-    cluster_mapping = {} 
-    
-    for i, label in enumerate(unique_labels):
-        cluster_query = cluster_queries[i]
-        # Get Top-K candidates from Bi-Encoder
-        top_k_indices = np.argsort(bi_scores[i])[::-1][:TOP_K]
+    for label in unique_labels:
+        indices = [i for i, l in enumerate(cluster_labels) if l == label]
+        cluster_posts = [posts[i] for i in indices]
+        cluster_query = cluster_names.get(label, f"Cluster {label}")
         
-        best_trend = None
-        best_score = 0.0
+        assigned_trend = "Discovery" 
+        topic_type = "Discovery"
+        best_match_score = 0.0
         
-        if rerank and reranker:
-            # Prepare pairs for Cross-Encoder: [[query, candidate_1], [query, candidate_2], ...]
-            candidates = [trend_corpus[idx] for idx in top_k_indices]
-            pairs = [[cluster_query, cand] for cand in candidates]
+        # Matching against Google Trends
+        if len(trend_embeddings) > 0:
+            cluster_emb = embedder.encode(cluster_query)
+            sims = cosine_similarity([cluster_emb], trend_embeddings)[0]
+            top_k_idx = np.argsort(sims)[-3:][::-1] # Top 3 candidates
             
-            # Predict (Returns logits or 0-1 scores depending on model, ms-marco leads to unbounded logits usually, but MiniLM-L-6-v2 output 0-1?)
-            # Actually `cross-encoder/ms-marco-MiniLM-L-6-v2` is trained for CE. predict() returns scores.
-            ce_scores = reranker.predict(pairs)
-            
-            # Find max
-            best_idx_in_k = np.argmax(ce_scores)
-            best_score_raw = ce_scores[best_idx_in_k] # This is logit usually 
-            
-            # Sigmoid normalization for heuristic threshold (approx)
-            # Logit > 0 is roughly relevance > 0.5. 
-            # Let's apply simple sigmoid for normalized score display
-            # score_norm = 1 / (1 + np.exp(-best_score))
-            
-            # Actually, let's stick to using the provided threshold logic, but CrossEncoder scores are different distribution.
-            # MS Marco models: score < 0 is usually non-relevant. Score > 0 is relevant.
-            # Let's use a mapping: if score > -1 (lenient) -> Match.
-            
-            # For simplicity in this demo, let's trust the rank. If the rank 1 is high enough.
-            # Let's use a dedicated threshold for CE.
-            # CE_THRESHOLD = 0.5 # For probability output models. 
-            # Check if model outputs logits or prob. (MiniLM-L-6-v2 is logits).
-            # We will use sigmoid to normalize to 0-1 for compatibility with the system.
-            norm_score = 1 / (1 + np.exp(-best_score_raw))
-            
-            if norm_score > threshold:
-                best_trend = candidates[best_idx_in_k]
-                best_score = norm_score
+            if rerank and reranker:
+                candidates = [trend_keys[k] for k in top_k_idx]
+                rerank_pairs = [(cluster_query, trend_queries[k]) for k in top_k_idx]
+                rerank_scores = reranker.predict(rerank_pairs)
+                best_sub_idx = np.argmax(rerank_scores)
                 
-        else:
-            # Fallback to Bi-Encoder (Cosine)
-            best_idx = top_k_indices[0] 
-            best_score = bi_scores[i][best_idx]
-            if best_score > threshold:
-                best_trend = trend_corpus[best_idx]
-
-        final_topic = best_trend if best_trend else cluster_query
-        topic_type = "Trending" if best_trend else "Discovery"
+                # Use a combined score for logic (CE score > -2 is usually a match)
+                if rerank_scores[best_sub_idx] > -2:
+                    best_match_score = float(sims[top_k_idx[best_sub_idx]]) # Keep bi-encoder score for display
+                    assigned_trend = candidates[best_sub_idx]
+                    topic_type = "Trending"
+            else:
+                if sims[top_k_idx[0]] > threshold:
+                    best_match_score = float(sims[top_k_idx[0]])
+                    assigned_trend = trend_keys[top_k_idx[0]]
+                    topic_type = "Trending"
         
+        # Trend Scoring
+        trend_data = trends.get(assigned_trend, {'volume': 0})
+        unified_score, components = calculate_unified_score(trend_data, cluster_posts)
+        
+        # Taxonomy Classification
+        if taxonomy_clf:
+            category, cat_method = taxonomy_clf.classify(cluster_query + " " + assigned_trend)
+        else:
+            category, cat_method = "Unclassified", "None"
+
         cluster_mapping[label] = {
-            "topic": final_topic,
-            "type": topic_type,
-            "score": float(best_score)
+            "final_topic": assigned_trend if assigned_trend != "Discovery" else f"New: {cluster_query}",
+            "topic_type": topic_type,
+            "cluster_name": cluster_query,
+            "category": category,
+            "category_method": cat_method,
+            "match_score": best_match_score,
+            "trend_score": unified_score,
+            "score_components": components
         }
+        
         if topic_type == "Trending":
-            console.print(f"   ✅ Cluster {label} ('{cluster_query}') -> [green]{final_topic}[/green] ({best_score:.2f})")
+             console.print(f"   ✅ Cluster {label} -> [green]{assigned_trend}[/green] (Score: {unified_score})")
         else:
-            # Discovery!
-            # Find the closest trend from the bi-encoder for logging purposes
-            closest_bi_trend_idx = np.argmax(bi_scores[i])
-            closest_bi_trend_name = trend_corpus[closest_bi_trend_idx]
-            closest_bi_score = bi_scores[i][closest_bi_trend_idx]
-            console.print(f"   ✨ Cluster {label} -> [cyan]New: {cluster_query}[/cyan] (Closest: {closest_bi_trend_name} {closest_bi_score:.2f})")
+             console.print(f"   ✨ Cluster {label} -> [cyan]New Topic: {cluster_query}[/cyan] (Score: {unified_score})")
 
-    # 4. Construct Results
+    # --- 6. Construct Results per Post ---
     matches = []
-    sentiments = batch_analyze_sentiment(post_contents) # Get sentiments
-    
     for i, post in enumerate(posts):
-        c_id = cluster_labels[i]
-        
-        # Default Info
-        final_topic = "Unassigned"
-        topic_type = "Noise"
-        score = 0
-        
-        if c_id != -1:
-            # It's in a cluster
-            mapped = cluster_mapping.get(c_id)
-            if mapped:
-                final_topic = mapped["topic"]
-                topic_type = mapped["type"]
-                score = mapped["score"]
-        else:
-            # Noise point - Optional: Try Individual Match?
-            # For Hybrid strict, we leave as Noise or try to match individually if very high
-            pass
-            
+        label = cluster_labels[i]
         stats = post.get('stats', {'likes': 0, 'comments': 0, 'shares': 0})
         
-        if not save_all and topic_type == "Noise": 
-            continue # Skip noise if not saving all
-            
-        matches.append({
-            "post_content": post.get('content', ''),
-            "source": post.get('source', 'Unknown'),
-            "time": post.get('time', 'Unknown'),
-            "stats": stats,
-            "processed_content": post_contents[i],
-            "entities": "", 
-            
-            # Hybrid Fields
-            "final_topic": final_topic,
-            "topic_type": topic_type,
-            "score": float(score),
-            
-            # Backward Compat
-            "trend": final_topic if topic_type == "Trending" else "Unassigned", 
-            "is_matched": True if topic_type == "Trending" else False,
-            "cluster_id": int(c_id),
-            "cluster_name": cluster_names.get(c_id, "Unclustered"),
-            "sentiment": sentiments[i]
-        })
-        
-    console.print(f"[bold green]✅ Hybrid Analysis Complete: {len(matches)} posts processed.[/bold green]")
+        if label != -1:
+            m = cluster_mapping[label]
+            match_data = {
+                "source": post.get('source'),
+                "time": post.get('time'),
+                "post_content": post.get('content'),
+                "processed_content": post_contents_enriched[i],
+                "final_topic": m["final_topic"],
+                "topic_type": m["topic_type"],
+                "cluster_name": m["cluster_name"],
+                "category": m["category"],
+                "category_method": m["category_method"],
+                "score": m["match_score"], # Bi-encoder similarity
+                "trend_score": m["trend_score"],
+                "score_components": m["score_components"],
+                "sentiment": sentiments[i],
+                "stats": stats,
+                "is_matched": (m["topic_type"] == "Trending"),
+                "trend": m["final_topic"] if m["topic_type"] == "Trending" else "Unassigned",
+                "cluster_id": int(label)
+            }
+            matches.append(match_data)
+        elif save_all:
+             matches.append({
+                "source": post.get('source'),
+                "time": post.get('time'),
+                "post_content": post.get('content'),
+                "processed_content": post_contents_enriched[i],
+                "final_topic": "Unassigned",
+                "topic_type": "Noise",
+                "cluster_name": "Noise",
+                "category": "Noise",
+                "category_method": "None",
+                "score": 0.0,
+                "trend_score": 0,
+                "score_components": {},
+                "sentiment": sentiments[i],
+                "stats": stats,
+                "is_matched": False,
+                "trend": "Unassigned",
+                "cluster_id": -1
+            })
+
+    console.print(f"[bold green]✅ Hybrid Analysis Complete: {len(matches)} posts saved.[/bold green]")
     return matches
 
 
