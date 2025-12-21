@@ -31,3 +31,5 @@ streamlit
 
 # Development
 jupyter
+python-dotenv
+google-generativeai

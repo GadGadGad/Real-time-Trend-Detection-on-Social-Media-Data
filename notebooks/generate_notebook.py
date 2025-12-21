@@ -90,7 +90,11 @@ notebook = {
     "EMBEDDING_METHOD = 'sentence-transformer' # 'tfidf', 'bow', 'sentence-transformer'\n",
     "LABELING_METHOD = 'semantic'              # 'tfidf', 'semantic'\n",
     "RERANK = True                             # Use Cross-Encoder for precision\n",
-    "MIN_CLUSTER_SIZE = 5                      # Min posts to form a trend\n"
+    "MIN_CLUSTER_SIZE = 5,                     # Min posts to form a trend\n",
+    "\n",
+    "# LLM Refinement (Gemini)\n",
+    "USE_LLM = False                           # Set to True to enable Gemini Refinement\n",
+    "GEMINI_API_KEY = \"\"                       # Paste your API key here\n"
    ]
   },
   {
@@ -348,13 +352,15 @@ notebook = {
     "    labeling_method=LABELING_METHOD,\n",
     "    min_cluster_size=MIN_CLUSTER_SIZE,\n",
     "    rerank=RERANK,\n",
+    "    use_llm=USE_LLM,\n",
+    "    gemini_api_key=GEMINI_API_KEY,\n",
     "    save_all=True\n",
     ")\n",
     "df_hyb = pd.DataFrame(matches_hybrid)\n",
     "print(\"Hybrid Topics Found:\", df_hyb['final_topic'].nunique())\n",
     "\n",
     "    # improved display with new metrics\n",
-    "    cols = ['final_topic', 'category', 'topic_type', 'trend_score', 'sentiment', 'post_content']\n",
+    "    cols = ['final_topic', 'category', 'topic_type', 'trend_score', 'sentiment', 'llm_reasoning', 'post_content']\n",
     "    # Check if columns exist (graceful fallback)\n",
     "    available_cols = [c for c in cols if c in df_hyb.columns]\n",
     "    df_result = df_hyb[available_cols].copy()\n",
