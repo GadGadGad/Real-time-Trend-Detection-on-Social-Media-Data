@@ -95,6 +95,70 @@ def normalize_text(text):
     text = re.sub(r'\s+', ' ', text)
     return text
 
+def filter_obvious_noise(trends):
+    """
+    Stage 1: Pre-Filter. Removes lottery, price charts, and generic dates.
+    """
+    noise_keywords = [
+        'xo so', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 'gia vang', 'ti gia', 'code', 'wiki'
+    ]
+    
+    filtered_trends = {}
+    for k, v in trends.items():
+        norm_k = normalize_text(k)
+        if any(nk in norm_k for nk in noise_keywords):
+            continue
+        # Remove standalone numbers or pure date patterns
+        if re.match(r'^\d+$', norm_k.replace(' ', '')):
+            continue
+        filtered_trends[k] = v
+    
+    removed = len(trends) - len(filtered_trends)
+    if removed > 0:
+        console.print(f"   🧹 Pre-Filter: Removed {removed} noise terms.")
+    return filtered_trends
+
+def normalize_sports_matches(text):
+    """
+    Stage 2: Heuristic Normalization for Sports.
+    Unifies match formats to facilitate easier merging.
+    """
+    if not text: return ""
+    # "A đấu với B" -> "A vs B"
+    text = re.sub(r'(?i)\s+đấu với\s+', ' vs ', text)
+    # "atletico madrid" -> "atlético madrid" (canonicalize common misspellings)
+    text = re.sub(r'(?i)atletico', 'atlético', text)
+    # "real" -> "real madrid" if it looks like a match, only if not already there
+    if ' vs ' in text:
+        # Use negative lookahead to prevent "real madrid" -> "real madrid madrid"
+        text = re.sub(r'\breal\b(?!\s+madrid)', 'real madrid', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bars\b(?!\s+enal)', 'arsenal', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bmu\b(?!\s+utd|\s+manchester)', 'manchester united', text, flags=re.IGNORECASE)
+    return text.strip()
+
+def post_refinement_clean(trends, custom_blacklist=None):
+    """
+    Stage 3: Post-Filter (User Suggestion). 
+    Final cleanup pass using keywords.
+    """
+    blacklist = custom_blacklist or [
+        'xo so', 'tieu dung', 'gia ca', 'thoi tiet', 'tu vi', 
+        'lich cup dien', 'ket qua xo so', 'kqxs', 'recap youtube',
+        'spotify wrapped', 'xsmb', 'xsmn', 'xsmt', 'vietlott'
+    ]
+    
+    final_trends = {}
+    for k, v in trends.items():
+        norm_k = normalize_text(k)
+        if any(b in norm_k for b in blacklist):
+            continue
+        final_trends[k] = v
+        
+    removed = len(trends) - len(final_trends)
+    if removed > 0:
+        console.print(f"   🧹 Post-Filter: Cleaned up {removed} remaining noise terms.")
+    return final_trends
+
 def load_json(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -194,6 +258,23 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
                     return json.load(f)
             except Exception: pass
 
+    # --- Start Multi-Stage Filtering ---
+    
+    # Stage 1: Pre-Filter Noise
+    trends = filter_obvious_noise(trends)
+    
+    # Stage 2: Heuristic Normalization (Normalize keys before LLM)
+    normalized_trends = {}
+    for k, v in trends.items():
+        norm_key = normalize_sports_matches(k)
+        if norm_key in normalized_trends:
+            # Merge if normalization creates a collision
+            normalized_trends[norm_key]['volume'] += v['volume']
+            normalized_trends[norm_key]['keywords'] = list(set(normalized_trends[norm_key]['keywords'] + v['keywords']))
+        else:
+            normalized_trends[norm_key] = v
+    trends = normalized_trends
+
     # 2. Refine using LLM
     refiner = LLMRefiner(
         provider=llm_provider,
@@ -203,7 +284,7 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
     )
     
     if not refiner.enabled:
-        return trends
+        return post_refinement_clean(trends) # Still clean if LLM disabled
 
     # Map normalized names to original keys for robust matching
     norm_map = {normalize_text(k): k for k in trends.keys()}
@@ -218,16 +299,13 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
         # Apply Filtering (Case-insensitive & Diacritic-robust)
         for f_term in filtered:
             norm_f = normalize_text(f_term)
-            # Try exact match first
             target_key = norm_map.get(norm_f)
-            
-            # If no exact match, check for partial match (LLM often returns category names)
             if not target_key:
+                # Check for partial match
                 for norm_k, orig_k in norm_map.items():
                     if norm_f in norm_k or norm_k in norm_f:
                         target_key = orig_k
                         break
-            
             if target_key and target_key in refined_trends:
                 del refined_trends[target_key]
 
@@ -237,11 +315,9 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
         for variant, canonical in merged.items():
             norm_v = normalize_text(variant)
             norm_c = normalize_text(canonical)
-            
             var_key = norm_key_map.get(norm_v)
             can_key = norm_key_map.get(norm_c)
             
-            # Fallback for merged variants (partial matches)
             if not var_key:
                 for norm_k, orig_k in norm_key_map.items():
                     if norm_v in norm_k:
@@ -250,13 +326,14 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
 
             if var_key and can_key and var_key != can_key:
                 if var_key in refined_trends and can_key in refined_trends:
-                    # Merge data
                     refined_trends[can_key]['volume'] += refined_trends[var_key]['volume']
                     refined_trends[can_key]['keywords'] = list(set(refined_trends[can_key]['keywords'] + refined_trends[var_key]['keywords']))
                     del refined_trends[var_key]
-                    # Update maps to facilitate chain merges
                     norm_key_map = {normalize_text(k): k for k in refined_trends.keys()}
 
+        # Stage 3: Post-Refinement Cleanup (User Suggestion)
+        refined_trends = post_refinement_clean(refined_trends)
+        
         console.print(f"\n   ✨ Refinement Complete: {len(trends)} -> {len(refined_trends)} trends.")
         
         # 3. Save to cache

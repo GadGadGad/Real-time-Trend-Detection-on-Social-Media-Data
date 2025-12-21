@@ -275,57 +275,73 @@ class LLMRefiner:
             return None
 
         trend_list = list(trends_dict.keys())
-        # Chunking
-        chunk_size = 30
+        
+        # Categorical Grouping: Put related trends in the same batch for better merging
+        keyword_groups = {
+            "Sports": ["đấu với", "vs", "cup", "bóng đá", "tỉ số", "bxh", "ngoại hạng", "trực tiếp"],
+            "Marketplace": ["giá", "vàng", "bạc", "tiền lương", "cà phê", "xăng"],
+            "Lottery": ["xổ số", "số miền", "xs", "quay thử"],
+            "Game": ["code", "wiki", "the forge", "riot", "honkai", "pubg", "roblox"],
+            "General": []
+        }
+        
+        buckets = {k: [] for k in keyword_groups.keys()}
+        for t in trend_list:
+            assigned = False
+            t_lower = t.lower()
+            for cat, kws in keyword_groups.items():
+                if any(kw in t_lower for kw in kws):
+                    buckets[cat].append(t)
+                    assigned = True
+                    break
+            if not assigned:
+                buckets["General"].append(t)
+
         all_filtered = []
         all_merged = {}
         
-        console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends...[/cyan]")
+        console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends with Categorical Grouping...[/cyan]")
         
         all_prompts = []
-        for i in range(0, len(trend_list), chunk_size):
-            chunk = trend_list[i : i + chunk_size]
-            chunk_str = "\n".join([f"- {t}" for t in chunk])
-            
-            prompt = f"""
-                Role: Senior Editor.
-                Task: Clean this list of trending search terms from Google Trends.
+        chunk_size = 30
+        
+        for cat, items in buckets.items():
+            if not items: continue
+            for i in range(0, len(items), chunk_size):
+                chunk = items[i : i + chunk_size]
+                chunk_str = "\n".join([f"- {t}" for t in chunk])
                 
-                1. Filter: Identify generic, vague, or useless terms that don't represent specific news events (e.g., "Football", "Weather", "Lottery", "Review", "Sổ số", "Thời tiết").
-                2. Merge: Identify synonyms or very closely related terms that refer to the EXACT same entity or event (e.g. "AFF Cup" and "AFF Cup 2024").
-                
-                CRITICAL:
-                - Use the EXACT strings from the provided list in your JSON output.
-                - For "merged", the key is the variant term and the value is the canonical/main term.
-                
-                Input List:
-                {chunk_str}
-                
-                Respond ONLY with a JSON object:
-                {{
-                    "filtered": ["bad_term_1", "bad_term_2"],
-                    "merged": {{
-                        "variant_1": "canonical_term",
-                        "variant_2": "canonical_term"
+                prompt = f"""
+                    Role: Senior Editor.
+                    Category Context: {cat}
+                    Task: Clean this list of trending search terms from Vietnam.
+                    
+                    1. Filter: Remove generic news-less terms.
+                    2. Merge: Identify synonyms or related terms referring to the EXACT same entity or event.
+                    
+                    CRITICAL:
+                    - Use the EXACT strings from the provided list.
+                    - For sports, merge different languages (e.g. "Real vs Celta" and "Real Madrid đấu với Celta").
+                    
+                    Input List ({cat}):
+                    {chunk_str}
+                    
+                    Respond ONLY with a JSON object:
+                    {{
+                        "filtered": ["bad_term_1"],
+                        "merged": {{ "variant": "canonical" }}
                     }}
-                }}
-            """
-            all_prompts.append(prompt)
-            
+                """
+                all_prompts.append(prompt)
+                
         if all_prompts:
             batch_texts = self._generate_batch(all_prompts)
             for i, text in enumerate(batch_texts):
                 try:
                     results = self._extract_json(text, is_list=False)
                     if results:
-                        filtered = results.get("filtered", [])
-                        merged = results.get("merged", {})
-                        
-                        if filtered: all_filtered.extend(filtered)
-                        if merged: all_merged.update(merged)
-                        
-                        if self.debug:
-                            console.print(f"[dim]   Batch {i}: Filtered {len(filtered)}, Merged {len(merged)}[/dim]")
+                        all_filtered.extend(results.get("filtered", []))
+                        all_merged.update(results.get("merged", {}))
                 except Exception as e:
                     console.print(f"[red]Trend Refine Error in batch {i}: {e}[/red]")
         

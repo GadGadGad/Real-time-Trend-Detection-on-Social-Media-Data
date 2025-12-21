@@ -1,4 +1,7 @@
+import pandas as pd
+import numpy as np
 import re
+import os
 from typing import List, Set, Dict
 from collections import Counter
 from crawlers.locations import get_known_locations
@@ -8,17 +11,40 @@ from crawlers.taxonomy_keywords import get_all_event_keywords
 class KeywordExtractor:
     def __init__(self, segmentation_method: str = "underthesea"):
         """
-        segmentation_method: "underthesea" (fast, CRF) or "transformer" (accurate, Deep Learning)
+        segmentation_method: 
+            - "underthesea" (fast, CRF) 
+            - "transformer" (accurate, Underthesea Deep)
+            - "phonlp" (very accurate, VinAI Multi-task Transformer with VnCoreNLP segmenter)
         """
         self.known_locations = get_known_locations()
         self.taxonomy_keywords = get_all_event_keywords()
         self.segmentation_method = segmentation_method
+        self.phonlp_model = None
+        self.vncorenlp_model = None
+        self.vncorenlp_path = os.path.join(os.path.expanduser("~"), ".cache", "vncorenlp")
         # Common Vietnamese stopwords (minimal set for extraction)
         self.stopwords = {
             'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
             'cho', 'người', 'những', 'tại', 'về', 'các', 'được', 'ra', 'khi',
             'mới', 'này', 'cho', 'nhiều'
         }
+
+    def _load_vncorenlp(self):
+        if self.vncorenlp_model is None:
+            import py_vncorenlp
+            # Ensure model is downloaded
+            if not os.path.exists(os.path.join(self.vncorenlp_path, 'models')):
+                py_vncorenlp.download_model(save_dir=self.vncorenlp_path)
+            # Load segmenter
+            self.vncorenlp_model = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=self.vncorenlp_path)
+        return self.vncorenlp_model
+
+    def _load_phonlp(self):
+        if self.phonlp_model is None:
+            import phonlp
+            # Load PhoNLP from VinAI (auto-downloads to ~/.cache/phonlp if not present)
+            self.phonlp_model = phonlp.load(save_dir=os.path.join(os.path.expanduser("~"), ".cache", "phonlp"))
+        return self.phonlp_model
 
     def extract_keywords(self, text: str, max_keywords: int = 15) -> str:
         """
@@ -47,15 +73,22 @@ class KeywordExtractor:
 
         # 4. Clean and Tokenize with Word Segmentation
         try:
-            import underthesea
-            if self.segmentation_method == "transformer":
-                # Use deep learning model for better accuracy (requires more resources)
-                text_segmented = underthesea.word_tokenize(text_lower, format="text", model="deep")
+            if self.segmentation_method == "phonlp":
+                # Use VnCoreNLP for word segmentation as recommended for PhoNLP-level tasks
+                segmenter = self._load_vncorenlp()
+                # Returns list of segmented sentences: ["Ông Nguyễn_Khắc_Chúc ...", "..."]
+                segmented_sentences = segmenter.word_segment(text_lower)
+                text_segmented = " ".join(segmented_sentences)
             else:
-                # Default CRF-based fast segmentation
-                text_segmented = underthesea.word_tokenize(text_lower, format="text")
+                import underthesea
+                if self.segmentation_method == "transformer":
+                    # Use deep learning model for better accuracy (requires more resources)
+                    text_segmented = underthesea.word_tokenize(text_lower, format="text", model="deep")
+                else:
+                    # Default CRF-based fast segmentation
+                    text_segmented = underthesea.word_tokenize(text_lower, format="text")
             
-            # undertakings format="text" replaces spaces with underscores in compound words: "hà nội" -> "hà_nội"
+            # format="text" or VnCoreNLP output replaces spaces with underscores in compound words
             clean_text = re.sub(r'[^\w\s]', ' ', text_segmented)
             clean_text = re.sub(r'\d+', ' ', clean_text)
             words = clean_text.split()
