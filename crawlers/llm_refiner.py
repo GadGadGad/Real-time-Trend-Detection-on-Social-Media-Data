@@ -1,3 +1,4 @@
+import re
 import os
 import json
 from rich.console import Console
@@ -52,7 +53,7 @@ class LLMRefiner:
                     "text-generation",
                     model=self.model,
                     tokenizer=self.tokenizer,
-                    max_new_tokens=512,
+                    max_new_tokens=1024, # Increased for batching
                     temperature=0.1
                 )
                 self.enabled = True
@@ -83,6 +84,25 @@ class LLMRefiner:
             elif "model\n" in res_text:
                 return res_text.split("model\n")[-1].strip()
             return res_text[len(formatted_prompt):].strip()
+
+    def _extract_json(self, text, is_list=False):
+        """Robustly extract JSON from text even with markdown or noise"""
+        try:
+            # Look for markdown blocks first
+            code_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+            if code_blocks:
+                content = code_blocks[0]
+            else:
+                # Fallback to finding brackets
+                char_start, char_end = ('[', ']') if is_list else ('{', '}')
+                start = text.find(char_start)
+                end = text.rfind(char_end) + 1
+                if start == -1 or end == 0: return None
+                content = text[start:end]
+            
+            return json.loads(content)
+        except Exception:
+            return None
 
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
         if not self.enabled:
@@ -117,10 +137,10 @@ Respond STRICTLY in JSON format:
 """
         try:
             text = self._generate(prompt)
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            data = json.loads(text[start:end])
-            return data.get('refined_title', cluster_name), data.get('category', original_category), data.get('reasoning', "")
+            data = self._extract_json(text, is_list=False)
+            if data:
+                return data.get('refined_title', cluster_name), data.get('category', original_category), data.get('reasoning', "")
+            return cluster_name, original_category, ""
         except Exception:
             return cluster_name, original_category, ""
 
@@ -135,8 +155,8 @@ Categories:
 - C: Market (Commerce, Tech, Entertainment)"""
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
-        # We'll split into chunks of 15 clusters per request
-        chunk_size = 15 if self.provider != "gemini" else 30
+        # We'll split into chunks of 5 clusters per request for local models (much safer)
+        chunk_size = 5 if self.provider != "gemini" else 30
         all_results = {}
 
         for i in range(0, len(clusters_to_refine), chunk_size):
@@ -163,14 +183,19 @@ Respond STRICTLY in a JSON list of objects:
 """
             try:
                 text = self._generate(prompt)
-                start = text.find('[')
-                end = text.rfind(']') + 1
-                if start != -1 and end != -1:
-                    results = json.loads(text[start:end])
+                results = self._extract_json(text, is_list=True)
+                
+                if results:
                     for item in results:
-                        all_results[item['id']] = item
+                        if isinstance(item, dict) and 'id' in item:
+                            all_results[item['id']] = item
+                    
+                    # Log a sample to show it's working
+                    if results:
+                        sample = results[0]
+                        console.print(f"      ✨ [green]Refined {len(results)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
                 else:
-                    console.print(f"[yellow]⚠️ Could not find JSON in LLM response for chunk {i//chunk_size + 1}[/yellow]")
+                    console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i//chunk_size + 1}[/yellow]")
             except Exception as e:
                 console.print(f"[red]Batch LLM error in chunk {i//chunk_size + 1}: {e}[/red]")
         

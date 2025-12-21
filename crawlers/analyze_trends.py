@@ -277,6 +277,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m["category"] = res["category"]
                     m["category_method"] = "LLM"
                     m["llm_reasoning"] = res["reasoning"]
+            
+            success_count = len(batch_results)
+            console.print(f"   ✅ [bold green]LLM Pass Complete: Successfully refined {success_count}/{len(to_refine)} clusters.[/bold green]")
 
     # Consolidated Mapping
     consolidated_mapping = {}
