@@ -32,6 +32,7 @@ streamlit
 # Development
 jupyter
 python-dotenv
-google-generativeaitorch
+google-generativeai
+torch
 accelerate
 bitsandbytes
