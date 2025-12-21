@@ -22,7 +22,7 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 from crawlers.clustering import cluster_data, extract_cluster_labels
 from crawlers.alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
-from crawlers.ner_extractor import enrich_text_with_ner, batch_enrich_texts, HAS_NER
+from crawlers.ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
 from crawlers.sentiment import batch_analyze_sentiment
 from crawlers.vectorizers import get_embeddings
 from sklearn.metrics.pairwise import cosine_similarity
