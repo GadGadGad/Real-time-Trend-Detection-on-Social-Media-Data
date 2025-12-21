@@ -151,7 +151,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
-                        debug_llm=False):
+                        debug_llm=False, summarize_all=False):
     if not posts: return []
     
     # In Sequential mode, we use CUDA for everything, but one at a time.
@@ -182,10 +182,15 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
 
     # --- PHASE 0: SUMMARIZATION ---
     if use_llm: # Only run if advanced features enabled
-        long_indices = [i for i, t in enumerate(post_contents_enriched) if len(t) > 2500]
+        # If summarizing always, threshold is 0. Else, 2500 chars.
+        len_threshold = 0 if summarize_all else 2500
+        
+        long_indices = [i for i, t in enumerate(post_contents_enriched) if len(t) > len_threshold]
+        
         if long_indices:
             from crawlers.summarizer import Summarizer
-            console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices)} long articles...[/cyan]")
+            mode_desc = "ALL" if summarize_all else "LONG"
+            console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices)} articles ({mode_desc})...[/cyan]")
             
             summ = Summarizer()
             summ.load_model()
@@ -407,6 +412,7 @@ if __name__ == "__main__":
     parser.add_argument("--news", type=str, nargs="+", help="News CSV files")
     parser.add_argument("--trends", type=str, nargs="+", help="Google Trends CSV files")
     parser.add_argument("--llm", action="store_true", help="Enable LLM refinement")
+    parser.add_argument("--summarize-all", action="store_true", help="Summarize ALL posts before clustering")
     parser.add_argument("--llm-provider", type=str, default="gemini", choices=["gemini", "kaggle", "local"], help="LLM Provider")
     parser.add_argument("--llm-model-path", type=str, help="Local path or HF ID for local LLM")
     parser.add_argument("--llm-instruction", type=str, help="Custom instructions for LLM refinement")
@@ -423,6 +429,7 @@ if __name__ == "__main__":
             use_llm=args.llm, 
             llm_provider=args.llm_provider, 
             llm_model_path=args.llm_model_path,
-            llm_custom_instruction=args.llm_instruction
+            llm_custom_instruction=args.llm_instruction,
+            summarize_all=args.summarize_all
         )
         print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")
