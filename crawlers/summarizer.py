@@ -45,7 +45,9 @@ class Summarizer:
         summaries = []
         batch_size = 4 # T4 GPU safe limit
         
-        for i in range(0, len(texts), batch_size):
+        from rich.progress import track
+        
+        for i in track(range(0, len(texts), batch_size), description="[cyan]Summarizing batches...[/cyan]"):
             batch = texts[i : i + batch_size]
             inputs = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=1024).to(self.device)
             
