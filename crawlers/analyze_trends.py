@@ -394,7 +394,7 @@ def find_matches(posts, trends, model_name=None, threshold=0.35,
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
                         use_aliases=True, use_ner=False, 
                         embedding_method="sentence-transformer", save_all=False,
-                        rerank=True):
+                        rerank=True, min_cluster_size=5):
     """
     Cluster-First approach with Cross-Encoder Reranking.
     1. Cluster all data (Unsupervised).
@@ -434,8 +434,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     post_embeddings = embedder.encode(post_contents, show_progress_bar=True)
 
     # 2. Cluster Everything (HDBSCAN)
-    console.print("[bold cyan]🧩 Running HDBSCAN on ALL posts...[/bold cyan]")
-    cluster_labels = cluster_data(post_embeddings, min_cluster_size=5)
+    console.print(f"[bold cyan]🧩 Running HDBSCAN on ALL posts (min_size={min_cluster_size})...[/bold cyan]")
+    cluster_labels = cluster_data(post_embeddings, min_cluster_size=min_cluster_size)
     cluster_names = extract_cluster_labels(post_contents, cluster_labels) # Top TF-IDF keywords
     
     # 3. Match Clusters to Trends (Bi-Encoder Retrieval + Reranking) ---

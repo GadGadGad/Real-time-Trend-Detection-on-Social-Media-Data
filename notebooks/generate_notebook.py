@@ -1,4 +1,8 @@
-{
+
+import json
+import os
+
+notebook = {
  "cells": [
   {
    "cell_type": "markdown",
@@ -19,7 +23,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -56,8 +60,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
-   "id": "fc74467d",
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -70,7 +73,6 @@
   },
   {
    "cell_type": "markdown",
-   "id": "e91e0b77",
    "metadata": {},
    "source": [
     "## 📂 1. Load Data"
@@ -78,8 +80,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
-   "id": "a35eebad",
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -104,7 +105,6 @@
   },
   {
    "cell_type": "markdown",
-   "id": "0c922a77",
    "metadata": {},
    "source": [
     "## 🔬 2. Run Semantic Analysis (Baseline)\n",
@@ -113,8 +113,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
-   "id": "de981479",
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -132,7 +131,6 @@
   },
   {
    "cell_type": "markdown",
-   "id": "c5053e1b",
    "metadata": {},
    "source": [
     "## 🚀 3. Run Hybrid Analysis (Cluster-First)\n",
@@ -142,8 +140,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
-   "id": "5051b00e",
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -162,7 +159,6 @@
   },
   {
    "cell_type": "markdown",
-   "id": "efd5d38a",
    "metadata": {},
    "source": [
     "## 📊 4. Comparison Stats\n",
@@ -171,8 +167,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
-   "id": "376680b0",
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -202,7 +197,6 @@
   },
   {
    "cell_type": "markdown",
-   "id": "03d73a85",
    "metadata": {},
    "source": [
     "## 🎨 5. t-SNE Visualization\n",
@@ -212,7 +206,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -273,7 +267,7 @@
   },
   {
    "cell_type": "code",
-   "execution_count": null,
+   "execution_count": None,
    "metadata": {},
    "outputs": [],
    "source": [
@@ -313,3 +307,6 @@
  "nbformat": 4,
  "nbformat_minor": 5
 }
+
+with open("notebooks/Analysis_Playground.ipynb", "w", encoding="utf-8") as f:
+    json.dump(notebook, f, indent=1)
