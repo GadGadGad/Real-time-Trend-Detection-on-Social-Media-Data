@@ -16,8 +16,15 @@ import numpy as np
 from datetime import datetime, timedelta
 from dateutil import parser
 from rich.console import Console
+from rich.table import Table
 import argparse
 from sentence_transformers import SentenceTransformer, CrossEncoder
+from sklearn.metrics.pairwise import cosine_similarity
+from crawlers.clustering import cluster_data, extract_cluster_labels
+from crawlers.alias_normalizer import load_alias_dictionary, normalize_text_with_aliases, build_alias_dictionary
+from crawlers.ner_extractor import enrich_text_with_ner, batch_enrich_texts, HAS_NER
+from crawlers.sentiment import batch_analyze_sentiment
+from crawlers.vectorizers import get_embeddings
 from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter
 
@@ -393,8 +400,8 @@ def find_matches(posts, trends, model_name=None, threshold=0.35,
 
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
                         use_aliases=True, use_ner=False, 
-                        embedding_method="sentence-transformer", save_all=False,
-                        rerank=True, min_cluster_size=5):
+                         embedding_method="sentence-transformer", save_all=False,
+                        rerank=True, min_cluster_size=5, labeling_method="semantic"):
     """
     Cluster-First approach with Cross-Encoder Reranking.
     1. Cluster all data (Unsupervised).
@@ -427,16 +434,28 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         post_contents = batch_normalize_texts(post_contents, show_progress=True)
 
     # Encode All
-    console.print(f"[bold cyan]🧠 Encoding {len(post_contents)} posts for Hybrid Analysis...[/bold cyan]")
-    # For hybrid, we always use sentence-transformer for embeddings for consistency with clustering
-    # and reranking, so we simplify this block.
-    trend_embeddings = embedder.encode(trend_texts, show_progress_bar=True)
-    post_embeddings = embedder.encode(post_contents, show_progress_bar=True)
+    console.print(f"[bold cyan]🧠 Encoding {len(post_contents)} posts for Hybrid Analysis (method={embedding_method})...[/bold cyan]")
+    
+    # 1. Embeddings for CLUSTERING (Variable: TF-IDF, BoW, or SentenceTransformer)
+    clustering_embeddings = get_embeddings(post_contents, method=embedding_method, model_name=model_name or DEFAULT_MODEL)
+    
+    # 2. Embeddings for MATCHING (Always SentenceTransformer for Semantic Match)
+    # We need these later for matching clusters to trends
+    if embedding_method == "sentence-transformer":
+        post_embeddings = clustering_embeddings # Reuse if same
+    else:
+        # If clustering with TF-IDF/BoW, we still need dense matching embeddings later?
+        # Actually, Step 3 matches Cluster Keywords -> Trends.
+        # But for 'Discovery', we might want dense embeddings?
+        # Let's keep it simple: Matching uses string-based Bi-Encoder query.
+        pass
 
     # 2. Cluster Everything (HDBSCAN)
     console.print(f"[bold cyan]🧩 Running HDBSCAN on ALL posts (min_size={min_cluster_size})...[/bold cyan]")
-    cluster_labels = cluster_data(post_embeddings, min_cluster_size=min_cluster_size)
-    cluster_names = extract_cluster_labels(post_contents, cluster_labels) # Top TF-IDF keywords
+    cluster_labels = cluster_data(clustering_embeddings, min_cluster_size=min_cluster_size)
+    
+    # Use Semantic Labeling (KeyBERT-style) or TF-IDF
+    cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method) 
     
     # 3. Match Clusters to Trends (Bi-Encoder Retrieval + Reranking) ---
     # cluster_names is a dict {cluster_id: "keywords"}
