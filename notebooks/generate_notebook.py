@@ -569,6 +569,91 @@ notebook = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
+    "## 🔬 3.3 The 'Why' Behind the Trends (Explainability)\n",
+    "Why did the system group these specific posts? How did it decide on the label and group?\n",
+    "\n",
+    "### A. Keyword Overlap (The Clustering Reason)\n",
+    "We visualize the overlap of high-signal keywords extracted from the posts in the largest cluster."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Select the largest cluster\n",
+    "top_cluster_name = df_top10['final_topic'].value_counts().index[0]\n",
+    "cluster_df = df_top10[df_top10['final_topic'] == top_cluster_name].head(10)\n",
+    "\n",
+    "print(f\"Analyzing Cluster: {top_cluster_name} ({len(cluster_df)} samples)\")\n",
+    "\n",
+    "# 2. Extract shared keywords (using our KeywordExtractor logic)\n",
+    "from crawlers.keyword_extractor import KeywordExtractor\n",
+    "kw_ext = KeywordExtractor()\n",
+    "\n",
+    "all_kw_sets = []\n",
+    "for content in cluster_df['post_content']:\n",
+    "    kws = set(kw_ext.extract_keywords(content).split())\n",
+    "    all_kw_sets.append(kws)\n",
+    "\n",
+    "# Find common keywords across at least 2 posts\n",
+    "from collections import Counter\n",
+    "kw_counts = Counter([kw for s in all_kw_sets for kw in s])\n",
+    "shared_kws = [kw for kw, count in kw_counts.items() if count >= 2]\n",
+    "shared_kws = sorted(shared_kws, key=lambda x: kw_counts[x], reverse=True)[:15]\n",
+    "\n",
+    "# 3. Build Heatmap Matrix\n",
+    "matrix = []\n",
+    "for i, p_kws in enumerate(all_kw_sets):\n",
+    "    row = [1 if kw in p_kws else 0 for kw in shared_kws]\n",
+    "    matrix.append(row)\n",
+    "\n",
+    "import plotly.express as px\n",
+    "fig = px.imshow(matrix, \n",
+    "                labels=dict(x=\"High-Signal Keywords\", y=\"Posts in Cluster\", color=\"Present\"),\n",
+    "                x=shared_kws, \n",
+    "                y=[f\"Post {i+1}\" for i in range(len(matrix))],\n",
+    "                color_continuous_scale='Blues',\n",
+    "                title=f\"Keyword Collision Matrix: {top_cluster_name}\")\n",
+    "fig.show()\n",
+    "print(\"💡 Each blue square represents a shared factual anchor (Location, Event Keyword, or Alias).\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### B. Classification & Naming Logic\n",
+    "How the system categorized this cluster and chose its title."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Classification Reasoning\n",
+    "sample_post = cluster_df.iloc[0]\n",
+    "print(f\"--- Classification for '{top_cluster_name}' ---\")\n",
+    "print(f\"Group: {sample_post.get('category', 'Group B (Social Signal)')}\")\n",
+    "print(f\"Method: {sample_post.get('cat_method', 'Keyword Mapping')}\")\n",
+    "print(f\"Reasoning: Detected anchors like {', '.join([k for k in shared_kws if k.lower() in sample_post['processed_content'].lower()][:3])}\")\n",
+    "\n",
+    "# 2. Naming Confidence (Top 5 Candidates from TF-IDF/Semantic)\n",
+    "print(f\"\\n--- Naming Candidates in Cluster ---\")\n",
+    "print(\"Rank | Candidate Title    | Significance\")\n",
+    "print(\"-----|-------------------|-------------\")\n",
+    "for i, kw in enumerate(shared_kws[:5]):\n",
+    "    marker = \"⭐ (Selected)\" if kw.title() in top_cluster_name else \"\"\n",
+    "    print(f\"{i+1:<4} | {kw.title():<17} | {kw_counts[kw]/len(cluster_df):.1%} Overlap {marker}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
     "## 📊 4. Comparison Stats\n",
     "Let's see the metrics side-by-side."
    ]

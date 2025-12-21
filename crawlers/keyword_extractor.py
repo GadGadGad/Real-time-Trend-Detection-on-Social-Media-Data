@@ -3,10 +3,12 @@ from typing import List, Set, Dict
 from collections import Counter
 from crawlers.locations import get_known_locations
 from crawlers.alias_normalizer import normalize_with_aliases
+from crawlers.taxonomy_keywords import get_all_event_keywords
 
 class KeywordExtractor:
     def __init__(self):
         self.known_locations = get_known_locations()
+        self.taxonomy_keywords = get_all_event_keywords()
         # Common Vietnamese stopwords (minimal set for extraction)
         self.stopwords = {
             'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
@@ -33,22 +35,28 @@ class KeywordExtractor:
             if len(loc) > 3 and loc.lower() in text_lower:
                 found_locations.append(loc)
 
-        # 3. Clean and Tokenize
+        # 3. Extract Taxonomy Keywords (High Signal)
+        found_taxonomy = []
+        for kw in self.taxonomy_keywords:
+            if len(kw) > 3 and kw.lower() in text_lower:
+                found_taxonomy.append(kw)
+
+        # 4. Clean and Tokenize
         # Remove special characters, digits, etc.
         clean_text = re.sub(r'[^\w\s]', ' ', text_lower)
         clean_text = re.sub(r'\d+', ' ', clean_text)
         words = clean_text.split()
 
-        # 4. Frequency Analysis
+        # 5. Frequency Analysis
         filtered_words = [w for w in words if len(w) > 2 and w not in self.stopwords]
         word_counts = Counter(filtered_words)
         
         # Get most common topical words
         top_words = [w for w, c in word_counts.most_common(max_keywords)]
 
-        # 5. Combine and Weight
-        # Locations get double weight
-        keywords = found_locations * 2 + top_words
+        # 6. Combine and Weight
+        # Locations get triple weight, Taxonomy keywords get double
+        keywords = found_locations * 2 + found_taxonomy * 2 + top_words
         
         # Deduplicate while preserving order (Locations first)
         seen = set()

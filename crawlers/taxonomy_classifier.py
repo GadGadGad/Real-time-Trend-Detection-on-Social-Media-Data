@@ -5,31 +5,12 @@ import numpy as np
 
 console = Console()
 
-# --- 1. KEYWORD DEFINITIONS ---
-# Group A: Critical Alerts (High Urgency)
-KEYWORDS_A = [
-    "tai nạn", "cháy", "nổ", "sập", "cứu hỏa", "cứu thương", 
-    "bão", "lũ", "lụt", "sạt lở", "động đất", "thiên tai",
-    "biểu tình", "bạo loạn", "khủng bố", "giết người", "cướp",
-    "dịch bệnh", "covid", "ngộ độc", "khẩn cấp", "cảnh báo",
-    "truy nã", "mất tích"
-]
+from crawlers.taxonomy_keywords import get_flattened_keywords_by_group
 
-# Group B: Social Signals (Monitoring)
-KEYWORDS_B = [
-    "chính sách", "luật mới", "nghị định", "bầu cử", "tuyên bố",
-    "tranh cãi", "phốt", "tẩy chay", "drama", "scandal", "lừa đảo",
-    "phản đối", "ý kiến", "góp ý", "cộng đồng mạng", "xôn xao",
-    "bức xúc", "khiếu nại", "tố cáo"
-]
-
-# Group C: Market Trends (Opportunity)
-KEYWORDS_C = [
-    "món mới", "ra mắt", "khai trương", "giảm giá", "khuyến mãi",
-    "du lịch", "check-in", "review", "trải nghiệm", "hot trend",
-    "thời trang", "công nghệ", "điện ảnh", "âm nhạc", "concert",
-    "show", "mv", "sản phẩm", "bán chạy", "cháy hàng"
-]
+# --- 1. KEYWORD DEFINITIONS (Replaced by taxonomy_keywords.py) ---
+KEYWORDS_A = get_flattened_keywords_by_group("A_CRITICAL")
+KEYWORDS_B = get_flattened_keywords_by_group("B_SOCIAL")
+KEYWORDS_C = get_flattened_keywords_by_group("C_MARKET")
 
 CATEGORY_MAP = {
     "Group A": KEYWORDS_A,
