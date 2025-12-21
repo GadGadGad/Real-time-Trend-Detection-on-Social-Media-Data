@@ -21,7 +21,7 @@ class KeywordExtractor:
         self.segmentation_method = segmentation_method
         self.phonlp_model = None
         self.vncorenlp_model = None
-        self.vncorenlp_path = os.path.join(os.path.expanduser("~"), ".cache", "vncorenlp")
+        self.vncorenlp_path = os.path.join(os.path.expanduser("~"), ".cache", "vncorenlp_models")
         # Common Vietnamese stopwords (minimal set for extraction)
         self.stopwords = {
             'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
