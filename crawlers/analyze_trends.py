@@ -463,7 +463,8 @@ def apply_guidance_enrichment(text, anchors):
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
                         use_aliases=True, use_ner=False, 
                          embedding_method="sentence-transformer", save_all=False,
-                        rerank=True, min_cluster_size=5, labeling_method="semantic"):
+                        rerank=True, min_cluster_size=5, labeling_method="semantic",
+                        reranker_model_name=None):
     """
     Cluster-First approach with Cross-Encoder Reranking + Scoring + Sentiment + Taxonomy.
     """
@@ -480,9 +481,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     
     reranker = None
     if rerank:
-        console.print("[bold yellow]⚡ Loading Cross-Encoder for Precision Reranking...[/bold yellow]")
+        ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+        console.print(f"[bold yellow]⚡ Loading Cross-Encoder ({ce_model}) for Precision Reranking...[/bold yellow]")
         try:
-            reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2') 
+            reranker = CrossEncoder(ce_model) 
         except Exception as e:
              console.print(f"[red]Failed to load CrossEncoder: {e}. Skipping rerank.[/red]")
              reranker = None
@@ -592,11 +594,52 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             "trend_score": unified_score,
             "score_components": components
         }
+    # Merge clusters that map to the same high-confidence trend
+    consolidated_mapping = {}
+    topic_to_labels = {}
+    
+    for label, m in cluster_mapping.items():
+        topic = m["final_topic"]
+        if topic not in topic_to_labels:
+            topic_to_labels[topic] = []
+        topic_to_labels[topic].append(label)
         
-        if topic_type == "Trending":
-             console.print(f"   ✅ Cluster {label} -> [green]{assigned_trend}[/green] (Score: {unified_score})")
+    for topic, labels in topic_to_labels.items():
+        # Combine indices and posts for score recalculation
+        all_indices = []
+        all_posts = []
+        for l in labels:
+            idx = [i for i, val in enumerate(cluster_labels) if val == l]
+            all_indices.extend(idx)
+            all_posts.extend([posts[i] for i in idx])
+        
+        # Pick the representation from the "main" cluster
+        main_label = labels[0]
+        m = cluster_mapping[main_label]
+        
+        # RE-CALCULATE SCORE on consolidated data
+        trend_obj = trends.get(m["final_topic"], {'volume': 0})
+        combined_score, combined_components = calculate_unified_score(trend_obj, all_posts)
+        
+        consolidated_mapping[topic] = {
+            "final_topic": topic,
+            "topic_type": m["topic_type"],
+            "cluster_name": m["cluster_name"], # Keep first or merge? Let's keep first
+            "category": m["category"],
+            "category_method": m["category_method"],
+            "match_score": m["match_score"],
+            "trend_score": combined_score,
+            "score_components": combined_components
+        }
+        
+    for topic, cm in consolidated_mapping.items():
+        if cm["topic_type"] == "Trending":
+             console.print(f"   ✅ Consolidated Trend: [green]{topic}[/green] (Score: {cm['trend_score']})")
         else:
-             console.print(f"   ✨ Cluster {label} -> [cyan]New Topic: {cluster_query}[/cyan] (Score: {unified_score})")
+             # For discovery, we only merge if they are extremely close? 
+             # Actually, for discovery topics, they are already separate clusters.
+             # But if they share the same Discovery name (rare), they merge too.
+             pass
 
     # --- 6. Construct Results per Post ---
     matches = []
@@ -605,7 +648,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         stats = post.get('stats', {'likes': 0, 'comments': 0, 'shares': 0})
         
         if label != -1:
-            m = cluster_mapping[label]
+            # Look up by topic name now
+            topic_name = cluster_mapping[label]["final_topic"]
+            m = consolidated_mapping[topic_name]
+            
             match_data = {
                 "source": post.get('source'),
                 "time": post.get('time'),
@@ -616,7 +662,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 "cluster_name": m["cluster_name"],
                 "category": m["category"],
                 "category_method": m["category_method"],
-                "score": m["match_score"], # Bi-encoder similarity
+                "score": m["match_score"], 
                 "trend_score": m["trend_score"],
                 "score_components": m["score_components"],
                 "sentiment": sentiments[i],
