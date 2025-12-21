@@ -43,11 +43,12 @@ def cluster_data(embeddings, min_cluster_size=5):
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-def extract_cluster_labels(texts, labels, model=None, method="semantic"):
+def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors=None):
     """
     Extract labels for clusters.
     Args:
         method: 'semantic' (KeyBERT-style) or 'tfidf' (Frequency-based)
+        anchors: Optional list of important words to prioritize.
     """
     # Group texts by cluster
     cluster_texts = {}
@@ -69,30 +70,38 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic"):
     cluster_docs = [" ".join(cluster_texts[l]) for l in unique_labels]
     
     # Calculate c-TF-IDF (TF-IDF where document = cluster)
-    # This finds words that are specific to ONE cluster vs others
     vectorizer = TfidfVectorizer(ngram_range=(1, 3), 
                                  max_features=1000, 
-                                 stop_words=None) # Assume stop words handled in embedding or negligible
+                                 stop_words=None)
     
     try:
         tfidf_matrix = vectorizer.fit_transform(cluster_docs)
         feature_names = vectorizer.get_feature_names_out()
     except ValueError:
-        # Fallback for empty vocabulary
         return {l: f"Cluster {l}" for l in unique_labels}
+
+    anchor_set = set(anchors) if anchors else set()
 
     for i, label in enumerate(unique_labels):
         try:
             # Get top TF-IDF keywords for this cluster
             row = tfidf_matrix[i].toarray().flatten()
-            top_indices = row.argsort()[-20:][::-1] # Top 20 candidates by distinctiveness
+            
+            # Applying Anchor Guidance Boost
+            if anchor_set:
+                for idx, feat in enumerate(feature_names):
+                    if feat in anchor_set:
+                        # Give a major boost to anchor words if they appear in cluster
+                        row[idx] *= 5.0 
+
+            top_indices = row.argsort()[-20:][::-1] 
             candidates = [feature_names[idx] for idx in top_indices if row[idx] > 0]
             
             if not candidates:
                  cluster_names[label] = f"Cluster {label}"
                  continue
 
-            full_text = cluster_docs[i] # Representation for embedding
+            full_text = cluster_docs[i]
             
             # METHOD 1: TF-IDF Only
             if method == "tfidf" or model is None:
@@ -100,17 +109,18 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic"):
                  continue
             
             # METHOD 2: Semantic (Hybrid: c-TF-IDF candidates + Embedding Rerank)
-            # Embed Cluster Centroid (Approximation: First 1000 chars of combined text)
             doc_embedding = model.encode([full_text[:1000]])
-            
-            # Embed candidates
             candidate_embeddings = model.encode(candidates)
             
             # Cosine Similarity
-            distances = cosine_similarity(doc_embedding, candidate_embeddings)
+            similarities = cosine_similarity(doc_embedding, candidate_embeddings)[0]
             
-            # Get top 1 keyword
-            best_idx = distances.argmax()
+            # Final Boost for anchors in semantic match too
+            for idx, cand in enumerate(candidates):
+                if cand in anchor_set:
+                    similarities[idx] *= 1.5
+
+            best_idx = similarities.argmax()
             best_keyword = candidates[best_idx]
             
             cluster_names[label] = best_keyword.title()

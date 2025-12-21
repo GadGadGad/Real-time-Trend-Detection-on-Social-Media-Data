@@ -408,6 +408,58 @@ except ImportError:
         console.print("[yellow]⚠️ TaxonomyClassifier module not found. Skipping categorization.[/yellow]")
 
 
+def extract_dynamic_anchors(posts, trends, top_n=20):
+    """
+    Automatically identify 'Anchor' words that exist in both Google Trends 
+    and are frequent in the current post batch.
+    """
+    from sklearn.feature_extraction.text import CountVectorizer
+    
+    # 1. Collect all trend keywords
+    trend_kws = set()
+    for t_data in trends.values():
+        for kw in t_data.get('keywords', []):
+            trend_kws.add(kw.lower())
+            
+    if not trend_kws:
+        return []
+        
+    # 2. Find frequent keywords in posts (Unigrams & Bigrams)
+    texts = [p.get('content', '').lower() for p in posts]
+    vectorizer = CountVectorizer(ngram_range=(1, 2), max_features=1000)
+    try:
+        X = vectorizer.fit_transform(texts)
+        post_words = vectorizer.get_feature_names_out()
+        word_counts = X.toarray().sum(axis=0)
+        
+        # 3. Intersect
+        anchors = []
+        for word, count in zip(post_words, word_counts):
+            if word in trend_kws:
+                anchors.append((word, count))
+                
+        # Sort by frequency
+        anchors = sorted(anchors, key=lambda x: x[1], reverse=True)
+        final_anchors = [a[0] for a in anchors[:top_n]]
+        
+        if final_anchors:
+            console.print(f"[bold magenta]⚓ Found {len(final_anchors)} Dynamic Anchors:[/bold magenta] {', '.join(final_anchors[:5])}...")
+            
+        return final_anchors
+    except:
+        return []
+
+def apply_guidance_enrichment(text, anchors):
+    """Prepend anchors found in text to boost their embedding signal."""
+    found = [a for a in anchors if a in text.lower()]
+    if found:
+        # Prepend with a special tag to trick the embedder into focusing
+        # Doubling the words increases their 'attention' weight in most models
+        prefix = " ".join(found * 2) 
+        return f"{prefix} | {text}"
+    return text
+
+
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
                         use_aliases=True, use_ner=False, 
                          embedding_method="sentence-transformer", save_all=False,
@@ -439,6 +491,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     console.print("[bold cyan]🧹 Preprocessing & Enriching Texts...[/bold cyan]")
     post_contents = [p.get('content', '')[:500] for p in posts]
     
+    # NEW: Extract Dynamic Anchors for Guidance
+    anchors = extract_dynamic_anchors(posts, trends)
+    
     if use_ner and HAS_NER:
         post_contents_enriched = batch_enrich_texts(post_contents, weight_factor=2)
     elif use_aliases:
@@ -448,6 +503,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         post_contents_enriched = batch_normalize_texts(post_contents)
     else:
         post_contents_enriched = post_contents
+
+    # NEW: Apply Guidance Enrichment (Bias clustering toward anchors)
+    if anchors:
+        post_contents_enriched = [apply_guidance_enrichment(t, anchors) for t in post_contents_enriched]
 
     # --- 2. Generate Embeddings (for Clustering) ---
     console.print(f"[bold cyan]🧠 Generating Embeddings ({embedding_method})...[/bold cyan]")
@@ -475,8 +534,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     else:
         trend_embeddings = []
 
-    # Get Cluster Labels (Smart Labeling)
-    cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method)
+    # NEW: Pass anchors to labeling
+    cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method, anchors=anchors)
 
     # Map cluster_label to assigned trend and score
     cluster_mapping = {}
