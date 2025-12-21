@@ -151,7 +151,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
-                        debug_llm=False, summarize_all=False):
+                        debug_llm=False, summarize_all=False, no_dedup=False, refine_trends=False):
     if not posts: return []
     
     # In Sequential mode, we use CUDA for everything, but one at a time.
@@ -160,6 +160,28 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     
     console.print(f"🚀 [cyan]Phase 1: High-Speed Embeddings & Sentiment on {embedding_device}...[/cyan]")
     embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device)
+    
+    # --- PHASE 6: PRE-MATCHING TREND REFINEMENT ---
+    if refine_trends and use_llm:
+         console.print("🧹 [cyan]Refining Google Trends (Filtering & Merging)...[/cyan]")
+         llm_refiner_temp = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path, debug=debug_llm)
+         if llm_refiner_temp.enabled:
+             refined = llm_refiner_temp.refine_trends(trends)
+             if refined:
+                 # Remove filtered
+                 for bad_term in refined.get("filtered", []):
+                     if bad_term in trends: del trends[bad_term]
+                     
+                 # Merge synonym volumes
+                 for variant, canonical in refined.get("merged", {}).items():
+                     if variant in trends and canonical in trends:
+                         trends[canonical]['volume'] += trends[variant]['volume']
+                         del trends[variant]
+                     elif variant in trends:
+                         # Rename
+                         trends[canonical] = trends.pop(variant)
+                         
+                 console.print(f"   ✨ [green]Removed {len(refined.get('filtered', []))} generic trends, Merged {len(refined.get('merged', {}))} duplicates.[/green]")
     
     taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
     reranker = None
@@ -386,7 +408,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             console.print(f"   ✅ [bold green]LLM Pass Complete: Successfully refined {success_count}/{len(to_refine)} clusters.[/bold green]")
 
         # --- PHASE 4: SEMANTIC DEDUPLICATION ---
-        console.print("🔗 [cyan]Phase 4: Semantic Topic Deduplication...[/cyan]")
+        if not no_dedup:
+            console.print("🔗 [cyan]Phase 4: Semantic Topic Deduplication...[/cyan]")
         all_topics = [m["final_topic"] for m in cluster_mapping.values() if m["topic_type"] != "Discovery"]
         if all_topics:
             canonical_map = llm_refiner.deduplicate_topics(all_topics)
@@ -496,6 +519,9 @@ if __name__ == "__main__":
     parser.add_argument("--llm-model-path", type=str, help="Local path or HF ID for local LLM")
     parser.add_argument("--llm-instruction", type=str, help="Custom instructions for LLM refinement")
     
+    parser.add_argument("--no-dedup", action="store_true", help="Disable Semantic Deduplication (Phase 4)")
+    parser.add_argument("--refine-trends", action="store_true", help="Refine Google Trends inputs before matching")
+    
     args = parser.parse_args()
     
     if args.social and args.trends:
@@ -509,6 +535,8 @@ if __name__ == "__main__":
             llm_provider=args.llm_provider, 
             llm_model_path=args.llm_model_path,
             llm_custom_instruction=args.llm_instruction,
-            summarize_all=args.summarize_all
+            summarize_all=args.summarize_all,
+            no_dedup=args.no_dedup,
+            refine_trends=args.refine_trends
         )
         print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")

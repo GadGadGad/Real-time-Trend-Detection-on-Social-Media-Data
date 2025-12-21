@@ -200,28 +200,31 @@ class LLMRefiner:
         mapping = {t: t for t in topic_list}
         
         # Chunking for long lists (LLM context limit)
-        chunk_size = 50
+        # Reduced from 50 to 20 to prevent hallucinations/over-merging
+        chunk_size = 20
         for i in range(0, len(unique_topics), chunk_size):
             chunk = unique_topics[i : i + chunk_size]
             chunk_str = "\n".join([f"- {t}" for t in chunk])
             
             prompt = f"""
-Role: Senior Editor.
-Task: Analyze this list of news headlines.
-Group headlines that refer to the EXACT SAME EVENT.
-For each group, pick one "Canonical Name" (the best one).
+                Role: Senior Editor.
+                Task: Analyze this list of news headlines.
+                Group headlines ONLY if they refer to the EXACT SAME specific real-world event (Same Time, Same Place, Same Actors).
+                DO NOT group generic topics (e.g. "Traffic accident" and "Traffic jam" are different).
+                DO NOT group similar events happening in different places.
+                If in doubt, KEEP SEPARATE.
 
-Input:
-{chunk_str}
+                Input:
+                {chunk_str}
 
-Respond STRICTLY in JSON object format:
-{{
-  "Original Title 1": "Canonical Title A",
-  "Original Title 2": "Canonical Title A",
-  "Unique Title 3": "Unique Title 3"
-}}
-Only include items that change or are part of a group.
-"""
+                Respond STRICTLY in JSON object format:
+                {{
+                "Original Title 1": "Canonical Title A",
+                "Original Title 2": "Canonical Title A",
+                "Unique Title 3": "Unique Title 3"
+                }}
+                Only include items that change or are part of a group.
+            """
             try:
                 text = self._generate(prompt)
                 results = self._extract_json(text, is_list=False)
@@ -236,6 +239,62 @@ Only include items that change or are part of a group.
                 console.print(f"[red]Dedup error: {e}[/red]")
         
         return mapping
+
+    def refine_trends(self, trends_dict):
+        """
+        Phase 6: Google Trends Refinement.
+        Filters out generic/useless trends and merges duplicates.
+        Returns: { "filtered": [...], "merged": { "variant": "canonical" } }
+        """
+        if not self.enabled or not trends_dict:
+            return None
+
+        trend_list = list(trends_dict.keys())
+        # Chunking
+        chunk_size = 30
+        all_filtered = []
+        all_merged = {}
+        
+        console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends...[/cyan]")
+        
+        for i in range(0, len(trend_list), chunk_size):
+            chunk = trend_list[i : i + chunk_size]
+            chunk_str = "\n".join([f"- {t}" for t in chunk])
+            
+            prompt = f"""
+                Role: Senior Editor.
+                Task: Clean this list of trending search terms.
+                1. Filter: Identify generic, vague, or useless terms (e.g. "Football", "Weather", "Lottery", "Review").
+                2. Merge: Identify synonyms (e.g. "AFF Cup" and "AFF Cup 2024").
+
+                Input:
+                {chunk_str}
+
+                Respond STRICTLY in JSON:
+                {{
+                    "filtered": ["bad_term_1", "bad_term_2"],
+                    "merged": {{
+                        "variant_1": "canonical_term",
+                        "variant_2": "canonical_term"
+                    }}
+                }}
+            """
+            try:
+                text = self._generate(prompt)
+                results = self._extract_json(text, is_list=False)
+                if results:
+                    filtered = results.get("filtered", [])
+                    merged = results.get("merged", {})
+                    
+                    if filtered: all_filtered.extend(filtered)
+                    if merged: all_merged.update(merged)
+                    
+                    if self.debug:
+                        console.print(f"[dim]   Batch {i//chunk_size}: Filtered {len(filtered)}, Merged {len(merged)}[/dim]")
+            except Exception as e:
+                console.print(f"[red]Trend Refine Error: {e}[/red]")
+        
+        return {"filtered": all_filtered, "merged": all_merged}
 
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
         if not self.enabled:
