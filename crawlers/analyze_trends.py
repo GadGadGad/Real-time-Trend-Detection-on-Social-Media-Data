@@ -16,17 +16,22 @@ from rich.table import Table
 import argparse
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from sklearn.metrics.pairwise import cosine_similarity
-from collections import Counter
+DEFAULT_MODEL = "paraphrase-multilingual-mpnet-base-v2"
+console = Console()
 
-# Import project modules
+# --- PROJECT IMPORTS ---
 import sys
 import os
 
 # Ensure the parent directory is in path for package imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+current_file_path = os.path.abspath(__file__)
+current_dir = os.path.dirname(current_file_path)
+project_root = os.path.dirname(current_dir)
+
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
 try:
     from crawlers.clustering import cluster_data, extract_cluster_labels
@@ -38,21 +43,32 @@ try:
     from crawlers.llm_refiner import LLMRefiner
     from crawlers.trend_scoring import calculate_unified_score
 except (ImportError, ModuleNotFoundError):
-    # Fallback for local/flat execution
+    # Fallback for flat directory structure (some notebook environments)
     try:
-        from clustering import cluster_data, extract_cluster_labels
-        from alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
-        from ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
-        from sentiment import batch_analyze_sentiment
-        from vectorizers import get_embeddings
-        from taxonomy_classifier import TaxonomyClassifier
-        from llm_refiner import LLMRefiner
-        from trend_scoring import calculate_unified_score
+        import clustering
+        import alias_normalizer
+        import ner_extractor
+        import sentiment
+        import vectorizers
+        import taxonomy_classifier
+        import llm_refiner
+        import trend_scoring
+        
+        cluster_data = clustering.cluster_data
+        extract_cluster_labels = clustering.extract_cluster_labels
+        normalize_with_aliases = alias_normalizer.normalize_with_aliases
+        build_alias_dictionary = alias_normalizer.build_alias_dictionary
+        batch_normalize_texts = alias_normalizer.batch_normalize_texts
+        enrich_text_with_entities = ner_extractor.enrich_text_with_entities
+        batch_enrich_texts = ner_extractor.batch_enrich_texts
+        HAS_NER = ner_extractor.HAS_NER
+        batch_analyze_sentiment = sentiment.batch_analyze_sentiment
+        get_embeddings = vectorizers.get_embeddings
+        TaxonomyClassifier = taxonomy_classifier.TaxonomyClassifier
+        LLMRefiner = llm_refiner.LLMRefiner
+        calculate_unified_score = trend_scoring.calculate_unified_score
     except Exception as e:
-        console.print(f"[yellow]⚠️ Partial imports failed: {e}. Some features may be disabled.[/yellow]")
-
-DEFAULT_MODEL = "paraphrase-multilingual-mpnet-base-v2"
-console = Console()
+        console.print(f"[yellow]⚠️ Partial imports failed: {e}. System might be unstable.[/yellow]")
 
 def clean_text(text):
     if not text: return ""
