@@ -66,32 +66,38 @@ class LLMRefiner:
             response = self.model.generate_content(prompt)
             return response.text
         else:
-            # Gemma chat format fallback
-            messages = [{"role": "user", "content": prompt}]
+            # Gemma chat format
             try:
                 # Try standard template
+                messages = [{"role": "user", "content": prompt}]
                 formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             except Exception:
-                # Manual Gemma/Instruction fallback
+                # Manual Gemma fallback
                 formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
             
-            # Use return_full_text=True for consistency, but handle False just in case
-            output = self.pipeline(formatted_prompt, return_full_text=True)
+            # Setting return_full_text=False returns ONLY the generated part
+            output = self.pipeline(
+                formatted_prompt, 
+                max_new_tokens=1024,
+                return_full_text=False, 
+                do_sample=True,
+                temperature=0.1,
+                top_p=0.9,
+                truncation=True
+            )
             res_text = output[0]['generated_text']
             
             if self.debug:
-                console.print(f"[dim blue]DEBUG: Prompt length: {len(formatted_prompt)}, Total length: {len(res_text)}[/dim blue]")
+                console.print(f"[dim blue]DEBUG: Generated {len(res_text)} chars.[/dim blue]")
+            
+            # If empty, the model might be a "Base" model and hate the tags
+            if not res_text.strip():
+                if self.debug: console.print("[dim yellow]DEBUG: Empty response with tags. Retrying with raw prompt...[/dim yellow]")
+                # Fallback to a plain text completion prompt
+                raw_prompt = f"Task: {prompt}\nResult (JSON):"
+                output = self.pipeline(raw_prompt, max_new_tokens=1024, return_full_text=False)
+                res_text = output[0]['generated_text']
 
-            # Robust extraction:
-            # 1. Check for Gemma tags first (most reliable)
-            if "<start_of_turn>model\n" in res_text:
-                return res_text.split("<start_of_turn>model\n")[-1].strip()
-            
-            # 2. Check if the prompt is actually included in the result
-            if res_text.startswith(formatted_prompt):
-                return res_text[len(formatted_prompt):].strip()
-            
-            # 3. If prompt is not included, the whole text is likely the generation
             return res_text.strip()
 
     def _extract_json(self, text, is_list=False):
@@ -167,8 +173,8 @@ Categories:
 - C: Market (Commerce, Tech, Entertainment)"""
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
-        # We'll split into chunks of 5 clusters per request for local models (much safer)
-        chunk_size = 5 if self.provider != "gemini" else 30
+        # We'll split into chunks of 3 clusters per request for local models (maximum stability)
+        chunk_size = 3 if self.provider != "gemini" else 30
         all_results = {}
 
         for i in range(0, len(clusters_to_refine), chunk_size):
@@ -176,9 +182,9 @@ Categories:
             
             batch_str = ""
             for c in chunk:
-                # Use slightly more context per post but only 2 posts for better speed/token ratio
-                context = "\n".join([p.get('content', '')[:250] for p in c['sample_posts'][:2]])
-                batch_str += f"### ID: {c['label']}\nLabel: {c['name']}\nType: {c['topic_type']}\nContext: {context}\n\n"
+                # Limit context significantly for 2B models
+                context = "\n".join([p.get('content', '')[:150] for p in c['sample_posts'][:2]])
+                batch_str += f"- ID: {c['label']} | Name: {c['name']}\n  Context: {context}\n\n"
 
             prompt = f"""
 Analyze these {len(chunk)} news/social clusters from Vietnam.
