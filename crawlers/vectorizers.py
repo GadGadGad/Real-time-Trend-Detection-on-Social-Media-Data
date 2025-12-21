@@ -174,23 +174,28 @@ def get_glove_embeddings(texts: list, glove_path: str = None, dim: int = 100) ->
     return embeddings
 
 
+import hashlib
+import pickle
+
 def get_embeddings(texts: list, method: str = "sentence-transformer", 
                    model_name: str = None, device: str = None, 
-                   existing_model=None, **kwargs) -> np.ndarray:
+                   existing_model=None, cache_dir="embeddings_cache", **kwargs) -> np.ndarray:
     """
-    Get embeddings using specified method.
+    Get embeddings with optional disk caching.
+    """
+    if not texts: return np.array([])
     
-    Args:
-        texts: List of text strings
-        method: 'sentence-transformer', 'tfidf', 'bow', or 'glove'
-        model_name: Model name for sentence-transformer
-        device: 'cuda' or 'cpu'
-        existing_model: Already instantiated model to reuse
-        **kwargs: Additional arguments
-        
-    Returns:
-        numpy array of embeddings
-    """
+    # Create unique hash for this request (texts + model + method)
+    text_hash = hashlib.md5("".join(texts[:100] + [str(len(texts))]).encode()).hexdigest()
+    cache_filename = f"{method}_{model_name.replace('/', '_') if model_name else 'none'}_{text_hash}.npy"
+    
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, cache_filename)
+        if os.path.exists(cache_path):
+            console.print(f"[green]📦 Loading cached embeddings from {cache_path}[/green]")
+            return np.load(cache_path)
+
     method = method.lower()
     
     if method == "tfidf":
@@ -223,6 +228,13 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
             model = SentenceTransformer(model_name, device=device)
             
         embeddings = model.encode(texts, show_progress_bar=True, device=device)
+        
+        # Save to cache if enabled
+        if cache_dir:
+            cache_path = os.path.join(cache_dir, cache_filename)
+            np.save(cache_path, embeddings)
+            console.print(f"[green]💾 Saved embeddings to {cache_path}[/green]")
+            
         return embeddings
     
     else:

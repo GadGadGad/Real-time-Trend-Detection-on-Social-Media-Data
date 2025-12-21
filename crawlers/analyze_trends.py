@@ -37,7 +37,7 @@ try:
     from crawlers.clustering import cluster_data, extract_cluster_labels
     from crawlers.alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
     from crawlers.ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
-    from crawlers.sentiment import batch_analyze_sentiment
+    from crawlers.sentiment import batch_analyze_sentiment, clear_sentiment_analyzer
     from crawlers.vectorizers import get_embeddings
     from crawlers.taxonomy_classifier import TaxonomyClassifier
     from crawlers.llm_refiner import LLMRefiner
@@ -63,6 +63,7 @@ except (ImportError, ModuleNotFoundError):
         batch_enrich_texts = ner_extractor.batch_enrich_texts
         HAS_NER = ner_extractor.HAS_NER
         batch_analyze_sentiment = sentiment.batch_analyze_sentiment
+        clear_sentiment_analyzer = sentiment.clear_sentiment_analyzer
         get_embeddings = vectorizers.get_embeddings
         TaxonomyClassifier = taxonomy_classifier.TaxonomyClassifier
         LLMRefiner = llm_refiner.LLMRefiner
@@ -149,26 +150,21 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         rerank=True, min_cluster_size=5, labeling_method="semantic",
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
-                        llm_custom_instruction=None):
+                        llm_custom_instruction=None, use_cache=True):
     if not posts: return []
     
-    # If using Gemma on Kaggle, move embedder to CPU to save VRAM for the big model
-    embedding_device = 'cpu' if (use_llm and llm_provider != 'gemini') else None
+    # In Sequential mode, we use CUDA for everything, but one at a time.
+    import torch
+    embedding_device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
+    console.print(f"🚀 [cyan]Phase 1: High-Speed Embeddings & Sentiment on {embedding_device}...[/cyan]")
     embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device)
     
-    # Pre-load LLM if needed, with cache clear
-    import torch
-    if torch.cuda.is_available(): torch.cuda.empty_cache()
-    
-    llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path) if use_llm else None
     taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
     reranker = None
     if rerank:
         ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
-        try: 
-            # Cross-Encoder is small, but let's be safe
-            reranker = CrossEncoder(ce_model, device=embedding_device)
+        try: reranker = CrossEncoder(ce_model, device=embedding_device)
         except: pass
 
     post_contents = [p.get('content', '')[:500] for p in posts]
@@ -188,7 +184,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         method=embedding_method, 
         model_name=model_name,
         existing_model=embedder,
-        device=embedding_device
+        device=embedding_device,
+        cache_dir="embeddings_cache" if use_cache else None
     )
     cluster_labels = cluster_data(post_embeddings, min_cluster_size=min_cluster_size)
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
@@ -196,7 +193,14 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
 
     trend_keys = list(trends.keys())
     trend_queries = [" ".join(trends[t]['keywords']) for t in trend_keys]
-    trend_embeddings = embedder.encode(trend_queries) if trend_queries else []
+    trend_embeddings = get_embeddings(
+        trend_queries, 
+        method=embedding_method, 
+        model_name=model_name,
+        existing_model=embedder,
+        device=embedding_device,
+        cache_dir="embeddings_cache" if use_cache else None
+    ) if trend_queries else []
     
     cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method, anchors=anchors)
     cluster_mapping = {}
@@ -237,7 +241,20 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             "posts": cluster_posts # Temporary for LLM
         }
 
-    # --- NEW: BATCH LLM REFINEMENT ---
+    # --- PHASE 2: SEQUENTIAL GPU CLEANUP ---
+    if use_llm and embedding_device == 'cuda' and llm_provider != 'gemini':
+        console.print("[yellow]🧹 Phase 2: Unloading Phase 1 models to free VRAM for LLM...[/yellow]")
+        if 'embedder' in locals(): del embedder
+        if 'reranker' in locals(): del reranker
+        if 'taxonomy_clf' in locals(): del taxonomy_clf
+        clear_sentiment_analyzer()
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    # --- PHASE 3: BATCH LLM REFINEMENT ---
+    console.print(f"🚀 [cyan]Phase 3: LLM Refinementpass using {llm_provider}...[/cyan]")
+    llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path) if use_llm else None
     if llm_refiner:
         to_refine = []
         for l, m in cluster_mapping.items():

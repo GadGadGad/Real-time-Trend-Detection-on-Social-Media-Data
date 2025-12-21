@@ -64,11 +64,25 @@ class LLMRefiner:
             response = self.model.generate_content(prompt)
             return response.text
         else:
-            # Gemma chat format
+            # Gemma chat format fallback
             messages = [{"role": "user", "content": prompt}]
-            formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            try:
+                # Try standard template
+                formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            except Exception:
+                # Manual Gemma/Instruction fallback if template is missing
+                # Format: <start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n
+                formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+            
             output = self.pipeline(formatted_prompt)
-            return output[0]['generated_text'].split("model\n")[-1]
+            res_text = output[0]['generated_text']
+            
+            # Extract only the model's response
+            if "<start_of_turn>model\n" in res_text:
+                return res_text.split("<start_of_turn>model\n")[-1].strip()
+            elif "model\n" in res_text:
+                return res_text.split("model\n")[-1].strip()
+            return res_text[len(formatted_prompt):].strip()
 
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
         if not self.enabled:

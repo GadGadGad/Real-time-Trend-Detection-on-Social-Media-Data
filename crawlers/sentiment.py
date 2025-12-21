@@ -64,6 +64,18 @@ def batch_analyze_sentiment(texts):
         console.print(f"[red]Batch sentiment error: {e}[/red]")
         return [_fallback_sentiment(t) for t in texts]
 
+def clear_sentiment_analyzer():
+    """Unload the sentiment model and free GPU memory"""
+    global _sentiment_analyzer
+    if _sentiment_analyzer and _sentiment_analyzer != "fallback":
+        console.print("[yellow]🗑 Clearing Sentiment Model from memory...[/yellow]")
+        del _sentiment_analyzer
+        _sentiment_analyzer = None
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
 def _fallback_sentiment(text):
     """Dictionary fallback"""
     POSITIVE_WORDS = {'tuyệt vời', 'xuất sắc', 'hay', 'tốt', 'đẹp', 'yêu', 'thích', 'vui', 'hạnh phúc', 'ủng hộ', 'ngon', 'giỏi'}
