@@ -101,6 +101,13 @@ def load_json(filepath):
         return []
 
 
+def load_social_data(files):
+    """Wrapper to load multiple social JSON files."""
+    all_data = []
+    for f in files:
+        all_data.extend(load_json(f))
+    return all_data
+
 def load_news_articles(data_dir):
     """Load news articles from CSV files in subdirectories."""
     unified = []
@@ -131,6 +138,34 @@ def load_news_articles(data_dir):
             console.print(f"[red]Error loading News CSV {filepath}: {e}[/red]")
             
     return unified
+
+def load_news_data(files):
+    """Wrapper to load multiple news CSV files (Notebook compatible)."""
+    unified = []
+    for filepath in files:
+        try:
+            source_name = os.path.basename(os.path.dirname(filepath)).upper()
+            with open(filepath, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    content = row.get('content', '')
+                    title = row.get('title', '')
+                    full_text = f"{title}\n{content}"
+                    
+                    unified.append({
+                        "source": source_name,
+                        "content": full_text,
+                        "title": title,
+                        "url": row.get('url', ''),
+                        "stats": {'likes': 0, 'comments': 0, 'shares': 0},
+                        "time": row.get('published_at', '')
+                    })
+        except Exception as e:
+            console.print(f"[red]Error loading News CSV {filepath}: {e}[/red]")
+    return unified
+
+# Alias for notebook
+load_google_trends = load_trends
 
 
 def load_trends(csv_files):
