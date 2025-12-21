@@ -21,7 +21,7 @@ import argparse
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 from crawlers.clustering import cluster_data, extract_cluster_labels
-from crawlers.alias_normalizer import load_alias_dictionary, normalize_text_with_aliases, build_alias_dictionary
+from crawlers.alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
 from crawlers.ner_extractor import enrich_text_with_ner, batch_enrich_texts, HAS_NER
 from crawlers.sentiment import batch_analyze_sentiment
 from crawlers.vectorizers import get_embeddings
@@ -63,6 +63,28 @@ DEFAULT_MODEL = "paraphrase-multilingual-mpnet-base-v2"
 console = Console()
 
 
+import re
+
+def clean_text(text):
+    """
+    Remove common social media noise like credits.
+    """
+    if not text:
+        return ""
+        
+    # Remove "Cre:", "Credit:", "Nguồn:", "Via:" followed by text
+    # Case insensitive, handles various separators
+    patterns = [
+        r'(?i)\b(cre|credit|via|nguồn)\s*[:.-]\s*.*$', # Matches "Cre: abc" to end of line/string
+        r'(?i)\b(cre|credit)\s+by\s*[:.-]?\s*.*$'
+    ]
+    
+    cleaned = text
+    for p in patterns:
+        cleaned = re.sub(p, '', cleaned)
+    
+    return cleaned.strip()
+
 def load_json(filepath):
     """
     Load Facebook data from JSON (supports Apify format).
@@ -95,7 +117,7 @@ def load_json(filepath):
 
                 unified.append({
                     "source": source,
-                    "content": text,
+                    "content": clean_text(text), # Apply cleaning
                     "title": "",
                     "url": item.get('url') or item.get('postUrl') or '',
                     "stats": stats,
