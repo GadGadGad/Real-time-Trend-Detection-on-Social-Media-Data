@@ -27,6 +27,7 @@ underthesea>=6.8.0
 # Visualization
 matplotlib
 seaborn
+streamlit
 
 # Development
 jupyter
