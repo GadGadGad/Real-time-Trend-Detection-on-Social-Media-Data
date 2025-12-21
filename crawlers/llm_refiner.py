@@ -128,6 +128,10 @@ class LLMRefiner:
                     # Try to find at least the start
                     if start != -1:
                         content = text[start:]
+                    elif is_list and text.find('{') != -1:
+                        # Case: Model forgot [ ] but started with {
+                        start = text.find('{')
+                        content = text[start:]
                     else:
                         return None
                 else:
@@ -138,7 +142,6 @@ class LLMRefiner:
             content = content.replace("...", "")
             
             # 2. Replace literal newlines with spaces (fixes multiline strings)
-            # JSON allows whitespace between tokens, so this is safe for structure too
             content = content.replace('\n', ' ').replace('\r', '')
             
             # 3. Clean trailing commas (common LLM error)
@@ -148,22 +151,30 @@ class LLMRefiner:
                 return json.loads(content)
             except json.JSONDecodeError:
                 # 4. If still failing, it might be truncated. Try to close it.
-                if is_list and not content.strip().endswith(']'):
-                    content += "]"
-                    try: return json.loads(content)
-                    except: pass
+                if is_list:
+                     # Attempt to wrap bare list if brackets missing
+                    if not content.strip().startswith('['):
+                        content = "[" + content
                     
-                    # Try closing the last object then the list
-                    content = content.rstrip() + "}]"
-                    try: return json.loads(content)
-                    except: pass
-                
+                    if not content.strip().endswith(']'):
+                         # Try rudimentary fixing
+                        try: return json.loads(content + "]")
+                        except: pass
+                        try: return json.loads(content + "}]")
+                        except: pass
+
                 # 5. Last resort: Use regex to extract object by object
                 if is_list:
+                    # Non-greedy match for complete objects
                     objects = re.findall(r"\{.*?\}", content)
                     if objects:
+                        # Reconstruct valid list
                         fixed_json = "[" + ",".join(objects) + "]"
-                        return json.loads(fixed_json)
+                        try: 
+                            data = json.loads(fixed_json)
+                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} objects via regex.[/dim green]")
+                            return data
+                        except: pass
                 
                 if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:100]}...[/dim red]")
                 return None
@@ -173,17 +184,73 @@ class LLMRefiner:
                 console.print(f"[dim yellow]DEBUG: Raw text was: {text}[/dim yellow]")
             return None
 
+    def deduplicate_topics(self, topic_list):
+        """
+        Phase 4: Semantic Deduplication.
+        Takes a list of topic names and returns a mapping {original: canonical}.
+        """
+        if not self.enabled or not topic_list:
+            return {t: t for t in topic_list}
+
+        unique_topics = list(set(topic_list))
+        # No need to dedup if very few
+        if len(unique_topics) < 2:
+            return {t: t for t in topic_list}
+
+        mapping = {t: t for t in topic_list}
+        
+        # Chunking for long lists (LLM context limit)
+        chunk_size = 50
+        for i in range(0, len(unique_topics), chunk_size):
+            chunk = unique_topics[i : i + chunk_size]
+            chunk_str = "\n".join([f"- {t}" for t in chunk])
+            
+            prompt = f"""
+Role: Senior Editor.
+Task: Analyze this list of news headlines.
+Group headlines that refer to the EXACT SAME EVENT.
+For each group, pick one "Canonical Name" (the best one).
+
+Input:
+{chunk_str}
+
+Respond STRICTLY in JSON object format:
+{{
+  "Original Title 1": "Canonical Title A",
+  "Original Title 2": "Canonical Title A",
+  "Unique Title 3": "Unique Title 3"
+}}
+Only include items that change or are part of a group.
+"""
+            try:
+                text = self._generate(prompt)
+                results = self._extract_json(text, is_list=False)
+                if results:
+                    for orig, canon in results.items():
+                        if orig in mapping:
+                            mapping[orig] = canon
+                    
+                    if self.debug: 
+                         console.print(f"[green]DEBUG: Deduped batch {i//chunk_size}: found {len(results)} mappings.[/green]")
+            except Exception as e:
+                console.print(f"[red]Dedup error: {e}[/red]")
+        
+        return mapping
+
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
         if not self.enabled:
             return cluster_name, original_category, ""
 
-        instruction = custom_instruction or """Tasks:
-            1. Create a professional, concise title for this event in Vietnamese (max 8 words). 
-            2. Classify into:
-            - A: Critical (Accidents, Disasters, Safety)
-            - B: Social (Policy, controversy, public sentiment)
-            - C: Market (Commerce, Tech, Entertainment)
-            3. Provide a brief Vietnamese reasoning (1 sentence)."""
+        instruction = custom_instruction or """Role: Senior News Editor.
+Task: Rename this cluster into a concise, factual news headline in Vietnamese (max 10 words).
+Rules:
+- No clickbait.
+- Focus on the main event/keyword.
+- Classify into:
+  * A: Critical (Accidents, Weather, Health, Crime)
+  * B: Social (Viral, Controversy, Daily Life)
+  * C: Market (Economy, Tech, Entertainment, Sports)
+- Provide brief reasoning."""
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
         context_str = "\n---\n".join(context_texts)
@@ -217,11 +284,12 @@ class LLMRefiner:
         if not self.enabled or not clusters_to_refine:
             return {}
 
-        instruction = custom_instruction or """For each cluster ID, provide a professional title, category, and reasoning.
+        instruction = custom_instruction or """Role: Senior Editor.
+Task: For each cluster, write a short, factual Vietnamese headline.
 Categories:
-- A: Critical (Accidents, Disasters, Safety)
-- B: Social (Policy, controversy, public sentiment)
-- C: Market (Commerce, Tech, Entertainment)"""
+- A: Critical (Safety, Accidents, Health)
+- B: Social (Public interest, Viral, Policy)
+- C: Market (Business, Tech, Showbiz)"""
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
         # We'll split into chunks of 3 clusters per request for local models (maximum stability)
@@ -280,3 +348,26 @@ Respond STRICTLY in a JSON list of objects:
                     except: pass
         
         return all_results
+
+    def summarize_text(self, text, max_words=100):
+        """
+        Summarize a long text into a concise paragraph.
+        """
+        if not self.enabled or not text: return text
+        
+        prompt = f"""
+Role: Senior Editor.
+Task: Summarize the following article in Vietnamese (max {max_words} words).
+Keep the main entities, numbers, and key events. Delete fluff.
+
+Input:
+{text[:4000]} # Limit input to avoid token overflow even on LLM side
+
+Result:
+"""
+        try:
+            summary = self._generate(prompt)
+            # Basic cleanup
+            return summary.replace("Summary:", "").strip()
+        except Exception:
+            return text[:500] # Fallback to truncation

@@ -180,6 +180,25 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     if anchors:
         post_contents_enriched = [apply_guidance_enrichment(t, anchors) for t in post_contents_enriched]
 
+    # --- PHASE 0: SUMMARIZATION ---
+    if use_llm: # Only run if advanced features enabled
+        long_indices = [i for i, t in enumerate(post_contents_enriched) if len(t) > 2500]
+        if long_indices:
+            from crawlers.summarizer import Summarizer
+            console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices)} long articles...[/cyan]")
+            
+            summ = Summarizer()
+            summ.load_model()
+            
+            long_texts = [post_contents_enriched[i] for i in long_indices]
+            summaries = summ.summarize_batch(long_texts)
+            summ.unload_model() # Free GPU immediately
+            
+            for idx, summary in zip(long_indices, summaries):
+                post_contents_enriched[idx] = f"SUMMARY: {summary}"
+                
+            console.print(f"   ✅ [green]Summarized {len(long_indices)} posts with ViT5.[/green]")
+
     post_embeddings = get_embeddings(
         post_contents_enriched, 
         method=embedding_method, 
@@ -281,6 +300,21 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             
             success_count = len(batch_results)
             console.print(f"   ✅ [bold green]LLM Pass Complete: Successfully refined {success_count}/{len(to_refine)} clusters.[/bold green]")
+
+        # --- PHASE 4: SEMANTIC DEDUPLICATION ---
+        console.print("🔗 [cyan]Phase 4: Semantic Topic Deduplication...[/cyan]")
+        all_topics = [m["final_topic"] for m in cluster_mapping.values() if m["topic_type"] != "Discovery"]
+        if all_topics:
+            canonical_map = llm_refiner.deduplicate_topics(all_topics)
+            dedup_count = 0
+            for label, m in cluster_mapping.items():
+                orig = m["final_topic"]
+                if orig in canonical_map and canonical_map[orig] != orig:
+                    m["final_topic"] = canonical_map[orig]
+                    dedup_count += 1
+            
+            if dedup_count > 0:
+                console.print(f"   ✨ [green]Merged {dedup_count} clusters into canonical topics.[/green]")
 
     # Consolidated Mapping
     consolidated_mapping = {}

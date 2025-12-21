@@ -226,6 +226,9 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
             model = existing_model
         else:
             model = SentenceTransformer(model_name, device=device)
+        
+        # Enforce sequence length limit (default 256, strictly enforced)
+        model.max_seq_length = kwargs.get('max_seq_length', 256)
             
         embeddings = model.encode(texts, show_progress_bar=True, device=device)
         
