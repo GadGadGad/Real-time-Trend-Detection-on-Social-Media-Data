@@ -8,9 +8,10 @@ load_dotenv()
 console = Console()
 
 class LLMRefiner:
-    def __init__(self, provider="gemini", api_key=None, model_path=None):
+    def __init__(self, provider="gemini", api_key=None, model_path=None, debug=False):
         self.provider = provider
         self.enabled = False
+        self.debug = debug
         
         if provider == "gemini":
             try:
@@ -101,7 +102,10 @@ class LLMRefiner:
                 content = text[start:end]
             
             return json.loads(content)
-        except Exception:
+        except Exception as e:
+            if self.debug:
+                console.print(f"[dim red]DEBUG: JSON Parse error: {e}[/dim red]")
+                console.print(f"[dim yellow]DEBUG: Raw text was: {text}[/dim yellow]")
             return None
 
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
@@ -196,7 +200,13 @@ Respond STRICTLY in a JSON list of objects:
                         console.print(f"      ✨ [green]Refined {len(results)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
                 else:
                     console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i//chunk_size + 1}[/yellow]")
+                    if self.debug:
+                        console.print(f"[dim yellow]DEBUG Raw Response: {text}[/dim yellow]")
             except Exception as e:
                 console.print(f"[red]Batch LLM error in chunk {i//chunk_size + 1}: {e}[/red]")
+                if self.debug:
+                    # In case text was not even generated or crashed before
+                    try: console.print(f"[dim red]DEBUG Text: {text}[/dim red]")
+                    except: pass
         
         return all_results

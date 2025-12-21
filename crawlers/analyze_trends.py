@@ -150,7 +150,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         rerank=True, min_cluster_size=5, labeling_method="semantic",
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
-                        llm_custom_instruction=None, use_cache=True):
+                        llm_custom_instruction=None, use_cache=True,
+                        debug_llm=False):
     if not posts: return []
     
     # In Sequential mode, we use CUDA for everything, but one at a time.
@@ -254,7 +255,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
 
     # --- PHASE 3: BATCH LLM REFINEMENT ---
     console.print(f"🚀 [cyan]Phase 3: LLM Refinementpass using {llm_provider}...[/cyan]")
-    llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path) if use_llm else None
+    llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path, debug=debug_llm) if use_llm else None
     if llm_refiner:
         to_refine = []
         for l, m in cluster_mapping.items():
