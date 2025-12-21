@@ -186,7 +186,9 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
     if not texts: return np.array([])
     
     # Create unique hash for this request (texts + model + method)
-    text_hash = hashlib.md5("".join(texts[:100] + [str(len(texts))]).encode()).hexdigest()
+    # Use full text list for reliable caching (hashing strings is fast enough)
+    combined_text = "".join(texts) + str(len(texts)) + str(model_name)
+    text_hash = hashlib.md5(combined_text.encode()).hexdigest()
     cache_filename = f"{method}_{model_name.replace('/', '_') if model_name else 'none'}_{text_hash}.npy"
     
     if cache_dir:

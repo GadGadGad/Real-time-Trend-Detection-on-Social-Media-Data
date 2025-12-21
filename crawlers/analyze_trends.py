@@ -185,23 +185,51 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         # If summarizing always, threshold is 0. Else, 2500 chars.
         len_threshold = 0 if summarize_all else 2500
         
-        long_indices = [i for i, t in enumerate(post_contents_enriched) if len(t) > len_threshold]
+        # Load Cache
+        summary_cache_file = "summary_cache.json"
+        summary_cache = {}
+        if os.path.exists(summary_cache_file):
+            try:
+                with open(summary_cache_file, 'r', encoding='utf-8') as f:
+                    summary_cache = json.load(f)
+                console.print(f"[dim]📦 Loaded {len(summary_cache)} cached summaries[/dim]")
+            except: pass
+
+        import hashlib
+        def get_hash(t): return hashlib.md5(t.encode()).hexdigest()
+
+        # Identify what actually needs summarization (not in cache)
+        long_indices_all = [i for i, t in enumerate(post_contents_enriched) if len(t) > len_threshold]
+        long_indices_to_process = []
         
-        if long_indices:
+        # Apply cache first
+        for idx in long_indices_all:
+            txt = post_contents_enriched[idx]
+            h = get_hash(txt)
+            if h in summary_cache:
+                post_contents_enriched[idx] = f"SUMMARY: {summary_cache[h]}"
+            else:
+                long_indices_to_process.append(idx)
+        
+        # Process missing entries
+        if long_indices_to_process:
             from crawlers.summarizer import Summarizer
             mode_desc = "ALL" if summarize_all else "LONG"
-            console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices)} articles ({mode_desc})...[/cyan]")
+            console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices_to_process)} articles ({mode_desc}) - {len(long_indices_all)-len(long_indices_to_process)} cached...[/cyan]")
             
             summ = Summarizer()
             summ.load_model()
             
-            long_texts = [post_contents_enriched[i] for i in long_indices]
+            long_texts = [post_contents_enriched[i] for i in long_indices_to_process]
             summaries = summ.summarize_batch(long_texts)
             summ.unload_model() # Free GPU immediately
             
-            # Save to CSV log
+            # Save to CSV log & Update Cache
             log_file = "summarized_posts_log.csv"
             file_exists = os.path.isfile(log_file)
+            
+            new_cache_entries = 0
+            
             try:
                 with open(log_file, 'a', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
@@ -211,8 +239,13 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     import datetime
                     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    for idx, summary in zip(long_indices, summaries):
+                    for idx, summary in zip(long_indices_to_process, summaries):
                         original = post_contents_enriched[idx]
+                        # Cache Key
+                        h = get_hash(original)
+                        summary_cache[h] = summary
+                        new_cache_entries += 1
+                        
                         # Update content in place
                         post_contents_enriched[idx] = f"SUMMARY: {summary}"
                         
@@ -224,11 +257,20 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                             summary, 
                             original[:200].replace('\n', ' ') + "..."
                         ])
-                console.print(f"   💾 [dim]Saved summaries to {log_file}[/dim]")
             except Exception as e:
                 console.print(f"[red]Failed to save summary log: {e}[/red]")
 
-            console.print(f"   ✅ [green]Summarized {len(long_indices)} posts with ViT5.[/green]")
+            # Save Cache to Disk
+            if new_cache_entries > 0:
+                try:
+                    with open(summary_cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(summary_cache, f, ensure_ascii=False)
+                    console.print(f"   💾 [green]Cached {new_cache_entries} new summaries to {summary_cache_file}[/green]")
+                except: pass
+
+            console.print(f"   ✅ [green]Summarized {len(long_indices_to_process)} posts with ViT5.[/green]")
+        elif long_indices_all:
+             console.print(f"   ✅ [green]All {len(long_indices_all)} target posts were found in cache![/green]")
 
     post_embeddings = get_embeddings(
         post_contents_enriched, 
@@ -326,8 +368,19 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     if m["topic_type"] == "Discovery":
                         m["final_topic"] = f"New: {res['refined_title']}"
                     m["category"] = res["category"]
+                    m["event_type"] = res.get("event_type", "Specific") # Default to specific if missing
                     m["category_method"] = "LLM"
                     m["llm_reasoning"] = res["reasoning"]
+
+                    # FILTER: Downgrade "Generic" events unless they are massive viral hits
+                    if m["event_type"] == "Generic":
+                        if m["trend_score"] < 80:
+                            m["topic_type"] = "Noise"
+                            m["category"] = "Generic/Routine"
+                            m["final_topic"] = f"[Generic] {res['refined_title']}"
+                        else:
+                            # Keep it but mark it
+                            m["final_topic"] = f"Viral: {res['refined_title']}"
             
             success_count = len(batch_results)
             console.print(f"   ✅ [bold green]LLM Pass Complete: Successfully refined {success_count}/{len(to_refine)} clusters.[/bold green]")

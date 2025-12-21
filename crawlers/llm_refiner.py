@@ -250,6 +250,9 @@ Rules:
   * A: Critical (Accidents, Weather, Health, Crime)
   * B: Social (Viral, Controversy, Daily Life)
   * C: Market (Economy, Tech, Entertainment, Sports)
+- Classify Event Significance ("event_type"):
+  * "Specific": A unique, named event (e.g., "SEA Games 33", "Typhoon Yagi", "Blackpink Concert").
+  * "Generic": Routine activity or general topic (e.g., "Football match", "Traffic jam", "Weather is hot", "Today Weather Forecast").
 - Provide brief reasoning."""
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
@@ -268,6 +271,7 @@ Rules:
                 {{
                     "refined_title": "...",
                     "category": "A/B/C",
+                    "event_type": "Specific/Generic",
                     "reasoning": "..."
                 }}
         """
@@ -275,10 +279,10 @@ Rules:
             text = self._generate(prompt)
             data = self._extract_json(text, is_list=False)
             if data:
-                return data.get('refined_title', cluster_name), data.get('category', original_category), data.get('reasoning', "")
-            return cluster_name, original_category, ""
+                return data.get('refined_title', cluster_name), data.get('category', original_category), data.get('reasoning', ""), data.get('event_type', "Specific")
+            return cluster_name, original_category, "", "Specific"
         except Exception:
-            return cluster_name, original_category, ""
+            return cluster_name, original_category, "", "Specific"
 
     def refine_batch(self, clusters_to_refine, custom_instruction=None):
         if not self.enabled or not clusters_to_refine:
@@ -289,7 +293,10 @@ Task: For each cluster, write a short, factual Vietnamese headline.
 Categories:
 - A: Critical (Safety, Accidents, Health)
 - B: Social (Public interest, Viral, Policy)
-- C: Market (Business, Tech, Showbiz)"""
+- C: Market (Business, Tech, Showbiz)
+Event Types:
+- "Specific": Named, unique events (e.g., "Taylor Swift Tour", "Storm No.3").
+- "Generic": Routine/General activities (e.g., "Jogging", "Football", "Rain")."""
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
         # We'll split into chunks of 3 clusters per request for local models (maximum stability)
@@ -319,7 +326,7 @@ Input Clusters:
 
 Respond STRICTLY in a JSON list of objects:
 [
-  {{ "id": label_id, "refined_title": "...", "category": "A/B/C", "reasoning": "..." }},
+  {{ "id": label_id, "refined_title": "...", "category": "A/B/C", "event_type": "Specific/Generic", "reasoning": "..." }},
   ...
 ]
 """
