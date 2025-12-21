@@ -2,6 +2,7 @@ import re
 import os
 import json
 from rich.console import Console
+from rich.progress import track
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,6 +33,7 @@ class LLMRefiner:
                 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
                 
                 model_id = model_path or "google/gemma-2-2b-it"
+                self.model_id = model_id.lower()
                 console.print(f"[bold cyan]🤖 Loading {model_id} via Transformers...[/bold cyan]")
                 
                 # Use 4-bit quantization to fit larger models in Kaggle T4/P100
@@ -66,14 +68,19 @@ class LLMRefiner:
             response = self.model.generate_content(prompt)
             return response.text
         else:
-            # Gemma chat format
+            # Gemma/Qwen chat format
             try:
                 # Try standard template
                 messages = [{"role": "user", "content": prompt}]
                 formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             except Exception:
-                # Manual Gemma fallback
-                formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+                # Manual Fallback based on model type
+                if "qwen" in self.model_id:
+                    # Qwen ChatML format
+                    formatted_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                else:
+                    # Default to Gemma format
+                    formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
             
             # Setting return_full_text=False returns ONLY the generated part
             output = self.pipeline(
@@ -92,12 +99,17 @@ class LLMRefiner:
             
             # If empty, the model might be a "Base" model and hate the tags
             if not res_text.strip():
-                if self.debug: console.print("[dim yellow]DEBUG: Empty response with tags. Retrying with raw prompt...[/dim yellow]")
+                if self.debug: console.print("[dim yellow]DEBUG: Empty response. Retrying with raw prompt...[/dim yellow]")
                 # Fallback to a plain text completion prompt
                 raw_prompt = f"Task: {prompt}\nResult (JSON):"
                 output = self.pipeline(raw_prompt, max_new_tokens=1024, return_full_text=False)
                 res_text = output[0]['generated_text']
 
+            # Robust extraction: remove known tags
+            for tag in ["<start_of_turn>model\n", "<|im_start|>assistant\n"]:
+                if tag in res_text:
+                    res_text = res_text.split(tag)[-1]
+            
             return res_text.strip()
 
     def _extract_json(self, text, is_list=False):
@@ -166,32 +178,32 @@ class LLMRefiner:
             return cluster_name, original_category, ""
 
         instruction = custom_instruction or """Tasks:
-1. Create a professional, concise title for this event in Vietnamese (max 8 words). 
-2. Classify into:
-   - A: Critical (Accidents, Disasters, Safety)
-   - B: Social (Policy, controversy, public sentiment)
-   - C: Market (Commerce, Tech, Entertainment)
-3. Provide a brief Vietnamese reasoning (1 sentence)."""
+            1. Create a professional, concise title for this event in Vietnamese (max 8 words). 
+            2. Classify into:
+            - A: Critical (Accidents, Disasters, Safety)
+            - B: Social (Policy, controversy, public sentiment)
+            - C: Market (Commerce, Tech, Entertainment)
+            3. Provide a brief Vietnamese reasoning (1 sentence)."""
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
         context_str = "\n---\n".join(context_texts)
 
         prompt = f"""
-Analyze this cluster of social media/news posts from Vietnam.
-Original Label: {cluster_name}
-Topic Type: {topic_type}
-Sample Posts:
-{context_str}
+            Analyze this cluster of social media/news posts from Vietnam.
+            Original Label: {cluster_name}
+            Topic Type: {topic_type}
+            Sample Posts:
+            {context_str}
 
-{instruction}
+            {instruction}
 
-Respond STRICTLY in JSON format:
-{{
-  "refined_title": "...",
-  "category": "A/B/C",
-  "reasoning": "..."
-}}
-"""
+            Respond STRICTLY in JSON format:
+                {{
+                    "refined_title": "...",
+                    "category": "A/B/C",
+                    "reasoning": "..."
+                }}
+        """
         try:
             text = self._generate(prompt)
             data = self._extract_json(text, is_list=False)
@@ -216,7 +228,12 @@ Categories:
         chunk_size = 3 if self.provider != "gemini" else 30
         all_results = {}
 
-        for i in range(0, len(clusters_to_refine), chunk_size):
+        all_results = {}
+        
+        # Use rich progress bar
+        iterator = track(range(0, len(clusters_to_refine), chunk_size), description=f"[cyan]Refining {len(clusters_to_refine)} clusters...[/cyan]")
+
+        for i in iterator:
             chunk = clusters_to_refine[i : i + chunk_size]
             
             batch_str = ""

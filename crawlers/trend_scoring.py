@@ -145,28 +145,18 @@ class ScoreCalculator:
         HIGH = 40  # Meaningful presence
         LOW = 15   # Minimal presence
         
-        if g > HIGH and f > HIGH and n > HIGH:
-            return "Strong Multi-source"
-        elif g > HIGH and f > HIGH:
-            return "Search & Social"
-        elif g > HIGH and n > HIGH:
-            return "Search & News"
-        elif f > HIGH and n > HIGH:
-            return "Social & News"
-        elif g > HIGH:
-            return "Search-Driven"
-        elif f > HIGH:
-            return "Social-Driven"
-        elif n > HIGH:
-            return "News-Driven"
+        if f > HIGH or n > HIGH:
+            return "Trending"
+        elif g > HIGH and (f > LOW or n > LOW):
+            return "Trending"
         else:
             return "Emerging / Noise"
 
 def calculate_unified_score(trend_data, cluster_posts):
     """
-    Simplified scoring adapter for analyze_trends.py
-    trend_data: {'keywords': [], 'volume': float}
-    cluster_posts: list of posts
+        Simplified scoring adapter for analyze_trends.py
+        trend_data: {'keywords': [], 'volume': float}
+        cluster_posts: list of posts
     """
     calc = ScoreCalculator()
     
