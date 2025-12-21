@@ -220,7 +220,7 @@ def extract_dynamic_anchors(posts, trends, top_n=20, include_locations=True):
     
     # Optional: Add major provinces as potential anchors
     if include_locations:
-        for loc in get_vietnam_locations():
+        for loc in get_known_locations():
             if len(loc) > 3: trend_kws.add(loc.lower())
     texts = [p.get('content', '').lower() for p in posts]
     vectorizer = CountVectorizer(ngram_range=(1, 2), max_features=1000)
