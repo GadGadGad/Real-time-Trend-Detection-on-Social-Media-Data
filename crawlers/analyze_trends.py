@@ -100,8 +100,18 @@ def filter_obvious_noise(trends):
     Stage 1: Pre-Filter. Removes lottery, price charts, and generic dates.
     """
     noise_keywords = [
-        'xo so', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 'gia vang', 'ti gia', 'code', 'wiki'
+        'xo so', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 'gia vang', 'ti gia', 'code', 'wiki',
+        # Tech platforms & apps (generic, not newsworthy)
+        'spotify', 'youtube', 'netflix', 'twitch', 'discord', 'instagram', 'facebook', 'tiktok',
+        'google', 'gemini', 'claude', 'meta', 'twitter', 'x.com', 'reddit',
+        # Generic services
+        'cloudflare', 'disney+', 'k+', 'vtv', 'fpt play', 'tv360', 'my tv',
+        # Generic terms
+        'weather', 'thoi tiet', 'lich am', 'am lich', 'tu vi', 'recap', 'wrapped',
+        'live', 'online', 'stream', 'xem', 'truc tiep', 'ket qua', 'lich thi dau',
+        'bxh', 'bang xep hang', 'kqbd', 'livescore', 'socolive', 'xoilac'
     ]
+
     
     filtered_trends = {}
     for k, v in trends.items():
@@ -144,7 +154,13 @@ def post_refinement_clean(trends, custom_blacklist=None):
     blacklist = custom_blacklist or [
         'xo so', 'tieu dung', 'gia ca', 'thoi tiet', 'tu vi', 
         'lich cup dien', 'ket qua xo so', 'kqxs', 'recap youtube',
-        'spotify wrapped', 'xsmb', 'xsmn', 'xsmt', 'vietlott'
+        'spotify wrapped', 'xsmb', 'xsmn', 'xsmt', 'vietlott',
+        # Platforms & generic services
+        'spotify', 'youtube', 'netflix', 'twitch', 'instagram', 'meta', 'gemini', 'claude',
+        'cloudflare', 'disney', 'riot', 'epic', 'steam', 'kick',
+        # Schedule/results queries (not events themselves)
+        'lich thi dau', 'lich', 'schedule', 'bxh', 'bang xep hang', 'kqbd', 'ket qua',
+        'livescore', 'socolive', 'xoilac', 'truc tiep', 'xem', 'live'
     ]
     
     final_trends = {}
