@@ -19,6 +19,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter
 
 # Import project modules
+import sys
+import os
+
+# Ensure the parent directory is in path for package imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 try:
     from crawlers.clustering import cluster_data, extract_cluster_labels
     from crawlers.alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
@@ -28,16 +37,19 @@ try:
     from crawlers.taxonomy_classifier import TaxonomyClassifier
     from crawlers.llm_refiner import LLMRefiner
     from crawlers.trend_scoring import calculate_unified_score
-except ImportError:
-    # Fallback for direct execution
-    from clustering import cluster_data, extract_cluster_labels
-    from alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
-    from ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
-    from sentiment import batch_analyze_sentiment
-    from vectorizers import get_embeddings
-    from taxonomy_classifier import TaxonomyClassifier
-    from llm_refiner import LLMRefiner
-    from trend_scoring import calculate_unified_score
+except (ImportError, ModuleNotFoundError):
+    # Fallback for local/flat execution
+    try:
+        from clustering import cluster_data, extract_cluster_labels
+        from alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
+        from ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
+        from sentiment import batch_analyze_sentiment
+        from vectorizers import get_embeddings
+        from taxonomy_classifier import TaxonomyClassifier
+        from llm_refiner import LLMRefiner
+        from trend_scoring import calculate_unified_score
+    except Exception as e:
+        console.print(f"[yellow]⚠️ Partial imports failed: {e}. Some features may be disabled.[/yellow]")
 
 DEFAULT_MODEL = "paraphrase-multilingual-mpnet-base-v2"
 console = Console()

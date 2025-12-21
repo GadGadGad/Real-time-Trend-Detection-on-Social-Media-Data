@@ -161,3 +161,45 @@ class ScoreCalculator:
             return "News-Driven"
         else:
             return "Emerging / Noise"
+
+def calculate_unified_score(trend_data, cluster_posts):
+    """
+    Simplified scoring adapter for analyze_trends.py
+    trend_data: {'keywords': [], 'volume': float}
+    cluster_posts: list of posts
+    """
+    calc = ScoreCalculator()
+    
+    # 1. Google (G)
+    vol = trend_data.get('volume', 0)
+    MAX_VOL = 1000000 
+    g_score = (math.log10(vol + 1) / math.log10(MAX_VOL + 1)) * 100 if vol > 0 else 0
+    g_score = min(100, g_score)
+
+    # 2. Social (F)
+    total_interactions = 0
+    for p in cluster_posts:
+        stats = p.get('stats', {})
+        total_interactions += stats.get('likes', 0)
+        total_interactions += stats.get('comments', 0) * 2
+        total_interactions += stats.get('shares', 0) * 3
+    
+    MAX_INTERACTIONS = 20000 
+    f_score = (math.log10(total_interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
+    f_score = min(100, f_score)
+
+    # 3. News (N)
+    news_count = len([p for p in cluster_posts if 'Face' not in p.get('source', '')])
+    MAX_ARTICLES = 50
+    n_score = (news_count / MAX_ARTICLES) * 100
+    n_score = min(100, n_score)
+
+    # Composite
+    score = (0.4 * g_score) + (0.35 * f_score) + (0.25 * n_score)
+    
+    return round(score, 1), {
+        "G": round(g_score, 1),
+        "F": round(f_score, 1),
+        "N": round(n_score, 1),
+        "total_posts": len(cluster_posts)
+    }
