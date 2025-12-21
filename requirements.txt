@@ -33,6 +33,7 @@ streamlit
 jupyter
 python-dotenv
 google-generativeai
+
 torch
 accelerate
 bitsandbytes
