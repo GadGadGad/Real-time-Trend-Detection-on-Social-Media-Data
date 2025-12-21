@@ -164,8 +164,7 @@ def load_news_data(files):
             console.print(f"[red]Error loading News CSV {filepath}: {e}[/red]")
     return unified
 
-# Alias for notebook
-load_google_trends = load_trends
+
 
 
 def load_trends(csv_files):
@@ -199,6 +198,9 @@ def load_trends(csv_files):
             console.print(f"[red]Error loading CSV {filepath}: {e}[/red]")
             
     return trends
+
+# Alias for notebook
+load_google_trends = load_trends
 
 
 def find_matches(posts, trends, model_name=None, threshold=0.35, 
