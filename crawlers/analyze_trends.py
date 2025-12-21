@@ -104,6 +104,19 @@ def load_json(filepath):
 def load_trends(csv_files):
     trends = {}
     for filepath in csv_files:
+        # Support pre-refined JSON
+        if filepath.endswith('.json'):
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    trends.update(loaded)
+                    console.print(f"[dim]📦 Loaded {len(loaded)} pre-refined trends from {filepath}[/dim]")
+                    continue
+            except Exception as e:
+                console.print(f"[red]Error loading JSON {filepath}: {e}[/red]")
+                continue
+        
+        # Original CSV parsing
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
@@ -123,6 +136,80 @@ def load_trends(csv_files):
                     trends[main_trend] = {"keywords": keywords, "volume": volume}
         except Exception: pass
     return trends
+
+def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_path, debug_llm, source_files=None):
+    """
+    Dedicated preprocessing step for Google Trends.
+    Checks for cache based on input files.
+    """
+    import hashlib
+    import json
+    
+    cache_file = "refined_trends_cache.json"
+    source_key = ""
+    if source_files:
+        # Create a stable key from filenames and sizes
+        source_info = []
+        for f in sorted(source_files):
+            if os.path.exists(f):
+                source_info.append(f"{f}:{os.path.getsize(f)}")
+        source_key = hashlib.md5("".join(source_info).encode()).hexdigest()
+    
+    # Try loading from cache
+    if source_key and os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+                if source_key in cache:
+                    console.print(f"📦 [green]Using cached refined trends for {len(source_files)} files.[/green]")
+                    return cache[source_key]
+        except: pass
+
+    console.print("🧹 [cyan]Refining Google Trends (Filtering & Merging)...[/cyan]")
+    refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path, debug=debug_llm)
+    
+    if not refiner.enabled:
+        console.print("[yellow]⚠️ LLM not available for refinement. Using raw trends.[/yellow]")
+        return trends
+
+    refined_data = refiner.refine_trends(trends)
+    if not refined_data:
+        return trends
+
+    # Apply changes to a copy to avoid in-place surprises if needed, 
+    # but here we return the new dict.
+    new_trends = trends.copy()
+    
+    # Remove filtered
+    for bad_term in refined_data.get("filtered", []):
+        if bad_term in new_trends: del new_trends[bad_term]
+        
+    # Merge synonym volumes
+    for variant, canonical in refined_data.get("merged", {}).items():
+        if variant in new_trends and canonical in new_trends:
+            new_trends[canonical]['volume'] += new_trends[variant]['volume']
+            # Also merge keywords
+            new_trends[canonical]['keywords'] = list(set(new_trends[canonical]['keywords'] + new_trends[variant]['keywords']))
+            del new_trends[variant]
+        elif variant in new_trends:
+            new_trends[canonical] = new_trends.pop(variant)
+            
+    console.print(f"   ✨ [green]Refinement Complete: {len(trends)} -> {len(new_trends)} trends.[/green]")
+    
+    # Save to cache
+    if source_key:
+        try:
+            cache = {}
+            if os.path.exists(cache_file):
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cache = json.load(f)
+            cache[source_key] = new_trends
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache, f, ensure_ascii=False)
+            console.print(f"   💾 [dim]Saved refinement result to cache.[/dim]")
+        except: pass
+
+    return new_trends
 
 def extract_dynamic_anchors(posts, trends, top_n=20):
     from sklearn.feature_extraction.text import CountVectorizer
@@ -151,7 +238,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
-                        debug_llm=False, summarize_all=False, no_dedup=False, refine_trends=False):
+                        debug_llm=False, summarize_all=False, no_dedup=False):
     if not posts: return []
     
     # In Sequential mode, we use CUDA for everything, but one at a time.
@@ -161,27 +248,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     console.print(f"🚀 [cyan]Phase 1: High-Speed Embeddings & Sentiment on {embedding_device}...[/cyan]")
     embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device)
     
-    # --- PHASE 6: PRE-MATCHING TREND REFINEMENT ---
-    if refine_trends and use_llm:
-         console.print("🧹 [cyan]Refining Google Trends (Filtering & Merging)...[/cyan]")
-         llm_refiner_temp = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path, debug=debug_llm)
-         if llm_refiner_temp.enabled:
-             refined = llm_refiner_temp.refine_trends(trends)
-             if refined:
-                 # Remove filtered
-                 for bad_term in refined.get("filtered", []):
-                     if bad_term in trends: del trends[bad_term]
-                     
-                 # Merge synonym volumes
-                 for variant, canonical in refined.get("merged", {}).items():
-                     if variant in trends and canonical in trends:
-                         trends[canonical]['volume'] += trends[variant]['volume']
-                         del trends[variant]
-                     elif variant in trends:
-                         # Rename
-                         trends[canonical] = trends.pop(variant)
-                         
-                 console.print(f"   ✨ [green]Removed {len(refined.get('filtered', []))} generic trends, Merged {len(refined.get('merged', {}))} duplicates.[/green]")
+    # --- PHASE 1: EMBEDDINGS ---
     
     taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
     reranker = None
@@ -529,6 +596,17 @@ if __name__ == "__main__":
         for f in args.social: social_posts.extend(load_json(f))
         trends = load_trends(args.trends)
         
+        if args.refine_trends:
+            # Pass args.trends to the refiner for caching
+            trends = refine_trends_preprocessing(
+                trends, 
+                args.llm_provider, 
+                os.getenv("GEMINI_API_KEY"), # Assuming API key might be in env or passed
+                args.llm_model_path, 
+                False, # debug
+                source_files=args.trends
+            )
+
         results = find_matches_hybrid(
             social_posts, trends, 
             use_llm=args.llm, 
@@ -536,7 +614,6 @@ if __name__ == "__main__":
             llm_model_path=args.llm_model_path,
             llm_custom_instruction=args.llm_instruction,
             summarize_all=args.summarize_all,
-            no_dedup=args.no_dedup,
-            refine_trends=args.refine_trends
+            no_dedup=args.no_dedup
         )
         print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")

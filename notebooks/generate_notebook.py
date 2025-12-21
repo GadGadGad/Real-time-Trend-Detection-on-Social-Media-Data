@@ -54,7 +54,7 @@ notebook = {
     "# Ensure project root is in path\n",
     "sys.path.append(os.path.abspath('..'))\n",
     "\n",
-    "from crawlers.analyze_trends import find_matches, find_matches_hybrid, load_social_data, load_news_data, load_google_trends\n",
+    "from crawlers.analyze_trends import find_matches, find_matches_hybrid, load_social_data, load_news_data, load_google_trends, refine_trends_preprocessing\n",
     "from crawlers.alias_normalizer import build_alias_dictionary, normalize_with_aliases\n",
     "from crawlers.vectorizers import get_embeddings\n",
     "\n",
@@ -80,6 +80,10 @@ notebook = {
     "LIMIT_POSTS = 500  # Set to None for full run (~4600 posts), 500 for testing\n",
     "USE_PHOBERT = True # Use PhoBERT for sentiment\n",
     "THRESHOLD = 0.5    # Similarity threshold\n",
+    "\n",
+    "REFINE_TRENDS = True # [NEW] Phase 6: Use LLM to clean Google Trends before matching\n",
+    "NO_DEDUP = False      # [NEW] Phase 4: Skip semantic deduplication if too aggressive\n",
+    "\n",
     "# Recommendations for Vietnamese:\n",
     "# Bi-Encoder: 'keepitreal/vietnamese-sbert' or 'dangvantuan/vietnamese-embedding'\n",
     "MODEL_NAME = \"paraphrase-multilingual-mpnet-base-v2\"\n",
@@ -146,7 +150,34 @@ notebook = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 📊 1.1 General Stats\n",
+    "## 🧹 1.1 Phase 6: Google Trends Refinement (Optional)\n",
+    "Clean and merge trends before analysis using instructions defined in Configuration."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": None,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "if REFINE_TRENDS:\n",
+    "    trends = refine_trends_preprocessing(\n",
+    "        trends, \n",
+    "        llm_provider=LLM_PROVIDER, \n",
+    "        gemini_api_key=GEMINI_API_KEY, \n",
+    "        llm_model_path=LLM_MODEL_PATH, \n",
+    "        debug_llm=DEBUG_LLM, \n",
+    "        source_files=trend_files  # Enables caching\n",
+    "    )\n",
+    "else:\n",
+    "    print(\"Skipping Trend Refinement (using raw trends).\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 📊 1.2 General Stats\n",
     "Let's understand our dataset volume."
    ]
   },
@@ -372,6 +403,7 @@ notebook = {
     "    use_cache=USE_CACHE,\n",
     "    debug_llm=DEBUG_LLM,\n",
     "    summarize_all=SUMMARIZE_ALL,\n",
+    "    no_dedup=NO_DEDUP,\n",
     "    save_all=True\n",
     ")\n",
     "df_hyb = pd.DataFrame(matches_hybrid)\n",
