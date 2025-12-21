@@ -631,7 +631,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         
         cluster_mapping[label] = {
             "final_topic": final_topic_name, "topic_type": topic_type, "cluster_name": cluster_query,
-            "category": category, "category_method": cat_method, "match_score": best_match_score,
+            "category": category, "category_method": category_method, "match_score": best_match_score,
             "trend_score": unified_score, "score_components": components, "llm_reasoning": "",
             "posts": cluster_posts # Temporary for LLM
         }

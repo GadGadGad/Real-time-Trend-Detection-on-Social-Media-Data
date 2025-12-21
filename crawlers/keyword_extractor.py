@@ -71,6 +71,20 @@ class KeywordExtractor:
             if len(kw) > 3 and kw.lower() in text_lower:
                 found_taxonomy.append(kw)
 
+        # 4. Extract Date/Time (High Signal)
+        found_temporal = []
+        # Support: day/month, day/month/year, hh:mm, "ngày dd/mm", "tháng mm"
+        temporal_patterns = [
+            r'\d{1,2}/\d{1,2}(?:/\d{2,4})?', # 7/12, 07/12, 07/12/2025
+            r'\bngay\s+\d{1,2}/\d{1,2}\b',    # ngay 7/12
+            r'\bthang\s+\d{1,2}\b',           # thang 12
+            r'\d{1,2}:\d{2}'                 # 10:37, 22:00
+        ]
+        text_no_accents = re.sub(r'[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ]', ' ', text_lower)
+        for pattern in temporal_patterns:
+            matches = re.findall(pattern, text_lower)
+            found_temporal.extend(matches)
+
         # 4. Clean and Tokenize with Word Segmentation
         try:
             if self.segmentation_method == "phonlp":
@@ -107,7 +121,7 @@ class KeywordExtractor:
 
         # 6. Combine and Weight
         # Locations get triple weight, Taxonomy keywords get double
-        keywords = found_locations * 2 + found_taxonomy * 2 + top_words
+        keywords = found_locations * 2 + found_taxonomy * 2 + found_temporal + top_words
         
         # Deduplicate while preserving order (Locations first)
         seen = set()
