@@ -32,4 +32,6 @@ streamlit
 # Development
 jupyter
 python-dotenv
-google-generativeai
+google-generativeaitorch
+accelerate
+bitsandbytes

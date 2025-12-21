@@ -119,11 +119,12 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         use_aliases=True, use_ner=False, 
                         embedding_method="sentence-transformer", save_all=False,
                         rerank=True, min_cluster_size=5, labeling_method="semantic",
-                        reranker_model_name=None, use_llm=False, gemini_api_key=None):
+                        reranker_model_name=None, use_llm=False, gemini_api_key=None,
+                        llm_provider="gemini", llm_model_path=None):
     if not posts: return []
     
     embedder = SentenceTransformer(model_name or DEFAULT_MODEL)
-    llm_refiner = LLMRefiner(api_key=gemini_api_key) if use_llm else None
+    llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path) if use_llm else None
     taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
     reranker = None
     if rerank:
@@ -202,7 +203,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 })
         
         if to_refine:
-            console.print(f"   🤖 [cyan]Batch Refining {len(to_refine)} clusters with Gemini...[/cyan]")
+            console.print(f"   🤖 [cyan]Batch Refining {len(to_refine)} clusters with {llm_provider}...[/cyan]")
             batch_results = llm_refiner.refine_batch(to_refine)
             
             for l, res in batch_results.items():
@@ -301,4 +302,25 @@ def load_news_data(files):
 load_google_trends = load_trends
 
 if __name__ == "__main__":
-    pass
+    parser = argparse.ArgumentParser(description="Multi-Source Trend Analysis")
+    parser.add_argument("--social", type=str, nargs="+", help="Social JSON files")
+    parser.add_argument("--news", type=str, nargs="+", help="News CSV files")
+    parser.add_argument("--trends", type=str, nargs="+", help="Google Trends CSV files")
+    parser.add_argument("--llm", action="store_true", help="Enable LLM refinement")
+    parser.add_argument("--llm-provider", type=str, default="gemini", choices=["gemini", "kaggle", "local"], help="LLM Provider")
+    parser.add_argument("--llm-model-path", type=str, help="Local path or HF ID for local LLM")
+    
+    args = parser.parse_args()
+    
+    if args.social and args.trends:
+        social_posts = []
+        for f in args.social: social_posts.extend(load_json(f))
+        trends = load_trends(args.trends)
+        
+        results = find_matches_hybrid(
+            social_posts, trends, 
+            use_llm=args.llm, 
+            llm_provider=args.llm_provider, 
+            llm_model_path=args.llm_model_path
+        )
+        print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")

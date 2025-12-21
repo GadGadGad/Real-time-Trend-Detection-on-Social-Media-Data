@@ -92,9 +92,11 @@ notebook = {
     "RERANK = True                             # Use Cross-Encoder for precision\n",
     "MIN_CLUSTER_SIZE = 5,                     # Min posts to form a trend\n",
     "\n",
-    "# LLM Refinement (Gemini)\n",
-    "USE_LLM = False                           # Set to True to enable Gemini Refinement\n",
-    "GEMINI_API_KEY = \"\"                       # Paste your API key here\n"
+    "# LLM Refinement\n",
+    "USE_LLM = False                           # Set to True to enable Refinement\n",
+    "LLM_PROVIDER = 'gemini'                   # 'gemini' or 'kaggle'\n",
+    "GEMINI_API_KEY = \"\"                       # For Gemini\n",
+    "LLM_MODEL_PATH = \"google/gemma-2-2b-it\"   # For Kaggle (e.g. /kaggle/input/gemma-2/transformers/2b-it/1)\n"
    ]
   },
   {
@@ -350,10 +352,11 @@ notebook = {
     "    reranker_model_name=CROSS_ENCODER_MODEL,\n",
     "    embedding_method=EMBEDDING_METHOD,\n",
     "    labeling_method=LABELING_METHOD,\n",
-    "    min_cluster_size=MIN_CLUSTER_SIZE,\n",
     "    rerank=RERANK,\n",
     "    use_llm=USE_LLM,\n",
     "    gemini_api_key=GEMINI_API_KEY,\n",
+    "    llm_provider=LLM_PROVIDER,\n",
+    "    llm_model_path=LLM_MODEL_PATH,\n",
     "    save_all=True\n",
     ")\n",
     "df_hyb = pd.DataFrame(matches_hybrid)\n",
