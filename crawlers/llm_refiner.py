@@ -101,7 +101,7 @@ class LLMRefiner:
             return res_text.strip()
 
     def _extract_json(self, text, is_list=False):
-        """Robustly extract JSON from text even with markdown or noise"""
+        """Robustly extract JSON from text even with markdown, newlines, or noise"""
         try:
             # Look for markdown blocks first
             code_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
@@ -112,10 +112,49 @@ class LLMRefiner:
                 char_start, char_end = ('[', ']') if is_list else ('{', '}')
                 start = text.find(char_start)
                 end = text.rfind(char_end) + 1
-                if start == -1 or end == 0: return None
-                content = text[start:end]
+                if start == -1 or end == 0: 
+                    # Try to find at least the start
+                    if start != -1:
+                        content = text[start:]
+                    else:
+                        return None
+                else:
+                    content = text[start:end]
             
-            return json.loads(content)
+            # --- SANITIZATION STEP ---
+            # 1. Remove "..." if the model hallucinated it
+            content = content.replace("...", "")
+            
+            # 2. Replace literal newlines with spaces (fixes multiline strings)
+            # JSON allows whitespace between tokens, so this is safe for structure too
+            content = content.replace('\n', ' ').replace('\r', '')
+            
+            # 3. Clean trailing commas (common LLM error)
+            content = re.sub(r",\s*([\]}])", r"\1", content)
+
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                # 4. If still failing, it might be truncated. Try to close it.
+                if is_list and not content.strip().endswith(']'):
+                    content += "]"
+                    try: return json.loads(content)
+                    except: pass
+                    
+                    # Try closing the last object then the list
+                    content = content.rstrip() + "}]"
+                    try: return json.loads(content)
+                    except: pass
+                
+                # 5. Last resort: Use regex to extract object by object
+                if is_list:
+                    objects = re.findall(r"\{.*?\}", content)
+                    if objects:
+                        fixed_json = "[" + ",".join(objects) + "]"
+                        return json.loads(fixed_json)
+                
+                if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:100]}...[/dim red]")
+                return None
         except Exception as e:
             if self.debug:
                 console.print(f"[dim red]DEBUG: JSON Parse error: {e}[/dim red]")
