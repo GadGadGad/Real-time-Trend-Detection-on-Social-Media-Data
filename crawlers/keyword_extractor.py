@@ -31,12 +31,29 @@ class KeywordExtractor:
 
     def _load_vncorenlp(self):
         if self.vncorenlp_model is None:
-            import py_vncorenlp
-            # Ensure model is downloaded
-            if not os.path.exists(os.path.join(self.vncorenlp_path, 'models')):
-                py_vncorenlp.download_model(save_dir=self.vncorenlp_path)
-            # Load segmenter
-            self.vncorenlp_model = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=self.vncorenlp_path)
+            try:
+                import py_vncorenlp
+                print(f"[VnCoreNLP] Checking for models at: {self.vncorenlp_path}")
+                
+                # Ensure model is downloaded
+                models_dir = os.path.join(self.vncorenlp_path, 'models')
+                if not os.path.exists(models_dir):
+                    print("[VnCoreNLP] Models not found. Attempting download...")
+                    print("[VnCoreNLP] ⚠️  Note: This requires internet access and may fail on Kaggle.")
+                    py_vncorenlp.download_model(save_dir=self.vncorenlp_path)
+                    print("[VnCoreNLP] ✅ Download complete!")
+                else:
+                    print(f"[VnCoreNLP] ✅ Models found at {models_dir}")
+                
+                # Load segmenter
+                print("[VnCoreNLP] Loading word segmentation model...")
+                self.vncorenlp_model = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=self.vncorenlp_path)
+                print("[VnCoreNLP] ✅ Model loaded successfully!")
+            except Exception as e:
+                print(f"[VnCoreNLP] ❌ Failed to load: {e}")
+                print("[VnCoreNLP] 🔄 Falling back to underthesea (CRF) segmentation")
+                # Set flag to use fallback
+                self.vncorenlp_model = "FALLBACK"
         return self.vncorenlp_model
 
     def _load_phonlp(self):
