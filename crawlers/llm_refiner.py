@@ -9,7 +9,7 @@ load_dotenv()
 console = Console()
 
 class LLMRefiner:
-    def __init__(self, provider="gemini", api_key=None, model_path=None, debug=False):
+    def __init__(self, provider="gemini", api_key=None, model_path=None, debug=False, batch_size=4):
         self.provider = provider
         self.enabled = False
         self.debug = debug
@@ -45,6 +45,9 @@ class LLMRefiner:
                 )
 
                 self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_id,
                     quantization_config=bnb_config,
@@ -57,60 +60,74 @@ class LLMRefiner:
                     model=self.model,
                     tokenizer=self.tokenizer,
                     max_new_tokens=1024, # Increased for batching
-                    temperature=0.1
+                    temperature=0.1,
+                    batch_size=batch_size
                 )
                 self.enabled = True
             except Exception as e:
                 console.print(f"[red]❌ Failed to load local model: {e}[/red]")
 
     def _generate(self, prompt):
+        return self._generate_batch([prompt])[0]
+
+    def _generate_batch(self, prompts):
+        if not prompts: return []
+        
         if self.provider == "gemini":
-            response = self.model.generate_content(prompt)
-            return response.text
+            results = []
+            for p in prompts:
+                try:
+                    results.append(self.model.generate_content(p).text)
+                except Exception:
+                    results.append("")
+            return results
         else:
-            # Gemma/Qwen chat format
-            try:
-                # Try standard template
-                messages = [{"role": "user", "content": prompt}]
-                formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            except Exception:
-                # Manual Fallback based on model type
-                if "qwen" in self.model_id:
-                    # Qwen ChatML format
-                    formatted_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                else:
-                    # Default to Gemma format
-                    formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+            formatted_prompts = []
+            for prompt in prompts:
+                try:
+                    messages = [{"role": "user", "content": prompt}]
+                    formatted = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                except Exception:
+                    if "qwen" in self.model_id:
+                        formatted = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                    else:
+                        formatted = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+                formatted_prompts.append(formatted)
             
-            # Setting return_full_text=False returns ONLY the generated part
-            output = self.pipeline(
-                formatted_prompt, 
+            # Using pipeline with a list of prompts (triggering batching)
+            outputs = self.pipeline(
+                formatted_prompts,
                 max_new_tokens=1024,
-                return_full_text=False, 
+                return_full_text=False,
                 do_sample=True,
                 temperature=0.1,
                 top_p=0.9,
                 truncation=True
             )
-            res_text = output[0]['generated_text']
             
-            if self.debug:
-                console.print(f"[dim blue]DEBUG: Generated {len(res_text)} chars.[/dim blue]")
-            
-            # If empty, the model might be a "Base" model and hate the tags
-            if not res_text.strip():
-                if self.debug: console.print("[dim yellow]DEBUG: Empty response. Retrying with raw prompt...[/dim yellow]")
-                # Fallback to a plain text completion prompt
-                raw_prompt = f"Task: {prompt}\nResult (JSON):"
-                output = self.pipeline(raw_prompt, max_new_tokens=1024, return_full_text=False)
+            results = []
+            for i, output in enumerate(outputs):
                 res_text = output[0]['generated_text']
-
-            # Robust extraction: remove known tags
-            for tag in ["<start_of_turn>model\n", "<|im_start|>assistant\n"]:
-                if tag in res_text:
-                    res_text = res_text.split(tag)[-1]
+                
+                # Robust extraction: remove known tags
+                for tag in ["<start_of_turn>model\n", "<|im_start|>assistant\n"]:
+                    if tag in res_text:
+                        res_text = res_text.split(tag)[-1]
+                
+                clean_res = res_text.strip()
+                if not clean_res:
+                    # Retry single if batch failed for this item (unlikely but safe)
+                    try:
+                        raw_prompt = f"Task: {prompts[i]}\nResult (JSON):"
+                        single_out = self.pipeline(raw_prompt, max_new_tokens=1024, return_full_text=False)
+                        clean_res = single_out[0]['generated_text'].strip()
+                    except: pass
+                
+                if self.debug:
+                    console.print(f"[dim blue]DEBUG: Generated {len(clean_res)} chars for item {i}.[/dim blue]")
+                results.append(clean_res)
             
-            return res_text.strip()
+            return results
 
     def _extract_json(self, text, is_list=False):
         """Robustly extract JSON from text even with markdown, newlines, or noise"""
@@ -202,8 +219,11 @@ class LLMRefiner:
         # Chunking for long lists (LLM context limit)
         # Reduced from 50 to 20 to prevent hallucinations/over-merging
         chunk_size = 20
+        all_prompts = []
+        chunks = []
         for i in range(0, len(unique_topics), chunk_size):
             chunk = unique_topics[i : i + chunk_size]
+            chunks.append(chunk)
             chunk_str = "\n".join([f"- {t}" for t in chunk])
             
             prompt = f"""
@@ -225,18 +245,23 @@ class LLMRefiner:
                 }}
                 Only include items that change or are part of a group.
             """
-            try:
-                text = self._generate(prompt)
-                results = self._extract_json(text, is_list=False)
-                if results:
-                    for orig, canon in results.items():
-                        if orig in mapping:
-                            mapping[orig] = canon
-                    
-                    if self.debug: 
-                         console.print(f"[green]DEBUG: Deduped batch {i//chunk_size}: found {len(results)} mappings.[/green]")
-            except Exception as e:
-                console.print(f"[red]Dedup error: {e}[/red]")
+            all_prompts.append(prompt)
+            
+        if all_prompts:
+            batch_texts = self._generate_batch(all_prompts)
+            for i, text in enumerate(batch_texts):
+                try:
+                    results = self._extract_json(text, is_list=False)
+                    if results:
+                        for orig, canon in results.items():
+                            if orig in mapping:
+                                mapping[orig] = canon
+                        if self.debug: 
+                            console.print(f"[green]DEBUG: Deduped batch {i}: found {len(results)} mappings.[/green]")
+                except Exception as e:
+                    console.print(f"[red]Dedup error in batch {i}: {e}[/red]")
+        
+        return mapping
         
         return mapping
 
@@ -257,6 +282,7 @@ class LLMRefiner:
         
         console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends...[/cyan]")
         
+        all_prompts = []
         for i in range(0, len(trend_list), chunk_size):
             chunk = trend_list[i : i + chunk_size]
             chunk_str = "\n".join([f"- {t}" for t in chunk])
@@ -284,40 +310,45 @@ class LLMRefiner:
                     }}
                 }}
             """
-            try:
-                text = self._generate(prompt)
-                results = self._extract_json(text, is_list=False)
-                if results:
-                    filtered = results.get("filtered", [])
-                    merged = results.get("merged", {})
-                    
-                    if filtered: all_filtered.extend(filtered)
-                    if merged: all_merged.update(merged)
-                    
-                    if self.debug:
-                        console.print(f"[dim]   Batch {i//chunk_size}: Filtered {len(filtered)}, Merged {len(merged)}[/dim]")
-            except Exception as e:
-                console.print(f"[red]Trend Refine Error: {e}[/red]")
+            all_prompts.append(prompt)
+            
+        if all_prompts:
+            batch_texts = self._generate_batch(all_prompts)
+            for i, text in enumerate(batch_texts):
+                try:
+                    results = self._extract_json(text, is_list=False)
+                    if results:
+                        filtered = results.get("filtered", [])
+                        merged = results.get("merged", {})
+                        
+                        if filtered: all_filtered.extend(filtered)
+                        if merged: all_merged.update(merged)
+                        
+                        if self.debug:
+                            console.print(f"[dim]   Batch {i}: Filtered {len(filtered)}, Merged {len(merged)}[/dim]")
+                except Exception as e:
+                    console.print(f"[red]Trend Refine Error in batch {i}: {e}[/red]")
         
         return {"filtered": all_filtered, "merged": all_merged}
+        
 
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
         if not self.enabled:
             return cluster_name, original_category, ""
 
         instruction = custom_instruction or """Role: Senior News Editor.
-Task: Rename this cluster into a concise, factual news headline in Vietnamese (max 10 words).
-Rules:
-- No clickbait.
-- Focus on the main event/keyword.
-- Classify into:
-  * A: Critical (Accidents, Weather, Health, Crime)
-  * B: Social (Viral, Controversy, Daily Life)
-  * C: Market (Economy, Tech, Entertainment, Sports)
-- Classify Event Significance ("event_type"):
-  * "Specific": A unique, named event (e.g., "SEA Games 33", "Typhoon Yagi", "Blackpink Concert").
-  * "Generic": Routine activity or general topic (e.g., "Football match", "Traffic jam", "Weather is hot", "Today Weather Forecast").
-- Provide brief reasoning."""
+            Task: Rename this cluster into a concise, factual news headline in Vietnamese (max 10 words).
+            Rules:
+            - No clickbait.
+            - Focus on the main event/keyword.
+            - Classify into:
+            * A: Critical (Accidents, Weather, Health, Crime)
+            * B: Social (Viral, Controversy, Daily Life)
+            * C: Market (Economy, Tech, Entertainment, Sports)
+            - Classify Event Significance ("event_type"):
+            * "Specific": A unique, named event (e.g., "SEA Games 33", "Typhoon Yagi", "Blackpink Concert").
+            * "Generic": Routine activity or general topic (e.g., "Football match", "Traffic jam", "Weather is hot", "Today Weather Forecast").
+            - Provide brief reasoning."""
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
         context_str = "\n---\n".join(context_texts)
@@ -370,20 +401,51 @@ Event Types:
         all_results = {}
         
         # Use rich progress bar
-        iterator = track(range(0, len(clusters_to_refine), chunk_size), description=f"[cyan]Refining {len(clusters_to_refine)} clusters...[/cyan]")
+        iterator = range(0, len(clusters_to_refine), chunk_size)
+        all_prompts = []
+        cluster_ids_per_chunk = []
 
         for i in iterator:
             chunk = clusters_to_refine[i : i + chunk_size]
+            cluster_ids_per_chunk.append([c['label'] for c in chunk])
             
             batch_str = ""
             for c in chunk:
-                # Limit context significantly for 2B models
-                context = "\n".join([p.get('content', '')[:150] for p in c['sample_posts'][:2]])
-                batch_str += f"- ID: {c['label']} | Name: {c['name']}\n  Context: {context}\n\n"
+                # Increase context for better reasoning
+                context_list = []
+                for j, p in enumerate(c['sample_posts'][:3]): # Up to 3 posts
+                    p_text = p.get('content', '')[:500] # Up to 500 chars
+                    context_list.append(f"[Post {j+1}] {p_text}")
+                
+                context = "\n".join(context_list)
+                
+                # Extract date range for temporal context
+                dates = []
+                for p in c['sample_posts']:
+                    d = p.get('published_at') or p.get('time')
+                    if d: dates.append(str(d)[:10]) # YYYY-MM-DD
+                
+                date_context = ""
+                if dates:
+                    unique_dates = sorted(list(set(dates)))
+                    if len(unique_dates) > 1:
+                        date_context = f" [Timeframe: {unique_dates[0]} to {unique_dates[-1]}]"
+                    else:
+                        date_context = f" [Date: {unique_dates[0]}]"
+
+                # Keywords significantly help grounding
+                kw_str = f"Keywords: {', '.join(c.get('keywords', []))}" if c.get('keywords') else ""
+
+                batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples:\n{context}\n\n"
 
             prompt = f"""
 Analyze these {len(chunk)} news/social clusters from Vietnam.
 {instruction}
+
+CRITICAL: 
+- Base your 'reasoning' ONLY on the provided Context and Keywords for THAT cluster. 
+- Do NOT mix facts between clusters. 
+- Ensure 'id' in JSON matches the 'Cluster ID'.
 
 Input Clusters:
 {batch_str}
@@ -394,29 +456,30 @@ Respond STRICTLY in a JSON list of objects:
   ...
 ]
 """
-            try:
-                text = self._generate(prompt)
-                results = self._extract_json(text, is_list=True)
-                
-                if results:
-                    for item in results:
-                        if isinstance(item, dict) and 'id' in item:
-                            all_results[item['id']] = item
-                    
-                    # Log a sample to show it's working
+            all_prompts.append(prompt)
+
+        if all_prompts:
+            batch_texts = self._generate_batch(all_prompts)
+            for i, text in enumerate(batch_texts):
+                try:
+                    results = self._extract_json(text, is_list=True)
                     if results:
-                        sample = results[0]
-                        console.print(f"      ✨ [green]Refined {len(results)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
-                else:
-                    console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i//chunk_size + 1}[/yellow]")
-                    if self.debug:
-                        console.print(f"[dim yellow]DEBUG Raw Response: {text}[/dim yellow]")
-            except Exception as e:
-                console.print(f"[red]Batch LLM error in chunk {i//chunk_size + 1}: {e}[/red]")
-                if self.debug:
-                    # In case text was not even generated or crashed before
-                    try: console.print(f"[dim red]DEBUG Text: {text}[/dim red]")
-                    except: pass
+                        for item in results:
+                            if isinstance(item, dict) and 'id' in item:
+                                all_results[item['id']] = item
+                        
+                        # Log a sample to show it's working
+                        if results:
+                            sample = results[0]
+                            console.print(f"      ✨ [green]Refined {len(results)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
+                    else:
+                        console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i+1}[/yellow]")
+                        if self.debug:
+                            console.print(f"[dim yellow]DEBUG Raw Response: {text}[/dim yellow]")
+                except Exception as e:
+                    console.print(f"[red]Batch LLM error in chunk {i+1}: {e}[/red]")
+        
+        return all_results
         
         return all_results
 

@@ -8,6 +8,7 @@ import csv
 import re
 import os
 import glob
+import unicodedata
 import numpy as np
 from datetime import datetime, timedelta
 from dateutil import parser
@@ -78,6 +79,22 @@ def clean_text(text):
     for p in patterns: cleaned = re.sub(p, '', cleaned)
     return cleaned.strip()
 
+def normalize_text(text):
+    """
+    Robust normalization: lowercases, strips diacritics, and removes extra spaces.
+    Focuses on Vietnamese characters.
+    """
+    if not text: return ""
+    # Lowercase and strip
+    text = text.lower().strip()
+    # Normalize unicode (NFD decomposes diacritics)
+    nfkd_form = unicodedata.normalize('NFKD', text)
+    # Remove diacritics (non-spacing marks)
+    text = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+    # Collapse multiple spaces
+    text = re.sub(r'\s+', ' ', text)
+    return text
+
 def load_json(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -86,6 +103,10 @@ def load_json(filepath):
             for item in data:
                 text = item.get('text') or item.get('content') or ''
                 time_str = item.get('time') or item.get('time_label') or ''
+                # Prioritize structured timestamp if available
+                p_timestamp = item.get('timestamp')
+                published_at = p_timestamp if p_timestamp else time_str
+                
                 page_name = item.get('pageName') or item.get('page_name') or 'Unknown'
                 unified.append({
                     "source": f"Face: {page_name}",
@@ -94,7 +115,8 @@ def load_json(filepath):
                     "url": item.get('url') or item.get('postUrl') or '',
                     "stats": item.get('stats') or {'likes': item.get('likes', 0), 'comments': item.get('comments', 0), 'shares': item.get('shares', 0)},
                     "time": time_str,
-                    "timestamp": item.get('timestamp')
+                    "published_at": published_at,
+                    "timestamp": p_timestamp
                 })
             return unified
     except Exception as e:
@@ -104,11 +126,23 @@ def load_json(filepath):
 def load_trends(csv_files):
     trends = {}
     for filepath in csv_files:
+        # Extract timestamp from filename (e.g., 20251208-1452)
+        file_time = None
+        match = re.search(r'(\d{8}-\d{4})', os.path.basename(filepath))
+        if match:
+            try:
+                file_time = datetime.strptime(match.group(1), "%Y%m%d-%H%M")
+            except: pass
+            
         # Support pre-refined JSON
         if filepath.endswith('.json'):
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     loaded = json.load(f)
+                    # If loaded items don't have time, add file_time
+                    for k, v in loaded.items():
+                        if 'time' not in v and file_time:
+                            v['time'] = file_time.isoformat()
                     trends.update(loaded)
                     console.print(f"[dim]📦 Loaded {len(loaded)} pre-refined trends from {filepath}[/dim]")
                     continue
@@ -133,7 +167,11 @@ def load_trends(csv_files):
                     
                     keywords = [k.strip() for k in row[4].split(',') if k.strip()]
                     if main_trend not in keywords: keywords.insert(0, main_trend)
-                    trends[main_trend] = {"keywords": keywords, "volume": volume}
+                    trends[main_trend] = {
+                        "keywords": keywords, 
+                        "volume": volume,
+                        "time": file_time.isoformat() if file_time else None
+                    }
         except Exception: pass
     return trends
 
@@ -142,92 +180,95 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
     Dedicated preprocessing step for Google Trends.
     Checks for cache based on input files.
     """
-    import hashlib
-    import json
-    
-    cache_file = "refined_trends_cache.json"
-    source_key = ""
+    # 1. Check for cache
+    cache_path = None
     if source_files:
-        # Create a stable key from filenames and sizes
-        source_info = []
-        for f in sorted(source_files):
-            if os.path.exists(f):
-                source_info.append(f"{f}:{os.path.getsize(f)}")
-        source_key = hashlib.md5("".join(source_info).encode()).hexdigest()
-    
-    # Try loading from cache
-    if source_key and os.path.exists(cache_file):
-        try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-                if source_key in cache:
-                    console.print(f"📦 [green]Using cached refined trends for {len(source_files)} files.[/green]")
-                    return cache[source_key]
-        except: pass
+        from hashlib import md5
+        combined_path = "".join(sorted(source_files))
+        cache_id = md5(combined_path.encode()).hexdigest()
+        cache_path = os.path.join(project_root, "cache", f"trend_refine_{cache_id}.json")
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    console.print(f"[green]📂 Loading trend refinement from cache: {os.path.basename(cache_path)}[/green]")
+                    return json.load(f)
+            except Exception: pass
 
-    console.print("🧹 [cyan]Refining Google Trends (Filtering & Merging)...[/cyan]")
-    refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path, debug=debug_llm)
+    # 2. Refine using LLM
+    refiner = LLMRefiner(
+        provider=llm_provider,
+        api_key=gemini_api_key,
+        model_path=llm_model_path,
+        debug=debug_llm
+    )
     
     if not refiner.enabled:
-        console.print("[yellow]⚠️ LLM not available for refinement. Using raw trends.[/yellow]")
         return trends
 
-    refined_data = refiner.refine_trends(trends)
-    if not refined_data:
-        return trends
-
-    # Apply changes to a copy to avoid in-place surprises if needed, 
-    # but here we return the new dict.
-    new_trends = trends.copy()
+    # Map normalized names to original keys for robust matching
+    norm_map = {normalize_text(k): k for k in trends.keys()}
     
-    # Case-insensitive mapping for lookups
-    key_map = {k.lower(): k for k in new_trends.keys()}
-    
-    # Remove filtered
-    for bad_term in refined_data.get("filtered", []):
-        orig_key = key_map.get(bad_term.lower())
-        if orig_key and orig_key in new_trends:
-            del new_trends[orig_key]
-            # Update map after deletion
-            del key_map[bad_term.lower()]
-            
-    # Merge synonym volumes
-    for variant, canonical in refined_data.get("merged", {}).items():
-        v_orig = key_map.get(variant.lower())
-        c_orig = key_map.get(canonical.lower())
+    result = refiner.refine_trends(trends)
+    if result:
+        filtered = result.get("filtered", [])
+        merged = result.get("merged", {})
         
-        if v_orig and v_orig in new_trends:
-            if c_orig and c_orig in new_trends:
-                if v_orig != c_orig:
-                    new_trends[c_orig]['volume'] += new_trends[v_orig]['volume']
-                    # Also merge keywords
-                    new_trends[c_orig]['keywords'] = list(set(new_trends[c_orig]['keywords'] + new_trends[v_orig]['keywords']))
-                    del new_trends[v_orig]
-                    del key_map[v_orig.lower()]
-            else:
-                # Rename the original variant to canonical if canonical not already present
-                # Use the canonical string provided by LLM as the new key
-                new_key = canonical
-                new_trends[new_key] = new_trends.pop(v_orig)
-                del key_map[v_orig.lower()]
-                key_map[new_key.lower()] = new_key
+        refined_trends = trends.copy()
+        
+        # Apply Filtering (Case-insensitive & Diacritic-robust)
+        for f_term in filtered:
+            norm_f = normalize_text(f_term)
+            # Try exact match first
+            target_key = norm_map.get(norm_f)
             
-    console.print(f"   ✨ [green]Refinement Complete: {len(trends)} -> {len(new_trends)} trends.[/green]")
-    
-    # Save to cache
-    if source_key:
-        try:
-            cache = {}
-            if os.path.exists(cache_file):
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    cache = json.load(f)
-            cache[source_key] = new_trends
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump(cache, f, ensure_ascii=False)
-            console.print(f"   💾 [dim]Saved refinement result to cache.[/dim]")
-        except: pass
+            # If no exact match, check for partial match (LLM often returns category names)
+            if not target_key:
+                for norm_k, orig_k in norm_map.items():
+                    if norm_f in norm_k or norm_k in norm_f:
+                        target_key = orig_k
+                        break
+            
+            if target_key and target_key in refined_trends:
+                del refined_trends[target_key]
 
-    return new_trends
+        # Apply Merging (Case-insensitive & Diacritic-robust)
+        norm_key_map = {normalize_text(k): k for k in refined_trends.keys()}
+
+        for variant, canonical in merged.items():
+            norm_v = normalize_text(variant)
+            norm_c = normalize_text(canonical)
+            
+            var_key = norm_key_map.get(norm_v)
+            can_key = norm_key_map.get(norm_c)
+            
+            # Fallback for merged variants (partial matches)
+            if not var_key:
+                for norm_k, orig_k in norm_key_map.items():
+                    if norm_v in norm_k:
+                        var_key = orig_k
+                        break
+
+            if var_key and can_key and var_key != can_key:
+                if var_key in refined_trends and can_key in refined_trends:
+                    # Merge data
+                    refined_trends[can_key]['volume'] += refined_trends[var_key]['volume']
+                    refined_trends[can_key]['keywords'] = list(set(refined_trends[can_key]['keywords'] + refined_trends[var_key]['keywords']))
+                    del refined_trends[var_key]
+                    # Update maps to facilitate chain merges
+                    norm_key_map = {normalize_text(k): k for k in refined_trends.keys()}
+
+        console.print(f"\n   ✨ Refinement Complete: {len(trends)} -> {len(refined_trends)} trends.")
+        
+        # 3. Save to cache
+        if cache_path:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(refined_trends, f, ensure_ascii=False, indent=2)
+            console.print(f"   💾 Saved refinement result to cache.")
+            
+        return refined_trends
+
+    return trends
 
 def extract_dynamic_anchors(posts, trends, top_n=20, include_locations=True):
     from sklearn.feature_extraction.text import CountVectorizer
@@ -501,8 +542,12 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 topic_type = "Trending"
 
         trend_data = trends.get(assigned_trend, {'volume': 0})
-        unified_score, components = calculate_unified_score(trend_data, cluster_posts)
-        category, cat_method = taxonomy_clf.classify(cluster_query + " " + assigned_trend) if taxonomy_clf else ("Unclassified", "None")
+        # Extract trend time
+        t_time_str = trend_data.get('time')
+        t_time = parser.parse(t_time_str) if t_time_str else None
+        
+        unified_score, components = calculate_unified_score(trend_data, cluster_posts, trend_time=t_time)
+        category, category_method = taxonomy_clf.classify(cluster_query + " " + assigned_trend) if taxonomy_clf else ("Unclassified", "None")
         
         llm_reasoning = ""
         final_topic_name = assigned_trend if assigned_trend != "Discovery" else f"New: {cluster_query}"
@@ -532,9 +577,15 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         to_refine = []
         for l, m in cluster_mapping.items():
             if m["topic_type"] == "Discovery" or m["trend_score"] > 30:
+                # Include trend keywords if available to help grounding
+                keywords = []
+                if m["final_topic"] in trends:
+                    keywords = trends[m["final_topic"]].get('keywords', [])
+                
                 to_refine.append({
                     "label": l, "name": m["cluster_name"], "topic_type": m["topic_type"],
-                    "category": m["category"], "sample_posts": m["posts"]
+                    "category": m["category"], "sample_posts": m["posts"],
+                    "keywords": keywords
                 })
         
         if to_refine:
@@ -552,12 +603,16 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m["category_method"] = "LLM"
                     m["llm_reasoning"] = res["reasoning"]
 
-                    # FILTER: Downgrade "Generic" events unless they are massive viral hits
-                    if m["event_type"] == "Generic":
-                        if m["trend_score"] < 80:
+                    # FILTER: Downgrade "Generic" events or routine Category C unless they are massive viral hits
+                    is_routine_c = (res["category"] == "C" and m["trend_score"] < 90)
+                    if m["event_type"] == "Generic" or is_routine_c:
+                        if m["trend_score"] < 80 or is_routine_c:
                             m["topic_type"] = "Noise"
-                            m["category"] = "Generic/Routine"
-                            m["final_topic"] = f"[Generic] {res['refined_title']}"
+                            reason = "Routine Category C" if is_routine_c else "Generic"
+                            m["category"] = f"{reason}/Routine"
+                            m["final_topic"] = f"[{reason}] {res['refined_title']}"
+                            if debug_llm:
+                                console.print(f"      🗑️  Downgraded cluster {l} to Noise ({reason}): {res['refined_title']}")
                         else:
                             # Keep it but mark it
                             m["final_topic"] = f"Viral: {res['refined_title']}"
@@ -596,7 +651,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             all_posts.extend([posts[i] for i in idx])
         
         m = cluster_mapping[labels[0]]
-        combined_score, combined_comp = calculate_unified_score(trends.get(topic, {'volume': 0}), all_posts)
+        t_data = trends.get(topic, {'volume': 0})
+        t_time_str = t_data.get('time')
+        t_time = parser.parse(t_time_str) if t_time_str else None
+        
+        combined_score, combined_comp = calculate_unified_score(t_data, all_posts, trend_time=t_time)
         consolidated_mapping[topic] = {**m, "trend_score": combined_score, "score_components": combined_comp}
 
     matches = []

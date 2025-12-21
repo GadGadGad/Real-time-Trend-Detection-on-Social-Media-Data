@@ -478,4 +478,4 @@ if __name__ == "__main__":
     console.rule(f"[bold]Tuoi Tre Crawler[/bold]: [cyan]{', '.join(args.category)}[/cyan]")
 
     c = TuoiTreCrawler(Path(args.output), use_cache=(not args.no_cache), browser_type=args.browser)
-    c.crawl(args.category, args.pages, workers=args.workers)
+    c.crawl(args.category, args.pages * 5 + 1, workers=args.workers)

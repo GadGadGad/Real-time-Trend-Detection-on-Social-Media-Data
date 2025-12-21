@@ -6,9 +6,13 @@ from crawlers.alias_normalizer import normalize_with_aliases
 from crawlers.taxonomy_keywords import get_all_event_keywords
 
 class KeywordExtractor:
-    def __init__(self):
+    def __init__(self, segmentation_method: str = "underthesea"):
+        """
+        segmentation_method: "underthesea" (fast, CRF) or "transformer" (accurate, Deep Learning)
+        """
         self.known_locations = get_known_locations()
         self.taxonomy_keywords = get_all_event_keywords()
+        self.segmentation_method = segmentation_method
         # Common Vietnamese stopwords (minimal set for extraction)
         self.stopwords = {
             'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
@@ -41,14 +45,28 @@ class KeywordExtractor:
             if len(kw) > 3 and kw.lower() in text_lower:
                 found_taxonomy.append(kw)
 
-        # 4. Clean and Tokenize
-        # Remove special characters, digits, etc.
-        clean_text = re.sub(r'[^\w\s]', ' ', text_lower)
-        clean_text = re.sub(r'\d+', ' ', clean_text)
-        words = clean_text.split()
+        # 4. Clean and Tokenize with Word Segmentation
+        try:
+            import underthesea
+            if self.segmentation_method == "transformer":
+                # Use deep learning model for better accuracy (requires more resources)
+                text_segmented = underthesea.word_tokenize(text_lower, format="text", model="deep")
+            else:
+                # Default CRF-based fast segmentation
+                text_segmented = underthesea.word_tokenize(text_lower, format="text")
+            
+            # undertakings format="text" replaces spaces with underscores in compound words: "hà nội" -> "hà_nội"
+            clean_text = re.sub(r'[^\w\s]', ' ', text_segmented)
+            clean_text = re.sub(r'\d+', ' ', clean_text)
+            words = clean_text.split()
+        except Exception as e:
+            # Fallback to simple split if error
+            clean_text = re.sub(r'[^\w\s]', ' ', text_lower)
+            clean_text = re.sub(r'\d+', ' ', clean_text)
+            words = clean_text.split()
 
         # 5. Frequency Analysis
-        filtered_words = [w for w in words if len(w) > 2 and w not in self.stopwords]
+        filtered_words = [w for w in words if len(w) > 2 and w.replace('_', '') not in self.stopwords]
         word_counts = Counter(filtered_words)
         
         # Get most common topical words

@@ -123,7 +123,7 @@ class ThanhNienCrawler:
         # Clean input
         category_slug = category_slug.replace(".htm", "").strip("/")
 
-        for p in range(1, pages + 1):
+        for p in range(1, pages * 5 + 1):
 
             if p == 1:
                 url = f"{BASE}/{category_slug}.htm"

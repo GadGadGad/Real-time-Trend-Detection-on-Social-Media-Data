@@ -161,12 +161,16 @@ class ScoreCalculator:
         else:
             return "Emerging / Noise"
 
-def calculate_unified_score(trend_data, cluster_posts):
+def calculate_unified_score(trend_data, cluster_posts, trend_time=None):
     """
-        Simplified scoring adapter for analyze_trends.py
-        trend_data: {'keywords': [], 'volume': float}
-        cluster_posts: list of posts
+    Simplified scoring adapter for analyze_trends.py
+    trend_data: {'keywords': [], 'volume': float}
+    cluster_posts: list of posts
+    trend_time: datetime object
     """
+    import datetime
+    from dateutil import parser
+    
     calc = ScoreCalculator()
     
     # 1. Google (G)
@@ -177,11 +181,23 @@ def calculate_unified_score(trend_data, cluster_posts):
 
     # 2. Social (F)
     total_interactions = 0
+    post_times = []
+    
     for p in cluster_posts:
         stats = p.get('stats', {})
         total_interactions += stats.get('likes', 0)
         total_interactions += stats.get('comments', 0) * 2
         total_interactions += stats.get('shares', 0) * 3
+        
+        # Collect timestamps
+        try:
+            pt = p.get('published_at')
+            if pt:
+                if isinstance(pt, str):
+                    post_times.append(parser.parse(pt))
+                elif isinstance(pt, datetime.datetime):
+                    post_times.append(pt)
+        except: pass
     
     MAX_INTERACTIONS = 20000 
     f_score = (math.log10(total_interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
@@ -203,14 +219,34 @@ def calculate_unified_score(trend_data, cluster_posts):
     if active_sources == 3: synergy_mult = 1.2
     elif active_sources == 2: synergy_mult = 1.1
 
+    # 5. Temporal Decay
+    temporal_mult = 1.0
+    time_reason = ""
+    if trend_time and post_times:
+        # Calculate median post time
+        sorted_times = sorted([t.replace(tzinfo=None) for t in post_times])
+        median_post_time = sorted_times[len(sorted_times)//2]
+        
+        delta = abs((trend_time.replace(tzinfo=None) - median_post_time).total_seconds())
+        delta_days = delta / 86400
+        
+        # Decay: 0.8^days (lose 20% relevance per day of difference)
+        temporal_mult = math.pow(0.8, delta_days)
+        time_reason = f"Relevance decay: {round(temporal_mult, 2)} (Δ{round(delta_days, 1)} days)"
+    elif not post_times and trend_time:
+        # Penalize if we have an old trend but NO date data in posts (uncertainty)
+        temporal_mult = 0.9
+
     # Composite
     base_score = (0.4 * g_score) + (0.35 * f_score) + (0.25 * n_score)
-    final_score = min(100, base_score * synergy_mult)
+    final_score = min(100, base_score * synergy_mult * temporal_mult)
     
     return round(final_score, 1), {
         "G": round(g_score, 1),
         "F": round(f_score, 1),
         "N": round(n_score, 1),
         "Synergy": synergy_mult,
+        "Temporal": round(temporal_mult, 2),
+        "TimeNote": time_reason,
         "total_posts": len(cluster_posts)
     }
