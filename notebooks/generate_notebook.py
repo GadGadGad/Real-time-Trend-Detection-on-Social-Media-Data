@@ -96,7 +96,14 @@ notebook = {
     "USE_LLM = False                           # Set to True to enable Refinement\n",
     "LLM_PROVIDER = 'gemini'                   # 'gemini' or 'kaggle'\n",
     "GEMINI_API_KEY = \"\"                       # For Gemini\n",
-    "LLM_MODEL_PATH = \"google/gemma-2-2b-it\"   # For Kaggle (e.g. /kaggle/input/gemma-2/transformers/2b-it/1)\n"
+    "LLM_MODEL_PATH = \"google/gemma-2-2b-it\"   # For Kaggle\n",
+    "\n",
+    "# Custom Prompt for Cluster Refinement\n",
+    "LLM_CUSTOM_INSTRUCTION = \"\"\"For each cluster ID, provide a professional title, category, and reasoning.\n",
+    "Categories:\n",
+    "- A: Critical (Accidents, Disasters, Safety)\n",
+    "- B: Social (Policy, controversy, public sentiment)\n",
+    "- C: Market (Commerce, Tech, Entertainment)\"\"\"\n"
    ]
   },
   {
@@ -357,6 +364,7 @@ notebook = {
     "    gemini_api_key=GEMINI_API_KEY,\n",
     "    llm_provider=LLM_PROVIDER,\n",
     "    llm_model_path=LLM_MODEL_PATH,\n",
+    "    llm_custom_instruction=LLM_CUSTOM_INSTRUCTION,\n",
     "    save_all=True\n",
     ")\n",
     "df_hyb = pd.DataFrame(matches_hybrid)\n",

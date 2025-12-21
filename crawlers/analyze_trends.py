@@ -148,16 +148,27 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         embedding_method="sentence-transformer", save_all=False,
                         rerank=True, min_cluster_size=5, labeling_method="semantic",
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
-                        llm_provider="gemini", llm_model_path=None):
+                        llm_provider="gemini", llm_model_path=None,
+                        llm_custom_instruction=None):
     if not posts: return []
     
-    embedder = SentenceTransformer(model_name or DEFAULT_MODEL)
+    # If using Gemma on Kaggle, move embedder to CPU to save VRAM for the big model
+    embedding_device = 'cpu' if (use_llm and llm_provider != 'gemini') else None
+    
+    embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device)
+    
+    # Pre-load LLM if needed, with cache clear
+    import torch
+    if torch.cuda.is_available(): torch.cuda.empty_cache()
+    
     llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path) if use_llm else None
     taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
     reranker = None
     if rerank:
         ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
-        try: reranker = CrossEncoder(ce_model)
+        try: 
+            # Cross-Encoder is small, but let's be safe
+            reranker = CrossEncoder(ce_model, device=embedding_device)
         except: pass
 
     post_contents = [p.get('content', '')[:500] for p in posts]
@@ -172,7 +183,13 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     if anchors:
         post_contents_enriched = [apply_guidance_enrichment(t, anchors) for t in post_contents_enriched]
 
-    post_embeddings = get_embeddings(post_contents_enriched, method=embedding_method, model_name=model_name)
+    post_embeddings = get_embeddings(
+        post_contents_enriched, 
+        method=embedding_method, 
+        model_name=model_name,
+        existing_model=embedder,
+        device=embedding_device
+    )
     cluster_labels = cluster_data(post_embeddings, min_cluster_size=min_cluster_size)
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
@@ -232,7 +249,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         
         if to_refine:
             console.print(f"   🤖 [cyan]Batch Refining {len(to_refine)} clusters with {llm_provider}...[/cyan]")
-            batch_results = llm_refiner.refine_batch(to_refine)
+            batch_results = llm_refiner.refine_batch(to_refine, custom_instruction=llm_custom_instruction)
             
             for l, res in batch_results.items():
                 label_key = int(l) if isinstance(l, (str, int)) else l
@@ -337,6 +354,7 @@ if __name__ == "__main__":
     parser.add_argument("--llm", action="store_true", help="Enable LLM refinement")
     parser.add_argument("--llm-provider", type=str, default="gemini", choices=["gemini", "kaggle", "local"], help="LLM Provider")
     parser.add_argument("--llm-model-path", type=str, help="Local path or HF ID for local LLM")
+    parser.add_argument("--llm-instruction", type=str, help="Custom instructions for LLM refinement")
     
     args = parser.parse_args()
     
@@ -349,6 +367,7 @@ if __name__ == "__main__":
             social_posts, trends, 
             use_llm=args.llm, 
             llm_provider=args.llm_provider, 
-            llm_model_path=args.llm_model_path
+            llm_model_path=args.llm_model_path,
+            llm_custom_instruction=args.llm_instruction
         )
         print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")

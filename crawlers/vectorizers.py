@@ -175,7 +175,8 @@ def get_glove_embeddings(texts: list, glove_path: str = None, dim: int = 100) ->
 
 
 def get_embeddings(texts: list, method: str = "sentence-transformer", 
-                   model_name: str = None, **kwargs) -> np.ndarray:
+                   model_name: str = None, device: str = None, 
+                   existing_model=None, **kwargs) -> np.ndarray:
     """
     Get embeddings using specified method.
     
@@ -183,7 +184,9 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
         texts: List of text strings
         method: 'sentence-transformer', 'tfidf', 'bow', or 'glove'
         model_name: Model name for sentence-transformer
-        **kwargs: Additional arguments (max_features, glove_path, etc.)
+        device: 'cuda' or 'cpu'
+        existing_model: Already instantiated model to reuse
+        **kwargs: Additional arguments
         
     Returns:
         numpy array of embeddings
@@ -205,10 +208,21 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
     
     elif method == "sentence-transformer":
         from sentence_transformers import SentenceTransformer
-        console.print(f"[cyan]🧠 Loading Sentence Transformer: {model_name}...[/cyan]")
-        model = SentenceTransformer(model_name)
-        embeddings = model.encode(texts, show_progress_bar=True)
-        console.print(f"[green]✅ Sentence Transformer: Shape {embeddings.shape}[/green]")
+        import torch
+        
+        # Determine device
+        if device is None:
+            # If on Kaggle and we suspect memory pressure, default to CPU
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            
+        console.print(f"[cyan]🧠 Encoding with {model_name or 'existing model'} on {device}...[/cyan]")
+        
+        if existing_model:
+            model = existing_model
+        else:
+            model = SentenceTransformer(model_name, device=device)
+            
+        embeddings = model.encode(texts, show_progress_bar=True, device=device)
         return embeddings
     
     else:

@@ -48,23 +48,21 @@ def batch_analyze_sentiment(texts):
     if analyzer == "fallback":
         return [_fallback_sentiment(t) for t in texts]
         
-    # Batch processing is much faster
-    results = []
     try:
-        # Process in chunks of 32
-        for i in range(0, len(texts), 32):
-            batch = [t[:512] for t in texts[i:i+32]]
-            batch_res = analyzer(batch)
-            for res in batch_res:
-                l = res['label']
-                if l in ['POS', 'POSITIVE']: results.append('Positive')
-                elif l in ['NEG', 'NEGATIVE']: results.append('Negative')
-                else: results.append('Neutral')
+        # Using internal pipeline batching is much faster on GPU
+        # max_length=512 ensures we don't blow up memory
+        batch_res = analyzer([t[:512] for t in texts], batch_size=32, truncation=True)
+        
+        results = []
+        for res in batch_res:
+            l = res['label']
+            if l in ['POS', 'POSITIVE']: results.append('Positive')
+            elif l in ['NEG', 'NEGATIVE']: results.append('Negative')
+            else: results.append('Neutral')
+        return results
     except Exception as e:
         console.print(f"[red]Batch sentiment error: {e}[/red]")
         return [_fallback_sentiment(t) for t in texts]
-            
-    return results
 
 def _fallback_sentiment(text):
     """Dictionary fallback"""
