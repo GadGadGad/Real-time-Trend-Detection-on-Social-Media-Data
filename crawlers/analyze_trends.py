@@ -199,9 +199,35 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             summaries = summ.summarize_batch(long_texts)
             summ.unload_model() # Free GPU immediately
             
-            for idx, summary in zip(long_indices, summaries):
-                post_contents_enriched[idx] = f"SUMMARY: {summary}"
-                
+            # Save to CSV log
+            log_file = "summarized_posts_log.csv"
+            file_exists = os.path.isfile(log_file)
+            try:
+                with open(log_file, 'a', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    if not file_exists:
+                        writer.writerow(['Timestamp', 'Original Length', 'Summary Length', 'Summary', 'Original Start'])
+                    
+                    import datetime
+                    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    for idx, summary in zip(long_indices, summaries):
+                        original = post_contents_enriched[idx]
+                        # Update content in place
+                        post_contents_enriched[idx] = f"SUMMARY: {summary}"
+                        
+                        # Log
+                        writer.writerow([
+                            now, 
+                            len(original), 
+                            len(summary), 
+                            summary, 
+                            original[:200].replace('\n', ' ') + "..."
+                        ])
+                console.print(f"   💾 [dim]Saved summaries to {log_file}[/dim]")
+            except Exception as e:
+                console.print(f"[red]Failed to save summary log: {e}[/red]")
+
             console.print(f"   ✅ [green]Summarized {len(long_indices)} posts with ViT5.[/green]")
 
     post_embeddings = get_embeddings(
