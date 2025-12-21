@@ -108,31 +108,40 @@ class ScoreCalculator:
         # Based on unique article count
         news_files = set()
         for item in cluster_items:
-            # Count distinct urls or contents if URL empty?
-            # Assuming sources without 'Face' are news
             if 'Face' not in item.get('source', ''):
-                # Use content hash/snippet as proxy for unique article if url missing
-                news_files.add(item.get('post_content')[:50]) 
+                news_files.add(item.get('post_content', '')[:100]) 
         
         news_count = len(news_files)
         
-        # Normalize N
-        # A big event might have 50-100 articles.
-        MAX_ARTICLES = 50
-        n_score = (news_count / MAX_ARTICLES) * 100
+        # Normalize N using log10
+        MAX_ARTICLES = 100
+        n_score = (math.log10(news_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if news_count > 0 else 0
         n_score = min(100, n_score)
         
-        # 4. Composite Score
-        composite = (self.w_g * g_score) + (self.w_f * f_score) + (self.w_n * n_score)
+        # 4. Synergy Bonus
+        # A trend is stronger if it appears in multiple silos.
+        active_sources = 0
+        if g_score > 10: active_sources += 1
+        if f_score > 10: active_sources += 1
+        if n_score > 10: active_sources += 1
         
-        # 5. Classification
+        synergy_mult = 1.0
+        if active_sources == 3: synergy_mult = 1.2
+        elif active_sources == 2: synergy_mult = 1.1
+
+        # 5. Composite Score
+        composite = (self.w_g * g_score) + (self.w_f * f_score) + (self.w_n * n_score)
+        final_score = min(100, composite * synergy_mult)
+        
+        # 6. Classification
         classification = self._classify(g_score, f_score, n_score)
         
         return {
             "G": round(g_score, 1),
             "F": round(f_score, 1),
             "N": round(n_score, 1),
-            "Composite": round(composite, 1),
+            "Composite": round(final_score, 1),
+            "Synergy": synergy_mult,
             "Class": classification,
             "Volume": vol,
             "Interactions": total_interactions,
@@ -180,16 +189,28 @@ def calculate_unified_score(trend_data, cluster_posts):
 
     # 3. News (N)
     news_count = len([p for p in cluster_posts if 'Face' not in p.get('source', '')])
-    MAX_ARTICLES = 50
-    n_score = (news_count / MAX_ARTICLES) * 100
+    MAX_ARTICLES = 100
+    n_score = (math.log10(news_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if news_count > 0 else 0
     n_score = min(100, n_score)
 
-    # Composite
-    score = (0.4 * g_score) + (0.35 * f_score) + (0.25 * n_score)
+    # 4. Synergy Multiplier
+    active_sources = 0
+    if g_score > 10: active_sources += 1
+    if f_score > 10: active_sources += 1
+    if n_score > 10: active_sources += 1
     
-    return round(score, 1), {
+    synergy_mult = 1.0
+    if active_sources == 3: synergy_mult = 1.2
+    elif active_sources == 2: synergy_mult = 1.1
+
+    # Composite
+    base_score = (0.4 * g_score) + (0.35 * f_score) + (0.25 * n_score)
+    final_score = min(100, base_score * synergy_mult)
+    
+    return round(final_score, 1), {
         "G": round(g_score, 1),
         "F": round(f_score, 1),
         "N": round(n_score, 1),
+        "Synergy": synergy_mult,
         "total_posts": len(cluster_posts)
     }

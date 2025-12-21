@@ -211,11 +211,17 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
 
     return new_trends
 
-def extract_dynamic_anchors(posts, trends, top_n=20):
+def extract_dynamic_anchors(posts, trends, top_n=20, include_locations=True):
     from sklearn.feature_extraction.text import CountVectorizer
+    from crawlers.locations import get_known_locations
     trend_kws = set()
     for t in trends.values():
         for kw in t.get('keywords', []): trend_kws.add(kw.lower())
+    
+    # Optional: Add major provinces as potential anchors
+    if include_locations:
+        for loc in get_vietnam_locations():
+            if len(loc) > 3: trend_kws.add(loc.lower())
     texts = [p.get('content', '').lower() for p in posts]
     vectorizer = CountVectorizer(ngram_range=(1, 2), max_features=1000)
     try:
@@ -238,8 +244,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
-                        debug_llm=False, summarize_all=False, no_dedup=False):
+                        debug_llm=False, summarize_all=False, no_dedup=False,
+                        use_keywords=False):
     if not posts: return []
+    
+    from crawlers.keyword_extractor import KeywordExtractor
     
     # In Sequential mode, we use CUDA for everything, but one at a time.
     import torch
@@ -268,6 +277,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
 
     if anchors:
         post_contents_enriched = [apply_guidance_enrichment(t, anchors) for t in post_contents_enriched]
+
+    if use_keywords:
+        console.print("[cyan]🔑 Phase 0.5: Extracting high-signal keywords...[/cyan]")
+        kw_extractor = KeywordExtractor()
+        post_contents_enriched = kw_extractor.batch_extract(post_contents_enriched)
 
     # --- PHASE 0: SUMMARIZATION ---
     if use_llm: # Only run if advanced features enabled
@@ -369,7 +383,66 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         device=embedding_device,
         cache_dir="embeddings_cache" if use_cache else None
     )
-    cluster_labels = cluster_data(post_embeddings, min_cluster_size=min_cluster_size)
+
+    # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
+    news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
+    social_indices = [i for i, p in enumerate(posts) if 'Face' in p.get('source', '')]
+    
+    console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles...[/cyan]")
+    news_embs = post_embeddings[news_indices]
+    if len(news_embs) >= min_cluster_size:
+        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size)
+    else:
+        news_labels = np.array([-1] * len(news_indices))
+
+    # Initialize final labels
+    final_labels = np.array([-1] * len(posts))
+    for idx, nl in zip(news_indices, news_labels):
+        final_labels[idx] = nl
+
+    # --- SAHC PHASE 2: SOCIAL ATTACHMENT ---
+    unique_news_clusters = sorted([l for l in set(news_labels) if l != -1])
+    unattached_social_indices = []
+    
+    if unique_news_clusters and social_indices:
+        console.print(f"🔗 [cyan]SAHC Phase 2: Attaching Social posts to News clusters...[/cyan]")
+        # Calculate centroids for News clusters
+        centroids = {}
+        for l in unique_news_clusters:
+            cluster_news_indices = [ni for i, ni in enumerate(news_indices) if news_labels[i] == l]
+            centroids[l] = np.mean(post_embeddings[cluster_news_indices], axis=0)
+        
+        centroid_matrix = np.array([centroids[l] for l in unique_news_clusters])
+        social_embs = post_embeddings[social_indices]
+        
+        # Calculate similarity to centroids
+        sims = cosine_similarity(social_embs, centroid_matrix)
+        
+        # Attachment threshold (strict)
+        ATTACH_THRESHOLD = 0.65 
+        
+        for i, s_idx in enumerate(social_indices):
+            best_c_idx = np.argmax(sims[i])
+            if sims[i][best_c_idx] >= ATTACH_THRESHOLD:
+                final_labels[s_idx] = unique_news_clusters[best_c_idx]
+            else:
+                unattached_social_indices.append(s_idx)
+    else:
+        unattached_social_indices = social_indices
+
+    # --- SAHC PHASE 3: SOCIAL DISCOVERY (Clustering the leftovers) ---
+    if len(unattached_social_indices) >= min_cluster_size:
+        console.print(f"🔭 [cyan]SAHC Phase 3: Researching Discovery trends in {len(unattached_social_indices)} social posts...[/cyan]")
+        leftover_embs = post_embeddings[unattached_social_indices]
+        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size)
+        
+        # Shift social labels to avoid collision with news clusters
+        max_news_label = max(unique_news_clusters) if unique_news_clusters else -1
+        for i, s_idx in enumerate(unattached_social_indices):
+            if social_discovery_labels[i] != -1:
+                final_labels[s_idx] = social_discovery_labels[i] + max_news_label + 1
+
+    cluster_labels = final_labels
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
 
@@ -588,6 +661,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--no-dedup", action="store_true", help="Disable Semantic Deduplication (Phase 4)")
     parser.add_argument("--refine-trends", action="store_true", help="Refine Google Trends inputs before matching")
+    parser.add_argument("--use-keywords", action="store_true", help="Extract high-signal keywords before clustering")
     
     args = parser.parse_args()
     
@@ -614,6 +688,7 @@ if __name__ == "__main__":
             llm_model_path=args.llm_model_path,
             llm_custom_instruction=args.llm_instruction,
             summarize_all=args.summarize_all,
-            no_dedup=args.no_dedup
+            no_dedup=args.no_dedup,
+            use_keywords=args.use_keywords
         )
         print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")

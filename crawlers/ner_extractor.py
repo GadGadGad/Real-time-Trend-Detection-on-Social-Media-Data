@@ -12,6 +12,11 @@ Entity Types:
 from typing import List, Dict, Set, Tuple
 from collections import defaultdict
 from rich.console import Console
+try:
+    from crawlers.locations import get_known_locations
+    VIETNAM_LOCS = get_known_locations()
+except ImportError:
+    VIETNAM_LOCS = []
 
 console = Console()
 
@@ -82,6 +87,14 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     except Exception as e:
         console.print(f"[red]NER extraction error: {e}[/red]")
         
+    # --- DICTIONARY-BASED ENHANCEMENT ---
+    # Supplement underthesea with our custom locations list
+    text_lower = text.lower()
+    for loc in VIETNAM_LOCS:
+        if len(loc) > 3 and loc.lower() in text_lower:
+            if loc not in entities["LOC"]:
+                entities["LOC"].append(loc)
+    
     return dict(entities)
 
 
