@@ -142,7 +142,7 @@ class VietnamNetCrawler:
         soup = BeautifulSoup(html, "lxml")
 
         title = soup.select_one(".content-detail h1, .article-detail h1")
-        published = soup.select_one(".bread-crumb-detail .date, .article-relate .date")
+        published = soup.select_one(".bread-crumb-detail .date, .article-relate .date, .bread-crumb-detail__time")
         content_el = soup.select_one("#maincontent, .maincontent, .content-detail")
 
         if content_el:

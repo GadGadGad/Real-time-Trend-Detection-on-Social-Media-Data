@@ -282,7 +282,7 @@ class NLDCrawler:
         title = soup.select_one("h1.title-content, h1.title-detail")
 
 
-        published = soup.select_one(".date-time, .ad-item-time")
+        published = soup.select_one(".date-time, .ad-item-time, time[data-role='publishdate']")
 
         content_el = soup.select_one(".content-news-detail, .detail-content, .news-content")
 
@@ -301,7 +301,7 @@ class NLDCrawler:
 
 
         author_text = ""
-        author_el = soup.select_one(".author-info .name, .author")
+        author_el = soup.select_one(".author-info .name, .author, [data-role='author']")
         if author_el:
             author_text = author_el.text.strip()
         elif content_el:
@@ -319,7 +319,7 @@ class NLDCrawler:
             "author": author_text,
             "category": category_text,
             "category": category_text,
-            "published_at": published.text.strip() if published else "",
+            "published_at": (published.get("datetime") or published.get_text().strip()) if published else "",
             "content": content_el.get_text("\n", strip=True) if content_el else ""
         }
 

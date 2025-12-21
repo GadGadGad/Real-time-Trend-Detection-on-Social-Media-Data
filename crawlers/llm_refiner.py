@@ -263,14 +263,19 @@ class LLMRefiner:
             
             prompt = f"""
                 Role: Senior Editor.
-                Task: Clean this list of trending search terms.
-                1. Filter: Identify generic, vague, or useless terms (e.g. "Football", "Weather", "Lottery", "Review").
-                2. Merge: Identify synonyms (e.g. "AFF Cup" and "AFF Cup 2024").
-
-                Input:
+                Task: Clean this list of trending search terms from Google Trends.
+                
+                1. Filter: Identify generic, vague, or useless terms that don't represent specific news events (e.g., "Football", "Weather", "Lottery", "Review", "Sổ số", "Thời tiết").
+                2. Merge: Identify synonyms or very closely related terms that refer to the EXACT same entity or event (e.g. "AFF Cup" and "AFF Cup 2024").
+                
+                CRITICAL:
+                - Use the EXACT strings from the provided list in your JSON output.
+                - For "merged", the key is the variant term and the value is the canonical/main term.
+                
+                Input List:
                 {chunk_str}
-
-                Respond STRICTLY in JSON:
+                
+                Respond ONLY with a JSON object:
                 {{
                     "filtered": ["bad_term_1", "bad_term_2"],
                     "merged": {{

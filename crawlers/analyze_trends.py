@@ -180,19 +180,37 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
     # but here we return the new dict.
     new_trends = trends.copy()
     
+    # Case-insensitive mapping for lookups
+    key_map = {k.lower(): k for k in new_trends.keys()}
+    
     # Remove filtered
     for bad_term in refined_data.get("filtered", []):
-        if bad_term in new_trends: del new_trends[bad_term]
-        
+        orig_key = key_map.get(bad_term.lower())
+        if orig_key and orig_key in new_trends:
+            del new_trends[orig_key]
+            # Update map after deletion
+            del key_map[bad_term.lower()]
+            
     # Merge synonym volumes
     for variant, canonical in refined_data.get("merged", {}).items():
-        if variant in new_trends and canonical in new_trends:
-            new_trends[canonical]['volume'] += new_trends[variant]['volume']
-            # Also merge keywords
-            new_trends[canonical]['keywords'] = list(set(new_trends[canonical]['keywords'] + new_trends[variant]['keywords']))
-            del new_trends[variant]
-        elif variant in new_trends:
-            new_trends[canonical] = new_trends.pop(variant)
+        v_orig = key_map.get(variant.lower())
+        c_orig = key_map.get(canonical.lower())
+        
+        if v_orig and v_orig in new_trends:
+            if c_orig and c_orig in new_trends:
+                if v_orig != c_orig:
+                    new_trends[c_orig]['volume'] += new_trends[v_orig]['volume']
+                    # Also merge keywords
+                    new_trends[c_orig]['keywords'] = list(set(new_trends[c_orig]['keywords'] + new_trends[v_orig]['keywords']))
+                    del new_trends[v_orig]
+                    del key_map[v_orig.lower()]
+            else:
+                # Rename the original variant to canonical if canonical not already present
+                # Use the canonical string provided by LLM as the new key
+                new_key = canonical
+                new_trends[new_key] = new_trends.pop(v_orig)
+                del key_map[v_orig.lower()]
+                key_map[new_key.lower()] = new_key
             
     console.print(f"   ✨ [green]Refinement Complete: {len(trends)} -> {len(new_trends)} trends.[/green]")
     
