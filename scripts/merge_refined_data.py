@@ -81,10 +81,11 @@ def merge_refined_data():
             merged_count = 0
             if 'index' in df_refined_clean.columns:
                 # Force index to int
-                try:
-                    df_refined_clean['index'] = df_refined_clean['index'].astype(int)
-                except:
-                    pass
+                # Force index to int, coercing errors (like 'index' string) to NaN
+                df_refined_clean['index'] = pd.to_numeric(df_refined_clean['index'], errors='coerce')
+                # Drop invalid indices
+                df_refined_clean = df_refined_clean.dropna(subset=['index'])
+                df_refined_clean['index'] = df_refined_clean['index'].astype(int)
 
                 summary_map = dict(zip(df_refined_clean['index'], df_refined_clean['refined_summary']))
                 
