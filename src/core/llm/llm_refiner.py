@@ -39,7 +39,7 @@ class LLMRefiner:
                 # Use 4-bit quantization to fit larger models in Kaggle T4/P100
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_compute_dtype=torch.float32,
                     bnb_4bit_quant_type="nf4",
                     bnb_4bit_use_double_quant=True,
                 )
@@ -60,7 +60,6 @@ class LLMRefiner:
                     model=self.model,
                     tokenizer=self.tokenizer,
                     max_new_tokens=1024, # Increased for batching
-                    temperature=0.1,
                     batch_size=batch_size
                 )
                 self.enabled = True
@@ -99,9 +98,7 @@ class LLMRefiner:
                 formatted_prompts,
                 max_new_tokens=1024,
                 return_full_text=False,
-                do_sample=True,
-                temperature=0.1,
-                top_p=0.9,
+                do_sample=False, # Use greedy decoding for stability
                 truncation=True
             )
             
