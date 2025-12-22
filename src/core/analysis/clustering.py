@@ -19,9 +19,10 @@ VIETNAMESE_STOPWORDS = [
 ]
 
 def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15, 
-                 texts=None, embedding_model=None, min_cohesion=None):
+                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
+    Includes Recursive Sub-Clustering for "Mega Clusters".
     """
     labels = None
 
@@ -97,14 +98,18 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
     
     else: # Default: HDBSCAN
         console.print("[bold cyan]🔮 Running UMAP dimensionality reduction (10D)...[/bold cyan]")
-        umap_embeddings = umap.UMAP(
-            n_neighbors=30, 
-            n_components=10, 
-            metric='cosine',
-            random_state=42
-        ).fit_transform(embeddings)
+        try:
+            umap_embeddings = umap.UMAP(
+                n_neighbors=min(30, len(embeddings)-1), 
+                n_components=10, 
+                metric='cosine',
+                random_state=42
+            ).fit_transform(embeddings)
+        except Exception:
+            # Fallback for very small data
+            umap_embeddings = embeddings
         
-        console.print(f"[bold cyan]🧩 Running HDBSCAN clustering (min_size={min_cluster_size}, eps={epsilon})...[/bold cyan]")
+        console.print(f"[bold cyan]🧩 Running HDBSCAN clustering (min_size={min_cluster_size}, eps={epsilon:.3f})...[/bold cyan]")
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=min_cluster_size,
             min_samples=2,
@@ -117,6 +122,61 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         num_noise = list(labels).count(-1)
         console.print(f"[green]✅ Found {num_clusters} clusters (with {num_noise} noise points).[/green]")
+
+    # --- RECURSIVE SUB-CLUSTERING ---
+    # Only applicable if we have valid labels and a max size constraint
+    if max_cluster_size and labels is not None:
+        unique_labels = list(set(labels))
+        if -1 in unique_labels: unique_labels.remove(-1)
+        
+        next_label_id = max(unique_labels) + 1 if unique_labels else 0
+        recursion_occured = False
+        
+        for label in unique_labels:
+            mask = (labels == label)
+            cluster_size = np.sum(mask)
+            
+            if cluster_size > max_cluster_size:
+                console.print(f"[yellow]⚡ Recursive Split: Cluster {label} has {cluster_size} items (>{max_cluster_size}). Re-clustering...[/yellow]")
+                
+                # Extract subset
+                sub_embs = embeddings[mask]
+                sub_texts = [texts[i] for i in range(len(texts)) if mask[i]] if texts else None
+                
+                # Recursive call with stricter parameters
+                # Decay epsilon to force splitting
+                new_epsilon = max(0.01, epsilon * 0.7)
+                
+                sub_labels = cluster_data(
+                    sub_embs, 
+                    min_cluster_size=min_cluster_size, 
+                    epsilon=new_epsilon, 
+                    method=method, 
+                    n_clusters=n_clusters,
+                    texts=sub_texts, 
+                    embedding_model=embedding_model,
+                    min_cohesion=None, # Don't filter cohesion recursively, wait for final pass
+                    max_cluster_size=max_cluster_size # Keep enforcing limit
+                )
+                
+                # Remap sub-labels to global space
+                sub_unique = set(sub_labels)
+                remap_dict = {}
+                for sl in sub_unique:
+                    if sl == -1:
+                        remap_dict[sl] = -1 # Keep noise as noise
+                    else:
+                        remap_dict[sl] = next_label_id
+                        next_label_id += 1
+                
+                # Apply new labels to original array
+                final_sub_labels = np.array([remap_dict[l] for l in sub_labels])
+                labels[mask] = final_sub_labels
+                recursion_occured = True
+        
+        if recursion_occured:
+            final_count = len(set(labels)) - (1 if -1 in labels else 0)
+            console.print(f"[bold green]✨ Recursion Complete. Final cluster count: {final_count}[/bold green]")
 
     # --- POST-PROCESSING: Cohesion Filtering ---
     if labels is not None and min_cohesion is not None and min_cohesion > 0:

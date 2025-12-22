@@ -339,13 +339,94 @@ class KeywordExtractor:
         return " ".join(final_keywords[:max_keywords])
 
     def batch_extract(self, texts: List[str]) -> List[str]:
-        """Process a list of texts into keyword blobs."""
-        from rich.progress import track
+        """Process a list of texts into keyword blobs. Uses batch LLM inference if enabled."""
         if not texts: return []
-        results = [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords...[/cyan]")]
-        if self.use_llm:
-            self.save_cache()
-        return results
+        
+        # 1. Standard extraction if NO LLM
+        if not self.use_llm:
+            from rich.progress import track
+            return [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords (Rule-based)...[/cyan]")]
+
+        # 2. Batch LLM Extraction
+        print(f"⚡ Batch extracting keywords for {len(texts)} items using LLM...")
+        results_map = {}
+        missing_indices = []
+        prompts = []
+        
+        # Check cache first
+        for idx, text in enumerate(texts):
+            if text in self.cache:
+                results_map[idx] = self.cache[text]
+            else:
+                missing_indices.append(idx)
+                # Construct Prompt Inline (Duplicated from _extract_with_llm to avoid modifying it lightly)
+                prompt = f"""
+        Analyze the following Vietnamese text and extract the most important High-Signal Keywords.
+
+        PRIORITIZE:
+        - Named Entities: People (e.g. "Messi", "Tô Lâm"), Organizations ("Vingroup", "FIFA"), Locations ("Hà Nội", "Biển Đông").
+        - Specific Event Names: "Bão Yagi", "SEA Games 33".
+        - Specific Products: "iPhone 15 Pro", "VinFast VF3".
+
+        IGNORE / DO NOT INCLUDE:
+        - Common Nouns: "người dân", "công ty", "báo cáo", "dự án", "hôm nay".
+        - Verbs/Adjectives: "tăng trưởng", "phát triển", "mạnh mẽ".
+        - Generic Topics if specific entities exist.
+
+        Text: "{text[:1000]}"
+
+        Output: JSON list of strings only.
+        Example: ["Hà Nội", "bão Yagi", "ngập lụt"]
+        """
+                prompts.append(prompt)
+        
+        # Run Batch
+        if prompts and self.llm:
+            try:
+                responses = self.llm._generate_batch(prompts)
+                
+                for i, resp in enumerate(responses):
+                    orig_idx = missing_indices[i]
+                    text_key = texts[orig_idx]
+                    
+                    # Parse
+                    result_str = ""
+                    try:
+                        if hasattr(self.llm, '_extract_json'):
+                            kws = self.llm._extract_json(resp, is_list=True)
+                        else:
+                            import re
+                            kws = re.findall(r'"([^"]+)"', resp)
+                        
+                        if kws:
+                            result_str = " ".join(kws[:15])
+                    except: pass
+                    
+                    # Fallback to rule-based if LLM returned nothing meaningful
+                    if not result_str:
+                         # Temporarily disable LLM to avoid recursion loop
+                         self.use_llm = False
+                         result_str = self.extract_keywords(text_key)
+                         self.use_llm = True
+                    
+                    self.cache[text_key] = result_str
+                    results_map[orig_idx] = result_str
+                    
+                self.save_cache()
+            except Exception as e:
+                print(f"[red]Batch Keyword Error: {e}[/red]")
+                # Fallback all failures to rule-based
+                for idx in missing_indices:
+                     self.use_llm = False
+                     results_map[idx] = self.extract_keywords(texts[idx])
+                     self.use_llm = True
+
+        # Reconstruct list order
+        final_results = []
+        for i in range(len(texts)):
+            final_results.append(results_map.get(i, ""))
+            
+        return final_results
 
 if __name__ == "__main__":
     extractor = KeywordExtractor()

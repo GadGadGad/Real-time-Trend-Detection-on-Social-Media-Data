@@ -78,15 +78,33 @@ class LLMRefiner:
             
             def get_content(p):
                 try:
-                    # Using a higher safety threshold or simplified generation for speed
-                    return self.model.generate_content(p).text
+                    # Safety settings to minimize refusals
+                    safety_settings = [
+                        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                    ]
+                    response = self.model.generate_content(p, safety_settings=safety_settings)
+                    
+                    # Handle Finish Reasons e.g. RECITATION (4)
+                    if response.candidates and response.candidates[0].finish_reason != 1: # 1 = STOP
+                        if self.debug: 
+                            console.print(f"[dim yellow]Gemini Finish Reason: {response.candidates[0].finish_reason}[/dim yellow]")
+                        # Attempt to extract partial text if available
+                        if hasattr(response, 'text'): 
+                            try: return response.text
+                            except: pass
+                        return ""
+                        
+                    return response.text
                 except Exception as e:
                     if self.debug: console.print(f"[dim red]Gemini Error: {e}[/dim red]")
                     return ""
 
             # Use ThreadPoolExecutor for parallel API calls
-            # Gemini 1.5 Flash has high rate limits
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Reduced workers to prevent Rate Limits and "Stuck" behavior
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                 results = list(executor.map(get_content, prompts))
             return results
         else:
