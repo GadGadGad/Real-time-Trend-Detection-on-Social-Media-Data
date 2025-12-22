@@ -227,23 +227,37 @@ class LLMRefiner:
             chunk_str = "\n".join([f"- {t}" for t in chunk])
             
             prompt = f"""
-                Role: Senior Editor.
-                Task: Analyze this list of news headlines.
-                Group headlines ONLY if they refer to the EXACT SAME specific real-world event (Same Time, Same Place, Same Actors).
-                DO NOT group generic topics (e.g. "Traffic accident" and "Traffic jam" are different).
-                DO NOT group similar events happening in different places.
-                If in doubt, KEEP SEPARATE.
+                Role: Senior News Editor.
 
-                Input:
+                Task:
+                From the list below, identify headlines that refer to the EXACT SAME real-world event.
+
+                Two headlines are the SAME EVENT ONLY IF:
+                - Same location
+                - Same timeframe
+                - Same main actors/entities
+
+                STRICT RULES:
+                - DO NOT paraphrase or rewrite titles.
+                - DO NOT invent a new canonical title.
+                - Canonical title MUST be copied EXACTLY from one of the input lines.
+                - If unsure, DO NOT merge.
+
+                DO NOT merge:
+                - Similar accidents in different locations
+                - Same topic but different days
+                - Generic vs specific headlines
+
+                Input headlines:
                 {chunk_str}
 
-                Respond STRICTLY in JSON object format:
-                {{
-                "Original Title 1": "Canonical Title A",
-                "Original Title 2": "Canonical Title A",
-                "Unique Title 3": "Unique Title 3"
-                }}
-                Only include items that change or are part of a group.
+                Output format (JSON object ONLY):
+                {
+                "Original Title": "Canonical Title (copied verbatim from input)"
+                }
+
+                Include ONLY titles that are merged.
+                Do NOT include titles that remain unique.
             """
             all_prompts.append(prompt)
             
@@ -313,24 +327,38 @@ class LLMRefiner:
                 
                 prompt = f"""
                     Role: Senior Editor.
-                    Category Context: {cat}
-                    Task: Clean this list of trending search terms from Vietnam.
-                    
-                    1. Filter: Remove generic news-less terms.
-                    2. Merge: Identify synonyms or related terms referring to the EXACT same entity or event.
-                    
-                    CRITICAL:
-                    - Use the EXACT strings from the provided list.
-                    - For sports, merge different languages (e.g. "Real vs Celta" and "Real Madrid đấu với Celta").
-                    
-                    Input List ({cat}):
-                    {chunk_str}
-                    
-                    Respond ONLY with a JSON object:
-                    {{
-                        "filtered": ["bad_term_1"],
-                        "merged": {{ "variant": "canonical" }}
-                    }}
+
+                        Context: Google Trending Searches in Vietnam.
+                        Category hint: {cat}
+
+                        Task:
+                        Step 1 – FILTER:
+                        Identify terms that are NOT news-worthy.
+                        Only remove if CLEARLY generic or utility-like.
+
+                        Step 2 – MERGE:
+                        Identify terms that refer to the SAME entity or SAME event.
+
+                        MERGE RULES:
+                        - Canonical term MUST appear verbatim in the input list.
+                        - Merge multilingual sports terms (e.g. "vs", "đấu với").
+                        - Do NOT merge related but different matches or events.
+
+                        FILTER RULES:
+                        - Remove prices, weather, schedules, generic queries.
+                        - If unsure, KEEP.
+
+                        Input list:
+                        {chunk_str}
+
+                        Output (JSON ONLY):
+                        {
+                        "filtered": ["term_to_remove"],
+                        "merged": {
+                            "variant_term": "canonical_term"
+                        }
+                        }
+
                 """
                 all_prompts.append(prompt)
                 
@@ -346,26 +374,131 @@ class LLMRefiner:
                     console.print(f"[red]Trend Refine Error in batch {i}: {e}[/red]")
         
         return {"filtered": all_filtered, "merged": all_merged}
+
+    def filter_noise_trends(self, trend_list):
+        """
+        Ad-hoc filter for specific list of trends.
+        """
+        if not self.enabled: return []
+        
+        console.print(f"[cyan]🧹 Intelligent Noise Filtering via LLM for {len(trend_list)} trends...[/cyan]")
+        all_bad = []
+        chunk_size = 50
+        all_prompts = []
+        
+        for i in range(0, len(trend_list), chunk_size):
+            chunk = trend_list[i:i+chunk_size]
+            prompt = f"""
+                You are a strict classifier for TRENDING SEARCH KEYWORDS.
+
+                Your task:
+                From the given list, identify ONLY items that are **Noise / Generic searches**.
+
+                A keyword is considered NOISE if it belongs to ONE OR MORE of the following:
+
+                1. Weather & Environment (non-event)
+                - temperature, weather, forecast, rain, storm, air quality
+                - examples: "nhiệt độ", "nhiệt độ tphcm", "aqi", "vùng áp thấp", "날씨"
+
+                2. Generic utilities / daily queries
+                - prices, schedules, dates, calendars, public services
+                - examples: "giá xăng dầu", "ngày âm hôm nay", "phạt nguội xe máy", "dich vu cong"
+
+                3. Very broad tech / platform terms WITHOUT a specific event or model
+                - examples: "google", "facebook", "wifi", "mp3", "portal"
+                - BUT NOT specific products like "iphone 17 pro", "samsung galaxy z trifold"
+
+                4. Non-entity common phrases
+                - generic nouns or vague phrases with no clear subject
+                - examples: "hình ảnh", "video", "review", "tin nhanh", "random"
+
+                5. Gambling / lottery / betting
+                - examples: "xsmn", "bk8", "123b", "bet"
+
+                6. Extremely short or meaningless tokens
+                - 1–2 characters or symbols with no semantic meaning
+                - examples: "s", "g", "ra", "cf"
+
+                ---
+
+                IMPORTANT – DO NOT mark as noise:
+                - Named people (politicians, celebrities, athletes)
+                - Countries, cities, regions
+                - Sports matches, tournaments, teams (even if repetitive)
+                - Movies, TV shows, anime, episodes
+                - Games, apps, specific products, brands
+                - Laws, decrees, official events
+                - Natural disasters or incidents tied to a place/event
+
+                If unsure, KEEP the keyword (do NOT classify as noise).
+
+                ---
+
+                Input list:
+                {chunk}
+
+                Output format:
+                Return a JSON array of strings.
+                ONLY include keywords that are confidently NOISE.
+                Do NOT explain. Do NOT include markdown.
+
+                Example output:
+                ["nhiệt độ", "aqi", "ngày âm hôm nay"]
+                FINAL CHECK:
+                If a keyword could reasonably be a headline of a news article, it is NOT noise.
+                """
+
+            all_prompts.append(prompt)
+            
+        if all_prompts:
+            if self.provider == 'gemini' and chunk_size > 1: # Optimize batch for Gemini
+                 responses = [self._generate(p) for p in all_prompts] # Gemini SDK often better serial? actually _generate_batch handles it
+            else:
+                 responses = self._generate_batch(all_prompts)
+                 
+            for resp in responses:
+                j = self._extract_json(resp, is_list=True)
+                if j: all_bad.extend(j)
+                
+        return list(set(all_bad))
         
 
     def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None, keywords=None):
         if not self.enabled:
             return cluster_name, original_category, ""
 
-        instruction = custom_instruction or """Role: Senior News Editor.
-            Task: Rename this cluster into a concise, factual news headline in Vietnamese (max 10 words).
-            Rules:
-            - PRIORITIZE SPECIFICITY: Include specific entities (Names, Places) and TIMING (Today, Yesterday, Date) if clear from context.
-            - Format: "{Specific Event} at {Location} ({Time})" if applicable.
-            - No clickbait.
-            - Classify into:
-            * A: Critical (Accidents, Weather, Health, Crime)
-            * B: Social (Viral, Controversy, Daily Life)
-            * C: Market (Economy, Tech, Entertainment, Sports)
-            - Classify Event Significance ("event_type"):
-            * "Specific": Unique event with distinct entities/time/place (e.g., "Fire at X Street on 12/12", "SEA Games 33 Opening").
-            * "Generic": Recurring/Vague (e.g., "Traffic jam", "Raining", "Football match").
-            - Provide brief reasoning citing the entities found."""
+        instruction = custom_instruction or """
+        Role: Senior News Editor.
+
+            Primary task:
+            Rename the cluster into a concise Vietnamese news headline (≤10 words).
+
+            SECONDARY tasks:
+            - Assign category (A/B/C)
+            - Assign event_type (Specific / Generic)
+
+            RULES:
+            - Base the headline ONLY on provided posts.
+            - Prefer concrete facts over interpretation.
+            - If no clear event → keep generic wording.
+
+            DO NOT:
+            - Add opinions
+            - Add causes or consequences not stated
+            - Guess missing details
+
+            Reasoning:
+            - One short sentence.
+            - Mention ONLY entities explicitly seen in posts.
+
+            Respond STRICTLY in JSON format:
+            {{
+                "refined_title": "...",
+                "category": "A/B/C",
+                "event_type": "Specific/Generic",
+                "reasoning": "..."
+            }}
+        """
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
         context_str = "\n---\n".join(context_texts)
@@ -410,18 +543,58 @@ class LLMRefiner:
         if not self.enabled or not clusters_to_refine:
             return {}
 
-        instruction = custom_instruction or """Role: Senior Editor.
-        Task: Write a precise, factual Vietnamese headline for each cluster.
-        CRITICAL: Use specific details from the posts (Dates, Locations, Names).
-        - BAD: "Tai nạn giao thông" (Traffic accident)
-        - GOOD: "Tai nạn liên hoàn tại cầu Phú Mỹ chiều 8/8"
-        Categories:
-        - A: Critical (Safety, Accidents, Health)
-        - B: Social (Public interest, Viral, Policy)
-        - C: Market (Business, Tech, Showbiz)
-        Event Types:
-        - "Specific": Named, unique events with clear time/place.
-        - "Generic": Routine activities."""
+        instruction = custom_instruction or """
+            Role: Senior News Editor (Vietnamese newsroom).
+                Task:
+                Write ONE concise, factual Vietnamese headline for EACH content cluster.
+
+                The headline MUST:
+                - Clearly describe the MAIN EVENT
+                - Use SPECIFIC DETAILS found in the posts whenever available:
+                - Time (date, part of day)
+                - Location (city, district, landmark)
+                - Named people, organizations, or teams
+                - Be written in a neutral, journalistic tone
+                - Avoid exaggeration, emotion, or speculation
+
+                STRICT RULES:
+                - DO NOT invent facts.
+                - DO NOT generalize if specifics exist.
+                - DO NOT use vague words like:
+                "gây chú ý", "xôn xao", "dậy sóng", "nóng", "bất ngờ".
+                - If multiple similar posts exist, summarize them into ONE concrete event.
+
+                Examples:
+                [BAD]: "Tai nạn giao thông"
+                [BAD]: "Sự việc gây xôn xao dư luận"
+                [GOOD]: "Tai nạn liên hoàn tại cầu Phú Mỹ chiều 8/8"
+                [GOOD]: "Hà Nội ghi nhận AQI vượt ngưỡng nguy hại sáng 21/12"
+
+                ---
+
+                Classification (assign one):
+                Category:
+                - A: Critical (Accidents, Safety, Health, Natural disasters)
+                - B: Social (Policy, Public affairs, Education, Sports, Viral events)
+                - C: Market (Business, Technology, Entertainment, Brands)
+
+                Event Type:
+                - Specific: A named, unique event with identifiable time/place
+                - Generic: Routine, recurring, or non-unique activity
+
+                If details are missing:
+                - Write the most specific headline POSSIBLE using available information.
+                - Prefer location over time, and names over descriptions.
+
+                Output format (JSON ONLY):
+                {
+                "refined_title": "...",
+                "category": "A | B | C",
+                "event_type": "Specific | Generic"
+                }
+
+        
+        """
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
         # We'll split into chunks of 3 clusters per request for local models (maximum stability)
@@ -469,23 +642,23 @@ class LLMRefiner:
                 batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples:\n{context}\n\n"
 
             prompt = f"""
-Analyze these {len(chunk)} news/social clusters from Vietnam.
-{instruction}
+            Analyze these {len(chunk)} news/social clusters from Vietnam.
+            {instruction}
 
-CRITICAL: 
-- Base your 'reasoning' ONLY on the provided Context and Keywords for THAT cluster. 
-- Do NOT mix facts between clusters. 
-- Ensure 'id' in JSON matches the 'Cluster ID'.
+            CRITICAL: 
+            - Base your 'reasoning' ONLY on the provided Context and Keywords for THAT cluster. 
+            - Do NOT mix facts between clusters. 
+            - Ensure 'id' in JSON matches the 'Cluster ID'.
 
-Input Clusters:
-{batch_str}
+            Input Clusters:
+            {batch_str}
 
-Respond STRICTLY in a JSON list of objects:
-[
-  {{ "id": label_id, "refined_title": "...", "category": "A/B/C", "event_type": "Specific/Generic", "reasoning": "..." }},
-  ...
-]
-"""
+            Respond STRICTLY in a JSON list of objects:
+            [
+            {{ "id": label_id, "refined_title": "...", "category": "A/B/C", "event_type": "Specific/Generic", "reasoning": "..." }},
+            ...
+            ]
+            """
             all_prompts.append(prompt)
 
         if all_prompts:
@@ -520,15 +693,15 @@ Respond STRICTLY in a JSON list of objects:
         if not self.enabled or not text: return text
         
         prompt = f"""
-Role: Senior Editor.
-Task: Summarize the following article in Vietnamese (max {max_words} words).
-Keep the main entities, numbers, and key events. Delete fluff.
+    Role: Senior Editor.
+    Task: Summarize the following article in Vietnamese (max {max_words} words).
+    Keep the main entities, numbers, and key events. Delete fluff.
 
-Input:
-{text[:4000]} # Limit input to avoid token overflow even on LLM side
+    Input:
+    {text[:4000]} # Limit input to avoid token overflow even on LLM side
 
-Result:
-"""
+    Result:
+    """
         try:
             summary = self._generate(prompt)
             # Basic cleanup

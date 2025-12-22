@@ -701,6 +701,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         if label != -1:
             t_name = cluster_mapping[label]["final_topic"]
             m = consolidated_mapping[t_name]
+            
+            # Filter Noise unless debug
+            if m["topic_type"] == "Noise" and not save_all:
+                continue
+
             matches.append({
                 "source": post.get('source'), "time": post.get('time'), "post_content": post.get('content'),
                 "final_topic": m["final_topic"], "topic_type": m["topic_type"], "category": m["category"],
