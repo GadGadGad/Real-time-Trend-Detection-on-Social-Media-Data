@@ -118,7 +118,7 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, m
          
     return post_contents_enriched
 
-def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15):
+def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, post_contents=None):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
@@ -126,8 +126,9 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
     3. Cluster Remaining Social
     
     Args:
-        method: 'hdbscan' or 'kmeans'
-        n_clusters: number of clusters (K-Means only)
+        method: 'hdbscan', 'kmeans', or 'bertopic'
+        n_clusters: number of clusters (K-Means/BERTopic)
+        post_contents: list of post text (required for BERTopic)
     """
     # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
     news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
@@ -135,8 +136,11 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
     
     console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles ({method})...[/cyan]")
     news_embs = post_embeddings[news_indices]
+    news_texts = [post_contents[i] for i in news_indices] if post_contents else None
+    
     if len(news_embs) >= min_cluster_size:
-        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, n_clusters=n_clusters)
+        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, 
+                                   n_clusters=n_clusters, texts=news_texts)
     else:
         news_labels = np.array([-1] * len(news_indices))
 
@@ -179,7 +183,9 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
     if len(unattached_social_indices) >= min_cluster_size:
         console.print(f"🔭 [cyan]SAHC Phase 3: Researching Discovery trends in {len(unattached_social_indices)} social posts...[/cyan]")
         leftover_embs = post_embeddings[unattached_social_indices]
-        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size, method=method, n_clusters=n_clusters)
+        leftover_texts = [post_contents[i] for i in unattached_social_indices] if post_contents else None
+        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size, 
+                                               method=method, n_clusters=n_clusters, texts=leftover_texts)
         
         # Shift social labels to avoid collision with news clusters
         max_news_label = max(unique_news_clusters) if unique_news_clusters else -1

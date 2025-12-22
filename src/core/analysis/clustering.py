@@ -7,19 +7,23 @@ from collections import Counter
 
 console = Console()
 
-def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15):
+def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15, 
+                 texts=None, embedding_model=None):
     """
-    Cluster embeddings using UMAP + HDBSCAN or K-Means.
+    Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     
     Args:
         embeddings: numpy array of embeddings
-        min_cluster_size: minimum points to form a cluster (HDBSCAN only)
+        min_cluster_size: minimum points to form a cluster (HDBSCAN/BERTopic)
         epsilon: cluster_selection_epsilon - higher values reduce noise (HDBSCAN only)
-        method: 'hdbscan' or 'kmeans'
-        n_clusters: number of clusters (K-Means only)
+        method: 'hdbscan', 'kmeans', or 'bertopic'
+        n_clusters: number of clusters (K-Means only, or max topics for BERTopic)
+        texts: original texts (required for BERTopic)
+        embedding_model: SentenceTransformer model (for BERTopic)
     
     Use K-Means if your data has even density (k-distance CV < 0.5).
     Use HDBSCAN if your data has uneven density (CV > 0.5).
+    Use BERTopic for topic modeling with automatic topic extraction.
     """
     
     if method == 'kmeans':
@@ -29,6 +33,52 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
         labels = clusterer.fit_predict(embeddings)
         console.print(f"[green]✅ Created {n_clusters} clusters (no noise with K-Means).[/green]")
         return labels
+    
+    elif method == 'bertopic':
+        try:
+            from bertopic import BERTopic
+            from bertopic.vectorizers import ClassTfidfTransformer
+        except ImportError:
+            console.print("[red]❌ BERTopic not installed. Run: pip install bertopic[/red]")
+            console.print("[yellow]Falling back to K-Means...[/yellow]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters)
+        
+        if texts is None:
+            console.print("[red]❌ BERTopic requires texts parameter[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters)
+        
+        console.print(f"[bold cyan]🧩 Running BERTopic clustering (min_topic_size={min_cluster_size})...[/bold cyan]")
+        
+        # Configure BERTopic for Vietnamese
+        # Use pre-computed embeddings to avoid re-encoding
+        topic_model = BERTopic(
+            embedding_model=embedding_model,  # Can be None if using precomputed
+            language="multilingual",
+            min_topic_size=min_cluster_size,
+            nr_topics=n_clusters if n_clusters else "auto",
+            verbose=True,
+            calculate_probabilities=True
+        )
+        
+        # Fit with pre-computed embeddings
+        topics, probs = topic_model.fit_transform(texts, embeddings)
+        
+        num_topics = len(set(topics)) - (1 if -1 in topics else 0)
+        num_noise = list(topics).count(-1)
+        
+        console.print(f"[green]✅ Found {num_topics} topics (with {num_noise} outliers).[/green]")
+        
+        # Show top topics
+        topic_info = topic_model.get_topic_info()
+        console.print("[dim]Top 5 topics:[/dim]")
+        for _, row in topic_info.head(6).iterrows():
+            if row['Topic'] != -1:
+                console.print(f"  Topic {row['Topic']}: {row['Name'][:60]}... ({row['Count']} docs)")
+        
+        # Store topic model for later use (e.g., visualization)
+        cluster_data._bertopic_model = topic_model
+        
+        return np.array(topics)
     
     # HDBSCAN path
     console.print("[bold cyan]🔮 Running UMAP dimensionality reduction...[/bold cyan]")
