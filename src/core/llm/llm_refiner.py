@@ -360,15 +360,22 @@ class LLMRefiner:
                 all_prompts.append(prompt)
                 
         if all_prompts:
-            batch_texts = self._generate_batch(all_prompts)
-            for i, text in enumerate(batch_texts):
-                try:
-                    results = self._extract_json(text, is_list=False)
-                    if results:
-                        all_filtered.extend(results.get("filtered", []))
-                        all_merged.update(results.get("merged", {}))
-                except Exception as e:
-                    console.print(f"[red]Trend Refine Error in batch {i}: {e}[/red]")
+            # Process in chunks to show progress
+            inference_batch_size = 5
+            
+            # Using rich progress track
+            for i in track(range(0, len(all_prompts), inference_batch_size), description="[cyan]Processing Trend Batches...[/cyan]"):
+                batch_prompts = all_prompts[i : i + inference_batch_size]
+                batch_texts = self._generate_batch(batch_prompts)
+                
+                for text in batch_texts:
+                    try:
+                        results = self._extract_json(text, is_list=False)
+                        if results:
+                            all_filtered.extend(results.get("filtered", []))
+                            all_merged.update(results.get("merged", {}))
+                    except Exception as e:
+                        console.print(f"[red]Trend Refine Parse Error: {e}[/red]")
         
         return {"filtered": all_filtered, "merged": all_merged}
 
