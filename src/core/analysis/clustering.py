@@ -3,12 +3,13 @@ from rich.console import Console
 import umap
 import hdbscan
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter
 
 console = Console()
 
 def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15, 
-                 texts=None, embedding_model=None):
+                 texts=None, embedding_model=None, min_cohesion=None):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     
@@ -16,10 +17,11 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
         embeddings: numpy array of embeddings
         min_cluster_size: minimum points to form a cluster (HDBSCAN/BERTopic)
         epsilon: cluster_selection_epsilon - higher values reduce noise (HDBSCAN only)
-        method: 'hdbscan', 'kmeans', or 'bertopic'
+        method: 'hdbscan', 'kmeans', 'bertopic', or 'top2vec'
         n_clusters: number of clusters (K-Means only, or max topics for BERTopic)
-        texts: original texts (required for BERTopic)
-        embedding_model: SentenceTransformer model (for BERTopic)
+        texts: list of strings (required for BERTopic, Top2Vec, or cohesion filtering)
+        embedding_model: SentenceTransformer model (required for BERTopic/Top2Vec)
+        min_cohesion: float 0.0-1.0, threshold to filter out loosely related clusters
     
     Use K-Means if your data has even density (k-distance CV < 0.5).
     Use HDBSCAN if your data has uneven density (CV > 0.5).
@@ -105,9 +107,13 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
         
         # NOTE: Top2Vec takes 'embedding_model' as string.
         try:
-            model = Top2Vec(documents=texts, embedding_model='distiluse-base-multilingual-cased', speed='learn', workers=4, min_count=2)
+            # Using a smaller, robust multilingual model
+            model = Top2Vec(documents=texts, embedding_model='paraphrase-multilingual-MiniLM-L12-v2', speed='learn', workers=4, min_count=2)
         except Exception as e:
             console.print(f"[red]Error initializing Top2Vec: {e}[/red]")
+            # If it's a GPU error, suggest CPU fallback env var or similar
+            if "Volta" in str(e) or "GPU" in str(e):
+                console.print("[yellow]Tip: Try setting export CUDA_VISIBLE_DEVICES=\"\" to force CPU.[/yellow]")
             return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
 
         # Get topic sizes and labels
@@ -137,7 +143,41 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
     num_noise = list(labels).count(-1)
     
     console.print(f"[green]✅ Found {num_clusters} clusters (with {num_noise} noise points).[/green]")
+    # --- POST-PROCESSING: Cohesion Filtering ---
+    if min_cohesion is not None and min_cohesion > 0:
+        labels = refine_clusters_by_cohesion(embeddings, labels, threshold=min_cohesion)
+
     return labels
+
+def refine_clusters_by_cohesion(embeddings, labels, threshold=0.5):
+    """
+    Remove clusters whose average internal similarity (cohesion) is below a threshold.
+    Low-cohesion clusters are reassigned as Noise (-1).
+    """
+    new_labels = labels.copy()
+    unique_labels = set(labels)
+    if -1 in unique_labels: unique_labels.remove(-1)
+    
+    removed_count = 0
+    for label in unique_labels:
+        mask = (labels == label)
+        cluster_embs = embeddings[mask]
+        
+        # Calculate centroid
+        centroid = cluster_embs.mean(axis=0).reshape(1, -1)
+        
+        # Calculate average similarity to centroid
+        sims = cosine_similarity(cluster_embs, centroid)
+        avg_sim = sims.mean()
+        
+        if avg_sim < threshold:
+            new_labels[mask] = -1
+            removed_count += 1
+            
+    if removed_count > 0:
+        console.print(f"[yellow]Filtered out {removed_count} clusters due to low cohesion (<{threshold}).[/yellow]")
+        
+    return new_labels
 
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity

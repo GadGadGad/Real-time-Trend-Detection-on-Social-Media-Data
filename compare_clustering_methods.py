@@ -4,21 +4,22 @@ from sentence_transformers import SentenceTransformer
 import hdbscan
 import umap
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
+from sklearn.metrics.pairwise import cosine_similarity
 from rich.console import Console
 from rich.table import Table
 import glob
 import json
 import re
 import time
-from src.core.analysis.clustering import cluster_data
+from src.core.analysis.clustering import cluster_data, extract_cluster_labels
 
 console = Console()
 
 # --- Config ---
 MODEL_NAME = 'keepitreal/vietnamese-sbert'
 MIN_CLUSTER_SIZE = 5
-SAMPLE_SIZE = 1000 # Keep it fast for comparison
+SAMPLE_SIZE = 1000 # Quick verification
 
 # --- Load Data (Reused) ---
 def load_data():
@@ -77,60 +78,92 @@ def compare():
     table.add_column("Method", style="cyan", no_wrap=True)
     table.add_column("Clusters", justify="right")
     table.add_column("Noise", justify="right")
-    table.add_column("Silhouette (Cos)", justify="right")
+    table.add_column("Silh (Cos)", justify="right")
+    table.add_column("Cohesion", justify="right", style="magenta")
+    table.add_column("DB Index", justify="right")
+    table.add_column("CH Score", justify="right")
     table.add_column("Time (s)", justify="right")
-    table.add_column("Top Topic (Sample)", style="italic")
+    table.add_column("Dominant Topic Label", style="italic")
+
+    methods = ['kmeans', 'hdbscan', 'bertopic', 'top2vec', 'sahc']
+    
+    # Import SAHC
+    from src.pipeline.pipeline_stages import run_sahc_clustering
 
     for method in methods:
         console.print(f"\n[bold yellow]>>> Running {method.upper()}...[/bold yellow]")
         start = time.time()
         
         try:
-            labels = cluster_data(
-                embeddings, 
-                min_cluster_size=MIN_CLUSTER_SIZE, 
-                method=method, 
-                n_clusters=15 if method == 'kmeans' else None,
-                texts=texts,
-                embedding_model=model # For BERTopic
-            )
+            if method == 'sahc':
+                labels = run_sahc_clustering(
+                    posts=posts, 
+                    post_embeddings=embeddings, 
+                    min_cluster_size=MIN_CLUSTER_SIZE, 
+                    method='hdbscan', # Internal clusterer
+                    n_clusters=15, 
+                    post_contents=texts, 
+                    epsilon=0.15
+                )
+            else:
+                labels = cluster_data(
+                    embeddings, 
+                    min_cluster_size=MIN_CLUSTER_SIZE, 
+                    method=method, 
+                    n_clusters=15 if method == 'kmeans' else None,
+                    texts=texts,
+                    embedding_model=model,
+                    min_cohesion=0.4
+                )
+            
             elapsed = time.time() - start
             
             # Metrics
-            unique = set(labels)
-            if -1 in unique: unique.remove(-1)
+            unique = [l for l in set(labels) if l != -1]
             n_clusters = len(unique)
             n_noise = list(labels).count(-1)
             
-            # Silhouette (only valid if > 1 cluster and < n_samples)
-            sil = -1.0
-            if n_clusters > 1 and n_clusters < len(texts):
-                 # For silhouette, we treat noise (-1) as a distinct cluster or ignore it?
-                 # Standard practice: ignore noise points for valid score, or treat as own cluster.
-                 # Let's filter out noise for a "fair" purity check of formed clusters
+            # Scores
+            sil, db, ch, cohesion = -1.0, -1.0, -1.0, -1.0
+            if n_clusters > 0:
                  mask = labels != -1
-                 if mask.sum() > n_clusters: # Ensure enough points
-                     sil = silhouette_score(embeddings[mask], labels[mask], metric='cosine')
+                 if mask.sum() > n_clusters:
+                     if n_clusters > 1:
+                        sil = silhouette_score(embeddings[mask], labels[mask], metric='cosine')
+                        db = davies_bouldin_score(embeddings[mask], labels[mask])
+                        ch = calinski_harabasz_score(embeddings[mask], labels[mask])
+                     
+                     # Calculate overall cohesion (weighted avg by cluster size)
+                     cluster_cohesions = []
+                     for label in unique:
+                         c_mask = (labels == label)
+                         c_embs = embeddings[c_mask]
+                         centroid = c_embs.mean(axis=0).reshape(1, -1)
+                         sims = cosine_similarity(c_embs, centroid)
+                         cluster_cohesions.append(sims.mean())
+                     cohesion = np.mean(cluster_cohesions) if cluster_cohesions else 0.0
             
-            # Sample Topic
-            # Just grab text from Cluster 0
-            sample = "N/A"
-            if 0 in labels:
-                c0_texts = [texts[i] for i, l in enumerate(labels) if l == 0]
-                sample = c0_texts[0][:50].replace('\n', ' ') + "..." if c0_texts else "Empty"
+            # Get Labels
+            topic_names = extract_cluster_labels(texts, labels, model=model, method="semantic")
+            top_label = topic_names.get(0, "N/A") if 0 in topic_names else "N/A"
+            if top_label == "N/A" and topic_names:
+                top_label = topic_names[list(topic_names.keys())[0]]
 
             table.add_row(
                 method.upper(), 
                 str(n_clusters), 
                 str(n_noise), 
                 f"{sil:.3f}", 
+                f"{cohesion:.3f}",
+                f"{db:.3f}", 
+                f"{ch:.1f}", 
                 f"{elapsed:.2f}",
-                sample
+                top_label
             )
-            
         except Exception as e:
-            console.print(f"[red]Failed {method}: {e}[/red]")
-            table.add_row(method.upper(), "ERR", "-", "-", "-", str(e)[:50])
+            console.print(f"[red]Error running {method}: {e}[/red]")
+            table.add_row(method.upper(), "ERR", "-", "-", "-", "-", "-", "-", str(e)[:30])
+            
 
     console.print("\n")
     console.print(table)
