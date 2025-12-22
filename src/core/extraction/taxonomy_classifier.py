@@ -5,7 +5,7 @@ import numpy as np
 
 console = Console()
 
-from crawlers.taxonomy_keywords import get_flattened_keywords_by_group
+from src.core.extraction.taxonomy_keywords import get_flattened_keywords_by_group
 
 # --- 1. KEYWORD DEFINITIONS (Replaced by taxonomy_keywords.py) ---
 KEYWORDS_A = get_flattened_keywords_by_group("A_CRITICAL")

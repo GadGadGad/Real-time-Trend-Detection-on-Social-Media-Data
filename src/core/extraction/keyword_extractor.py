@@ -4,9 +4,9 @@ import re
 import os
 from typing import List, Set, Dict
 from collections import Counter
-from crawlers.locations import get_known_locations
-from crawlers.alias_normalizer import normalize_with_aliases
-from crawlers.taxonomy_keywords import get_all_event_keywords
+from src.utils.config.locations import get_known_locations
+from src.utils.text_processing.alias_normalizer import normalize_with_aliases
+from src.core.extraction.taxonomy_keywords import get_all_event_keywords
 
 class KeywordExtractor:
     def __init__(self, segmentation_method: str = "underthesea"):

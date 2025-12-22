@@ -8,6 +8,25 @@ from rich.console import Console
 
 console = Console()
 
+import re
+import unicodedata
+
+def normalize_text(text):
+    """
+    Robust normalization: lowercases, strips diacritics, and removes extra spaces.
+    Focuses on Vietnamese characters.
+    """
+    if not text: return ""
+    # Lowercase and strip
+    text = text.lower().strip()
+    # Normalize unicode (NFD decomposes diacritics)
+    nfkd_form = unicodedata.normalize('NFKD', text)
+    # Remove diacritics (non-spacing marks)
+    text = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+    # Collapse multiple spaces
+    text = re.sub(r'\s+', ' ', text)
+    return text
+
 # Global alias dictionary - will be populated from trends data
 TREND_ALIASES: Dict[str, List[str]] = {}
 

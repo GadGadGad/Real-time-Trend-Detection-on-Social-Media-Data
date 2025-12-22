@@ -27,7 +27,8 @@ import os
 # Ensure the parent directory is in path for package imports
 current_file_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_file_path)
-project_root = os.path.dirname(current_dir)
+src_dir = os.path.dirname(current_dir)
+project_root = os.path.dirname(src_dir)
 
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -35,42 +36,18 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 try:
-    from crawlers.clustering import cluster_data, extract_cluster_labels
-    from crawlers.alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts
-    from crawlers.ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
-    from crawlers.sentiment import batch_analyze_sentiment, clear_sentiment_analyzer
-    from crawlers.vectorizers import get_embeddings
-    from crawlers.taxonomy_classifier import TaxonomyClassifier
-    from crawlers.llm_refiner import LLMRefiner
-    from crawlers.trend_scoring import calculate_unified_score
-except (ImportError, ModuleNotFoundError):
-    # Fallback for flat directory structure (some notebook environments)
-    try:
-        import clustering
-        import alias_normalizer
-        import ner_extractor
-        import sentiment
-        import vectorizers
-        import taxonomy_classifier
-        import llm_refiner
-        import trend_scoring
-        
-        cluster_data = clustering.cluster_data
-        extract_cluster_labels = clustering.extract_cluster_labels
-        normalize_with_aliases = alias_normalizer.normalize_with_aliases
-        build_alias_dictionary = alias_normalizer.build_alias_dictionary
-        batch_normalize_texts = alias_normalizer.batch_normalize_texts
-        enrich_text_with_entities = ner_extractor.enrich_text_with_entities
-        batch_enrich_texts = ner_extractor.batch_enrich_texts
-        HAS_NER = ner_extractor.HAS_NER
-        batch_analyze_sentiment = sentiment.batch_analyze_sentiment
-        clear_sentiment_analyzer = sentiment.clear_sentiment_analyzer
-        get_embeddings = vectorizers.get_embeddings
-        TaxonomyClassifier = taxonomy_classifier.TaxonomyClassifier
-        LLMRefiner = llm_refiner.LLMRefiner
-        calculate_unified_score = trend_scoring.calculate_unified_score
-    except Exception as e:
-        console.print(f"[yellow]⚠️ Partial imports failed: {e}. System might be unstable.[/yellow]")
+    from src.core.analysis.clustering import cluster_data, extract_cluster_labels
+    from src.utils.text_processing.alias_normalizer import normalize_with_aliases, build_alias_dictionary, batch_normalize_texts, normalize_text
+    from src.core.extraction.ner_extractor import enrich_text_with_entities, batch_enrich_texts, HAS_NER
+    from src.core.analysis.sentiment import batch_analyze_sentiment, clear_sentiment_analyzer
+    from src.utils.text_processing.vectorizers import get_embeddings
+    from src.core.extraction.taxonomy_classifier import TaxonomyClassifier
+    from src.core.llm.llm_refiner import LLMRefiner
+    from src.pipeline.trend_scoring import calculate_unified_score
+    from src.core.extraction.keyword_extractor import KeywordExtractor
+except (ImportError, ModuleNotFoundError) as e:
+    console.print(f"[red]Import Error: {e}[/red]")
+    sys.exit(1)
 
 def clean_text(text):
     if not text: return ""
@@ -79,21 +56,6 @@ def clean_text(text):
     for p in patterns: cleaned = re.sub(p, '', cleaned)
     return cleaned.strip()
 
-def normalize_text(text):
-    """
-    Robust normalization: lowercases, strips diacritics, and removes extra spaces.
-    Focuses on Vietnamese characters.
-    """
-    if not text: return ""
-    # Lowercase and strip
-    text = text.lower().strip()
-    # Normalize unicode (NFD decomposes diacritics)
-    nfkd_form = unicodedata.normalize('NFKD', text)
-    # Remove diacritics (non-spacing marks)
-    text = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
-    # Collapse multiple spaces
-    text = re.sub(r'\s+', ' ', text)
-    return text
 
 def filter_obvious_noise(trends):
     """
@@ -365,7 +327,7 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
 
 def extract_dynamic_anchors(posts, trends, top_n=20, include_locations=True):
     from sklearn.feature_extraction.text import CountVectorizer
-    from crawlers.locations import get_known_locations
+    from src.utils.config.locations import get_known_locations
     trend_kws = set()
     for t in trends.values():
         for kw in t.get('keywords', []): trend_kws.add(kw.lower())
@@ -400,7 +362,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         use_keywords=False):
     if not posts: return []
     
-    from crawlers.keyword_extractor import KeywordExtractor
+    # KeywordExtractor is already imported at top level
     
     # In Sequential mode, we use CUDA for everything, but one at a time.
     import torch
@@ -436,96 +398,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         post_contents_enriched = kw_extractor.batch_extract(post_contents_enriched)
 
     # --- PHASE 0: SUMMARIZATION ---
-    if use_llm: # Only run if advanced features enabled
-        # If summarizing always, threshold is 0. Else, 2500 chars.
-        len_threshold = 0 if summarize_all else 2500
-        
-        # Load Cache
-        summary_cache_file = "summary_cache.json"
-        summary_cache = {}
-        if os.path.exists(summary_cache_file):
-            try:
-                with open(summary_cache_file, 'r', encoding='utf-8') as f:
-                    summary_cache = json.load(f)
-                console.print(f"[dim]📦 Loaded {len(summary_cache)} cached summaries[/dim]")
-            except: pass
-
-        import hashlib
-        def get_hash(t): return hashlib.md5(t.encode()).hexdigest()
-
-        # Identify what actually needs summarization (not in cache)
-        long_indices_all = [i for i, t in enumerate(post_contents_enriched) if len(t) > len_threshold]
-        long_indices_to_process = []
-        
-        # Apply cache first
-        for idx in long_indices_all:
-            txt = post_contents_enriched[idx]
-            h = get_hash(txt)
-            if h in summary_cache:
-                post_contents_enriched[idx] = f"SUMMARY: {summary_cache[h]}"
-            else:
-                long_indices_to_process.append(idx)
-        
-        # Process missing entries
-        if long_indices_to_process:
-            from crawlers.summarizer import Summarizer
-            mode_desc = "ALL" if summarize_all else "LONG"
-            console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices_to_process)} articles ({mode_desc}) - {len(long_indices_all)-len(long_indices_to_process)} cached...[/cyan]")
-            
-            summ = Summarizer()
-            summ.load_model()
-            
-            long_texts = [post_contents_enriched[i] for i in long_indices_to_process]
-            summaries = summ.summarize_batch(long_texts)
-            summ.unload_model() # Free GPU immediately
-            
-            # Save to CSV log & Update Cache
-            log_file = "summarized_posts_log.csv"
-            file_exists = os.path.isfile(log_file)
-            
-            new_cache_entries = 0
-            
-            try:
-                with open(log_file, 'a', newline='', encoding='utf-8') as f:
-                    writer = csv.writer(f)
-                    if not file_exists:
-                        writer.writerow(['Timestamp', 'Original Length', 'Summary Length', 'Summary', 'Original Start'])
-                    
-                    import datetime
-                    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    for idx, summary in zip(long_indices_to_process, summaries):
-                        original = post_contents_enriched[idx]
-                        # Cache Key
-                        h = get_hash(original)
-                        summary_cache[h] = summary
-                        new_cache_entries += 1
-                        
-                        # Update content in place
-                        post_contents_enriched[idx] = f"SUMMARY: {summary}"
-                        
-                        # Log
-                        writer.writerow([
-                            now, 
-                            len(original), 
-                            len(summary), 
-                            summary, 
-                            original[:200].replace('\n', ' ') + "..."
-                        ])
-            except Exception as e:
-                console.print(f"[red]Failed to save summary log: {e}[/red]")
-
-            # Save Cache to Disk
-            if new_cache_entries > 0:
-                try:
-                    with open(summary_cache_file, 'w', encoding='utf-8') as f:
-                        json.dump(summary_cache, f, ensure_ascii=False)
-                    console.print(f"   💾 [green]Cached {new_cache_entries} new summaries to {summary_cache_file}[/green]")
-                except: pass
-
-            console.print(f"   ✅ [green]Summarized {len(long_indices_to_process)} posts with ViT5.[/green]")
-        elif long_indices_all:
-             console.print(f"   ✅ [green]All {len(long_indices_all)} target posts were found in cache![/green]")
+    from src.pipeline.pipeline_stages import run_summarization_stage, run_sahc_clustering, calculate_match_scores
+    
+    post_contents_enriched = run_summarization_stage(post_contents_enriched, use_llm, summarize_all)
 
     post_embeddings = get_embeddings(
         post_contents_enriched, 
@@ -536,65 +411,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         cache_dir="embeddings_cache" if use_cache else None
     )
 
-    # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
-    news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
-    social_indices = [i for i, p in enumerate(posts) if 'Face' in p.get('source', '')]
-    
-    console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles...[/cyan]")
-    news_embs = post_embeddings[news_indices]
-    if len(news_embs) >= min_cluster_size:
-        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size)
-    else:
-        news_labels = np.array([-1] * len(news_indices))
-
-    # Initialize final labels
-    final_labels = np.array([-1] * len(posts))
-    for idx, nl in zip(news_indices, news_labels):
-        final_labels[idx] = nl
-
-    # --- SAHC PHASE 2: SOCIAL ATTACHMENT ---
-    unique_news_clusters = sorted([l for l in set(news_labels) if l != -1])
-    unattached_social_indices = []
-    
-    if unique_news_clusters and social_indices:
-        console.print(f"🔗 [cyan]SAHC Phase 2: Attaching Social posts to News clusters...[/cyan]")
-        # Calculate centroids for News clusters
-        centroids = {}
-        for l in unique_news_clusters:
-            cluster_news_indices = [ni for i, ni in enumerate(news_indices) if news_labels[i] == l]
-            centroids[l] = np.mean(post_embeddings[cluster_news_indices], axis=0)
-        
-        centroid_matrix = np.array([centroids[l] for l in unique_news_clusters])
-        social_embs = post_embeddings[social_indices]
-        
-        # Calculate similarity to centroids
-        sims = cosine_similarity(social_embs, centroid_matrix)
-        
-        # Attachment threshold (strict)
-        ATTACH_THRESHOLD = 0.65 
-        
-        for i, s_idx in enumerate(social_indices):
-            best_c_idx = np.argmax(sims[i])
-            if sims[i][best_c_idx] >= ATTACH_THRESHOLD:
-                final_labels[s_idx] = unique_news_clusters[best_c_idx]
-            else:
-                unattached_social_indices.append(s_idx)
-    else:
-        unattached_social_indices = social_indices
-
-    # --- SAHC PHASE 3: SOCIAL DISCOVERY (Clustering the leftovers) ---
-    if len(unattached_social_indices) >= min_cluster_size:
-        console.print(f"🔭 [cyan]SAHC Phase 3: Researching Discovery trends in {len(unattached_social_indices)} social posts...[/cyan]")
-        leftover_embs = post_embeddings[unattached_social_indices]
-        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size)
-        
-        # Shift social labels to avoid collision with news clusters
-        max_news_label = max(unique_news_clusters) if unique_news_clusters else -1
-        for i, s_idx in enumerate(unattached_social_indices):
-            if social_discovery_labels[i] != -1:
-                final_labels[s_idx] = social_discovery_labels[i] + max_news_label + 1
-
-    cluster_labels = final_labels
+    # --- SAHC PHASE 1-3: CLUSTERING ---
+    cluster_labels = run_sahc_clustering(posts, post_embeddings, min_cluster_size=min_cluster_size)
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
 
@@ -616,23 +434,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         indices = [i for i, l in enumerate(cluster_labels) if l == label]
         cluster_posts = [posts[i] for i in indices]
         cluster_query = cluster_names.get(label, f"Cluster {label}")
-        assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
-
-        if len(trend_embeddings) > 0:
-            cluster_emb = embedder.encode(cluster_query)
-            sims = cosine_similarity([cluster_emb], trend_embeddings)[0]
-            top_idx = np.argsort(sims)[-3:][::-1]
-            if rerank and reranker:
-                rerank_scores = reranker.predict([(cluster_query, trend_queries[k]) for k in top_idx])
-                best_s = np.argmax(rerank_scores)
-                if rerank_scores[best_s] > -2:
-                    best_match_score = float(sims[top_idx[best_s]])
-                    assigned_trend = trend_keys[top_idx[best_s]]
-                    topic_type = "Trending"
-            elif sims[top_idx[0]] > threshold:
-                best_match_score = float(sims[top_idx[0]])
-                assigned_trend = trend_keys[top_idx[0]]
-                topic_type = "Trending"
+        assigned_trend, topic_type, best_match_score = calculate_match_scores(
+            cluster_query, label, trend_embeddings, trend_keys, trend_queries, 
+            embedder, reranker, rerank, threshold
+        )
 
         trend_data = trends.get(assigned_trend, {'volume': 0})
         # Extract trend time

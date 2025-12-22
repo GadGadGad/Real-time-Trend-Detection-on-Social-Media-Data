@@ -13,7 +13,7 @@ from typing import List, Dict, Set, Tuple
 from collections import defaultdict
 from rich.console import Console
 try:
-    from crawlers.locations import get_known_locations
+    from src.utils.config.locations import get_known_locations
     VIETNAM_LOCS = get_known_locations()
 except ImportError:
     VIETNAM_LOCS = []
