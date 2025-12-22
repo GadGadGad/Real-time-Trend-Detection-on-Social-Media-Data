@@ -21,9 +21,13 @@ def load_json(filepath):
                 published_at = p_timestamp if p_timestamp else time_str
                 
                 page_name = item.get('pageName') or item.get('page_name') or 'Unknown'
+                
+                clean = clean_text(text)
+                if len(clean) < 20: continue # Filter noise
+                
                 unified.append({
                     "source": f"Face: {page_name}",
-                    "content": clean_text(text),
+                    "content": clean,
                     "title": "",
                     "url": item.get('url') or item.get('postUrl') or '',
                     "stats": item.get('stats') or {'likes': item.get('likes', 0), 'comments': item.get('comments', 0), 'shares': item.get('shares', 0)},
@@ -49,7 +53,7 @@ def load_news_data(files):
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     content_str = f"{row.get('title', '')}\n{row.get('content', '')}"
-                    if not content_str.strip(): # Skip empty content
+                    if len(content_str.strip()) < 20: # Skip empty/short content
                         continue
                         
                     all_data.append({

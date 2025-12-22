@@ -66,6 +66,10 @@ def load_merged_posts(path, source_type='News'):
             # Stats
             stats = {'likes': row.get('likes', 0), 'comments': row.get('comments', 0), 'shares': row.get('shares', 0)}
             
+            # FILTER: Skip empty or very short content
+            if len(str(content).strip()) < 20:
+                continue
+
             loaded.append({
                 "source": src,
                 "content": str(content),
