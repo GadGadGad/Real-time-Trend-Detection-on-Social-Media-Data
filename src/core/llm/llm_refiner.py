@@ -41,12 +41,15 @@ class LLMRefiner:
                     load_in_4bit=True,
                     bnb_4bit_compute_dtype=torch.float32,
                     bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_use_double_quant=False, # Disable for max stability
                 )
 
                 self.tokenizer = AutoTokenizer.from_pretrained(model_id)
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
+                
+                # Enforce limit to fix truncation warning and prevent OOB
+                self.tokenizer.model_max_length = 4096
                 
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_id,
@@ -55,13 +58,7 @@ class LLMRefiner:
                     trust_remote_code=True,
                     low_cpu_mem_usage=True
                 )
-                self.pipeline = pipeline(
-                    "text-generation",
-                    model=self.model,
-                    tokenizer=self.tokenizer,
-                    max_new_tokens=1024, # Increased for batching
-                    batch_size=batch_size
-                )
+                # self.pipeline removal - using manual generate for stability
                 self.enabled = True
             except Exception as e:
                 console.print(f"[red]❌ Failed to load local model: {e}[/red]")
@@ -81,50 +78,42 @@ class LLMRefiner:
                     results.append("")
             return results
         else:
-            formatted_prompts = []
+            results = []
             for prompt in prompts:
                 try:
-                    messages = [{"role": "user", "content": prompt}]
-                    formatted = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                except Exception:
-                    if "qwen" in self.model_id:
-                        formatted = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                    else:
-                        formatted = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
-                formatted_prompts.append(formatted)
-            
-            # Using pipeline with a list of prompts (triggering batching)
-            outputs = self.pipeline(
-                formatted_prompts,
-                max_new_tokens=1024,
-                return_full_text=False,
-                do_sample=False, # Use greedy decoding for stability
-                truncation=True
-            )
-            
-            results = []
-            for i, output in enumerate(outputs):
-                res_text = output[0]['generated_text']
-                
-                # Robust extraction: remove known tags
-                for tag in ["<start_of_turn>model\n", "<|im_start|>assistant\n"]:
-                    if tag in res_text:
-                        res_text = res_text.split(tag)[-1]
-                
-                clean_res = res_text.strip()
-                if not clean_res:
-                    # Retry single if batch failed for this item (unlikely but safe)
+                    # Apply template
+                    formatted = ""
                     try:
-                        raw_prompt = f"Task: {prompts[i]}\nResult (JSON):"
-                        single_out = self.pipeline(raw_prompt, max_new_tokens=1024, return_full_text=False)
-                        clean_res = single_out[0]['generated_text'].strip()
-                    except: pass
-                
-                if self.debug:
-                    console.print(f"[dim blue]DEBUG: Generated {len(clean_res)} chars for item {i}.[/dim blue]")
-                results.append(clean_res)
+                        messages = [{"role": "user", "content": prompt}]
+                        formatted = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                    except Exception:
+                        if "qwen" in self.model_id:
+                            formatted = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                        else:
+                            formatted = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+                            
+                    # Manual Generation (Bare Metal Stability)
+                    inputs = self.tokenizer(formatted, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(self.model.device)
+                    
+                    with torch.no_grad():
+                        outputs = self.model.generate(
+                            **inputs,
+                            max_new_tokens=1024,
+                            do_sample=False,
+                            pad_token_id=self.tokenizer.eos_token_id
+                        )
+                        
+                    # Decode only the new tokens
+                    generated_tokens = outputs[0][inputs.input_ids.shape[1]:]
+                    res_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+                    results.append(res_text)
+                    
+                except Exception as e:
+                    console.print(f"[red]Generation Error: {e}[/red]")
+                    results.append("")
             
             return results
+
 
     def _extract_json(self, text, is_list=False):
         """Robustly extract JSON from text even with markdown, newlines, or noise"""
@@ -177,7 +166,24 @@ class LLMRefiner:
                         try: return json.loads(content + "}]")
                         except: pass
 
-                # 5. Last resort: Use regex to extract object by object
+                # 5. Recovery for OBJECTS (is_list=False)
+                if not is_list:
+                    # Attempt to close truncated JSON objects
+                    # Try common closing patterns
+                    candidates = ['}', '"}', '"]}', '"]}}', '"]}}', '']
+                    for suffix in candidates:
+                        try:
+                            return json.loads(content + suffix)
+                        except: pass
+                    
+                    # Try closing open quotes first if odd number of quotes
+                    if content.count('"') % 2 != 0:
+                        for suffix in candidates:
+                            try:
+                                return json.loads(content + '"' + suffix)
+                            except: pass
+
+                # 6. Last resort for LISTS: Use regex to extract object by object
                 if is_list:
                     # Non-greedy match for complete objects
                     objects = re.findall(r"\{.*?\}", content)
