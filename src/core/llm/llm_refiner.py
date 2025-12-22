@@ -734,9 +734,13 @@ class LLMRefiner:
                                 all_results[item['id']] = item
                         
                         # Log a sample to show it's working
-                        if results:
-                            sample = results[0]
-                            console.print(f"      ✨ [green]Refined {len(results)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
+                        # Find first valid dict result for sample logging
+                        valid_samples = [r for r in results if isinstance(r, dict) and 'id' in r]
+                        if valid_samples:
+                            sample = valid_samples[0]
+                            console.print(f"      ✨ [green]Refined {len(valid_samples)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
+                        else:
+                            console.print(f"[yellow]⚠️ Chunk {i+1}: Parsed {len(results)} items but none were valid cluster dicts[/yellow]")
                     else:
                         console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i+1}[/yellow]")
                         if self.debug:
@@ -744,7 +748,9 @@ class LLMRefiner:
                             console.print(f"[dim yellow]DEBUG Raw Response (first 500 chars):[/dim yellow]")
                             console.print(f"[dim]{text[:500]}[/dim]")
                 except Exception as e:
-                    console.print(f"[red]Batch LLM error in chunk {i+1}: {e}[/red]")
+                    console.print(f"[red]Batch LLM error in chunk {i+1}: {type(e).__name__}: {e}[/red]")
+                    # Show response preview for debugging even without debug mode
+                    console.print(f"[dim red]Response preview: {text[:200] if text else 'empty'}...[/dim red]")
                     if self.debug:
                         import traceback
                         console.print(f"[dim red]{traceback.format_exc()}[/dim red]")
