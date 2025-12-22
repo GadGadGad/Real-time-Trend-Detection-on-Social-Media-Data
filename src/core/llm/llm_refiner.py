@@ -280,6 +280,49 @@ class LLMRefiner:
                             return data
                         except: pass
                 
+                # 8. NESTED ARRAYS: Salvage complete inner [...] arrays from truncated response
+                # This handles: [["kw1"], ["kw2"], ["kw3  <- incomplete
+                # We extract the first two complete arrays
+                if is_list and '[[' in content:
+                    inner_arrays = []
+                    bracket_depth = 0
+                    current_arr = ""
+                    in_string = False
+                    prev_char = ""
+                    started = False  # Skip the outer [
+                    
+                    for char in content:
+                        if char == '"' and prev_char != '\\':
+                            in_string = not in_string
+                        
+                        if not in_string:
+                            if char == '[':
+                                if bracket_depth == 1:  # Inside outer [
+                                    current_arr = ""
+                                bracket_depth += 1
+                            elif char == ']':
+                                bracket_depth -= 1
+                                if bracket_depth == 1:  # Completed an inner array
+                                    current_arr += char
+                                    inner_arrays.append(current_arr)
+                                    current_arr = ""
+                                    prev_char = char
+                                    continue
+                        
+                        if bracket_depth >= 2:  # Inside an inner array
+                            current_arr += char
+                        prev_char = char
+                    
+                    # If we captured complete inner arrays, parse them
+                    if inner_arrays:
+                        fixed_json = "[" + ",".join(inner_arrays) + "]"
+                        try:
+                            data = json.loads(fixed_json)
+                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} nested arrays from truncated response.[/dim green]")
+                            return data
+                        except:
+                            pass
+                
                 if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:200]}...[/dim red]")
                 return None
         except Exception as e:

@@ -419,6 +419,31 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                 chunk_success = 0
                 chunk_fallback = 0
                 
+                # Debug: Log what we got back
+                if parsed is None:
+                    print(f"⚠️ Parse returned None. Response preview: {resp[:200] if resp else 'EMPTY'}...")
+                elif not isinstance(parsed, list):
+                    print(f"⚠️ Parse returned non-list: {type(parsed)}")
+                elif len(parsed) > 0:
+                    # Check first element type
+                    first_elem = parsed[0]
+                    if isinstance(first_elem, list):
+                        pass  # Expected: nested array [[kw1, kw2], [kw3], ...]
+                    elif isinstance(first_elem, str):
+                        # Model returned flat list ["kw1", "kw2", ...] instead of nested
+                        # Convert to 1 result for all items (share keywords)
+                        print(f"⚠️ Got flat list ({len(parsed)} items), using as shared keywords")
+                        shared_kws = " ".join(str(k) for k in parsed[:15])
+                        for orig_idx, text_key in chunk:
+                            self.cache[text_key] = shared_kws
+                            results_map[orig_idx] = shared_kws
+                            chunk_success += 1
+                        # Skip the normal loop
+                        elapsed = time.time() - chunk_start
+                        success_count += chunk_success
+                        print(f"✅ {elapsed:.1f}s (LLM-shared: {chunk_success})")
+                        continue
+                
                 if parsed and isinstance(parsed, list):
                     for i, (orig_idx, text_key) in enumerate(chunk):
                         if i < len(parsed) and isinstance(parsed[i], list):
