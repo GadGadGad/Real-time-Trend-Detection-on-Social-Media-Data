@@ -16,6 +16,7 @@ class KeywordExtractor:
             - "underthesea" (fast, CRF) 
             - "transformer" (accurate, Underthesea Deep)
             - "phonlp" (very accurate, VinAI Multi-task Transformer with VnCoreNLP segmenter)
+            - "bert" (Vietnamese PhoBERT + NER, requires tpha4308/keyword-extraction-viet)
         use_llm: If True, uses the provided llm_refiner for extraction (slower but semantic).
         llm_refiner: Instance of LLMRefiner.
         """
@@ -32,6 +33,11 @@ class KeywordExtractor:
         self.phonlp_model = None
         self.vncorenlp_model = None
         self.vncorenlp_path = os.path.join(os.path.expanduser("~"), ".cache", "vncorenlp_models")
+        
+        # BERT pipeline (lazy loaded)
+        self.bert_pipeline = None
+        self.bert_repo_path = os.path.join(os.path.expanduser("~"), ".cache", "keyword-extraction-viet")
+        
         # Common Vietnamese stopwords (minimal set for extraction)
         self.stopwords = {
             'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
@@ -94,6 +100,77 @@ class KeywordExtractor:
             print(f"LLM Extract Error: {e}")
             
         return "" # Fallback to rule-based if LLM fails
+
+    def _init_bert_pipeline(self):
+        """Initialize the BERT-based Vietnamese keyword extraction pipeline."""
+        if self.bert_pipeline is not None:
+            return self.bert_pipeline
+        
+        import subprocess
+        import sys
+        import torch
+        
+        # 1. Clone repo if not exists
+        if not os.path.exists(self.bert_repo_path):
+            print("[BERT-KW] Cloning keyword-extraction-viet repo...")
+            os.makedirs(os.path.dirname(self.bert_repo_path), exist_ok=True)
+            subprocess.run(
+                ["git", "clone", "https://huggingface.co/tpha4308/keyword-extraction-viet", self.bert_repo_path],
+                check=True
+            )
+            print("[BERT-KW] ✅ Repo cloned.")
+        
+        # 2. Check for pretrained models, download if needed
+        phobert_path = os.path.join(self.bert_repo_path, "pretrained-models", "phobert.pt")
+        ner_path = os.path.join(self.bert_repo_path, "pretrained-models", "ner-vietnamese-electra-base.pt")
+        
+        if not os.path.exists(phobert_path) or not os.path.exists(ner_path):
+            print("[BERT-KW] Downloading and saving PhoBERT + NER models...")
+            os.makedirs(os.path.join(self.bert_repo_path, "pretrained-models"), exist_ok=True)
+            
+            from transformers import AutoModel, AutoModelForTokenClassification
+            
+            phobert = AutoModel.from_pretrained("vinai/phobert-base-v2")
+            phobert.eval()
+            torch.save(phobert, phobert_path)
+            print("[BERT-KW] ✅ PhoBERT saved.")
+            
+            ner_model = AutoModelForTokenClassification.from_pretrained("NlpHUST/ner-vietnamese-electra-base")
+            ner_model.eval()
+            torch.save(ner_model, ner_path)
+            print("[BERT-KW] ✅ NER model saved.")
+        
+        # 3. Add repo to path and import pipeline
+        if self.bert_repo_path not in sys.path:
+            sys.path.insert(0, self.bert_repo_path)
+        
+        from pipeline import KeywordExtractorPipeline
+        
+        phobert = torch.load(phobert_path, weights_only=False)
+        phobert.eval()
+        ner_model = torch.load(ner_path, weights_only=False)
+        ner_model.eval()
+        
+        self.bert_pipeline = KeywordExtractorPipeline(phobert, ner_model)
+        print("[BERT-KW] ✅ Pipeline loaded.")
+        return self.bert_pipeline
+    
+    def _extract_with_bert(self, text: str, top_n: int = 10) -> str:
+        """Extract keywords using Vietnamese PhoBERT + NER pipeline."""
+        try:
+            pipeline = self._init_bert_pipeline()
+            # The pipeline expects {"title": ..., "text": ...}
+            # We'll use the first 100 chars as title proxy if not provided
+            title = text[:100] if len(text) > 100 else text
+            inp = {"title": title, "text": text}
+            kws = pipeline(inputs=inp, min_freq=1, ngram_n=(1, 3), top_n=top_n, diversify_result=False)
+            
+            if kws:
+                return " ".join(kws)
+        except Exception as e:
+            print(f"[BERT-KW] ❌ Error: {e}. Falling back to rule-based.")
+        
+        return ""  # Fallback
 
     # ... (skipping unchanged methods) ...
 
@@ -167,6 +244,12 @@ class KeywordExtractor:
         if self.use_llm:
             llm_res = self._extract_with_llm(text)
             if llm_res: return llm_res
+
+        # 0.5 BERT Extraction (Optional, Vietnamese PhoBERT + NER)
+        if self.segmentation_method == "bert":
+            bert_res = self._extract_with_bert(text, top_n=max_keywords)
+            if bert_res: return bert_res
+            # Fall through to rule-based if BERT fails
 
         # 1. Alias Normalization (Phase 0)
         # This prepends canonical terms if informal ones are found

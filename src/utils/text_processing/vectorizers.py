@@ -13,6 +13,9 @@ console = Console()
 # GloVe cache
 _glove_embeddings = None
 
+# ProtonX client cache
+_protonx_client = None
+
 
 def get_tfidf_embeddings(texts: list, max_features: int = 5000) -> np.ndarray:
     """
@@ -174,6 +177,73 @@ def get_glove_embeddings(texts: list, glove_path: str = None, dim: int = 100) ->
     return embeddings
 
 
+def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 32) -> np.ndarray:
+    """
+    Create embeddings using ProtonX Vietnamese Embedding API.
+    
+    Args:
+        texts: List of text strings
+        api_key: ProtonX API key (uses PROTONX_API_KEY env var if not provided)
+        batch_size: Number of texts to send per API call
+        
+    Returns:
+        numpy array of shape (n_texts, embedding_dim)
+    """
+    global _protonx_client
+    
+    # Get API key
+    if api_key is None:
+        api_key = os.environ.get("PROTONX_API_KEY")
+    
+    if not api_key:
+        raise ValueError(
+            "ProtonX API key required. Set PROTONX_API_KEY environment variable "
+            "or pass api_key parameter. Get key from https://platform.protonx.io/"
+        )
+    
+    console.print(f"[cyan]🌐 Creating ProtonX embeddings for {len(texts)} texts...[/cyan]")
+    
+    # Set env var for protonx library
+    os.environ["PROTONX_API_KEY"] = api_key
+    
+    try:
+        from protonx import ProtonX
+    except ImportError:
+        console.print("[yellow]Installing protonx library...[/yellow]")
+        import subprocess
+        subprocess.run(["pip", "install", "protonx", "-q"], check=True)
+        from protonx import ProtonX
+    
+    if _protonx_client is None:
+        _protonx_client = ProtonX()
+    
+    client = _protonx_client
+    embeddings = []
+    
+    # Process in batches
+    from rich.progress import track
+    for i in track(range(0, len(texts), batch_size), description="[cyan]ProtonX encoding...[/cyan]"):
+        batch = texts[i:i + batch_size]
+        for text in batch:
+            try:
+                result = client.embeddings.create(text)
+                if result and 'data' in result and len(result['data']) > 0:
+                    emb = result['data'][0]['embedding']
+                    embeddings.append(emb)
+                else:
+                    # Fallback to zero vector
+                    console.print(f"[yellow]⚠️ Empty response for text, using zero vector[/yellow]")
+                    embeddings.append([0.0] * 768)  # ProtonX uses 768-dim
+            except Exception as e:
+                console.print(f"[red]❌ ProtonX error: {e}[/red]")
+                embeddings.append([0.0] * 768)
+    
+    embeddings = np.array(embeddings)
+    console.print(f"[green]✅ ProtonX: Shape {embeddings.shape}[/green]")
+    
+    return embeddings
+
+
 import hashlib
 import pickle
 
@@ -242,8 +312,23 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
             
         return embeddings
     
+    elif method == "protonx":
+        embeddings = get_protonx_embeddings(
+            texts,
+            api_key=kwargs.get('api_key'),
+            batch_size=kwargs.get('batch_size', 32)
+        )
+        
+        # Cache ProtonX embeddings too
+        if cache_dir:
+            cache_path = os.path.join(cache_dir, cache_filename)
+            np.save(cache_path, embeddings)
+            console.print(f"[green]💾 Saved embeddings to {cache_path}[/green]")
+            
+        return embeddings
+    
     else:
-        raise ValueError(f"Unknown embedding method: {method}")
+        raise ValueError(f"Unknown embedding method: {method}. Available: tfidf, bow, glove, sentence-transformer, protonx")
 
 
 # Test

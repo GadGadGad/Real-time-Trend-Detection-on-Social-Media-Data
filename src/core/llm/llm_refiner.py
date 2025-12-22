@@ -120,6 +120,9 @@ class LLMRefiner:
 
     def _extract_json(self, text, is_list=False):
         """Robustly extract JSON from text even with markdown, newlines, or noise"""
+        if not text or not text.strip():
+            return None
+            
         try:
             # Look for markdown blocks first
             code_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
@@ -152,11 +155,16 @@ class LLMRefiner:
             
             # 3. Clean trailing commas (common LLM error)
             content = re.sub(r",\s*([\]}])", r"\1", content)
+            
+            # 4. Fix common LLM error: single quotes instead of double
+            # Only apply if no double quotes exist (likely all single-quoted)
+            if '"' not in content and "'" in content:
+                content = content.replace("'", '"')
 
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
-                # 4. If still failing, it might be truncated. Try to close it.
+                # 5. If still failing, it might be truncated. Try to close it.
                 if is_list:
                      # Attempt to wrap bare list if brackets missing
                     if not content.strip().startswith('['):
@@ -168,8 +176,10 @@ class LLMRefiner:
                         except: pass
                         try: return json.loads(content + "}]")
                         except: pass
+                        try: return json.loads(content + "\"}]")
+                        except: pass
 
-                # 5. Recovery for OBJECTS (is_list=False)
+                # 6. Recovery for OBJECTS (is_list=False)
                 if not is_list:
                     # Attempt to close truncated JSON objects
                     # Try common closing patterns
@@ -186,25 +196,63 @@ class LLMRefiner:
                                 return json.loads(content + '"' + suffix)
                             except: pass
 
-                # 6. Last resort for LISTS: Use regex to extract object by object
+                # 7. IMPROVED Last resort for LISTS: Use greedy regex for complete objects
                 if is_list:
-                    # Non-greedy match for complete objects
-                    objects = re.findall(r"\{.*?\}", content)
+                    # Try to find objects with proper brace balancing
+                    objects = []
+                    brace_depth = 0
+                    current_obj = ""
+                    in_string = False
+                    prev_char = ""
+                    
+                    for char in content:
+                        if char == '"' and prev_char != '\\':
+                            in_string = not in_string
+                        
+                        if not in_string:
+                            if char == '{':
+                                if brace_depth == 0:
+                                    current_obj = ""
+                                brace_depth += 1
+                            elif char == '}':
+                                brace_depth -= 1
+                                if brace_depth == 0:
+                                    current_obj += char
+                                    objects.append(current_obj)
+                                    current_obj = ""
+                                    prev_char = char
+                                    continue
+                        
+                        if brace_depth > 0:
+                            current_obj += char
+                        prev_char = char
+                    
+                    # If we captured objects, try to parse them
                     if objects:
-                        # Reconstruct valid list
                         fixed_json = "[" + ",".join(objects) + "]"
                         try: 
                             data = json.loads(fixed_json)
-                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} objects via regex.[/dim green]")
+                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} objects via brace-balanced parsing.[/dim green]")
+                            return data
+                        except:
+                            pass
+                    
+                    # Fallback to simple regex
+                    simple_objects = re.findall(r'\{[^{}]+\}', content)
+                    if simple_objects:
+                        fixed_json = "[" + ",".join(simple_objects) + "]"
+                        try: 
+                            data = json.loads(fixed_json)
+                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} objects via simple regex.[/dim green]")
                             return data
                         except: pass
                 
-                if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:100]}...[/dim red]")
+                if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:200]}...[/dim red]")
                 return None
         except Exception as e:
             if self.debug:
                 console.print(f"[dim red]DEBUG: JSON Parse error: {e}[/dim red]")
-                console.print(f"[dim yellow]DEBUG: Raw text was: {text}[/dim yellow]")
+                console.print(f"[dim yellow]DEBUG: Raw text was: {text[:300]}...[/dim yellow]")
             return None
 
     def deduplicate_topics(self, topic_list):
@@ -662,15 +710,14 @@ class LLMRefiner:
             - Base your 'reasoning' ONLY on the provided Context and Keywords for THAT cluster. 
             - Do NOT mix facts between clusters. 
             - Ensure 'id' in JSON matches the 'Cluster ID'.
+            - DO NOT add any explanation before or after the JSON.
+            - Output ONLY valid JSON, nothing else.
 
             Input Clusters:
             {batch_str}
 
-            Respond STRICTLY in a JSON list of objects:
-            [
-            {{ "id": label_id, "refined_title": "...", "category": "A/B/C", "event_type": "Specific/Generic", "reasoning": "..." }},
-            ...
-            ]
+            Output ONLY this JSON structure (no markdown, no explanation):
+            [{{\"id\": 0, \"refined_title\": \"...\", \"category\": \"A\", \"event_type\": \"Specific\", \"reasoning\": \"...\"}}, {{\"id\": 1, \"refined_title\": \"...\", \"category\": \"B\", \"event_type\": \"Generic\", \"reasoning\": \"...\"}}]
             """
             all_prompts.append(prompt)
 
