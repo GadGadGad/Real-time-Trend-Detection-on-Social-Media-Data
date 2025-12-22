@@ -68,10 +68,11 @@ class Summarizer:
                 chunk = texts[i : i + gemini_batch_size]
                 chunk_str = "\n".join([f"--- ARTICLE {idx+1} ---\n{t[:2000]}" for idx, t in enumerate(chunk)])
                 prompt = (
-                    "You are a Senior News Editor. Summarize each given article below into ONE short Vietnamese paragraph (max 100 words).\n"
-                    "Maintain key facts, figures, and names.\n"
-                    "Output a JSON list of strings only.\n"
-                    "EXAMPLE: [\"Summary 1\", \"Summary 2\"]\n\n"
+                    "Role: Senior News Editor. Summarize each article into ONE concise Vietnamese paragraph (max 100 words).\n"
+                    "Style: Neutral, journalistic, factual. No \"About this article...\" or \"The article discusses...\". Direct summary only.\n"
+                    "Must Include: Key entities, numbers, dates, locations.\n"
+                    "Output: A JSON list of strings. Each summary corresponds to the input article order.\n"
+                    "Example: [\"Hà Nội đón không khí lạnh tăng cường từ đêm 15/10...\", \"Vingroup công bố báo cáo tài chính...\"]\n\n"
                     f"{chunk_str}\n\n"
                     "JSON Output:"
                 )

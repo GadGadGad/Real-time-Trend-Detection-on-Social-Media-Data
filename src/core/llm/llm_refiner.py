@@ -298,32 +298,26 @@ class LLMRefiner:
                 Task:
                 From the list below, identify headlines that refer to the EXACT SAME real-world event.
 
-                Two headlines are the SAME EVENT ONLY IF:
-                - Same location
-                - Same timeframe
-                - Same main actors/entities
+                Two headlines are the SAME EVENT ONLY IF they share:
+                1. The SAME specific location (e.g., "Hanoi", "Nguyen Hue Walking Street")
+                2. The SAME time/date (e.g., "Last night", "Oct 15")
+                3. The SAME main entities (e.g., "Messi", "iPhone 16")
 
-                STRICT RULES:
-                - DO NOT paraphrase or rewrite titles.
-                - DO NOT invent a new canonical title.
-                - Canonical title MUST be copied EXACTLY from one of the input lines.
-                - If unsure, DO NOT merge.
+                strict matching rules:
+                - "Traffic accident in District 1" != "Traffic accident in District 3" (Different location)
+                - "Gold price increased today" != "Gold price increased yesterday" (Different time)
+                - "Storm Yagi" == "Typhoon Yagi" (Match)
 
-                DO NOT merge:
-                - Similar accidents in different locations
-                - Same topic but different days
-                - Generic vs specific headlines
+                STRICT OUTPUT RULES:
+                - Canonical title MUST be an EXACT COPY of one of the input lines.
+                - DO NOT create new titles.
+                - DO NOT merge if unsure.
+                - Return JSON object: {{ "Original Title": "Canonical Title" }}
 
                 Input headlines:
                 {chunk_str}
 
                 Output format (JSON object ONLY):
-                {{
-                "Original Title": "Canonical Title (copied verbatim from input)"
-                }}
-
-                Include ONLY titles that are merged.
-                Do NOT include titles that remain unique.
             """
             all_prompts.append(prompt)
             
@@ -392,41 +386,30 @@ class LLMRefiner:
                 chunk_str = "\n".join([f"- {t}" for t in chunk])
                 
                 prompt = f"""
-                    Role: Senior Editor.
-
+                    Role: Senior News Editor.
                         Context: Google Trending Searches in Vietnam.
                         Category hint: {cat}
 
                         Task:
-                        Step 1 – FILTER:
-                        Identify terms that are NOT news-worthy.
-                        Only remove if CLEARLY generic or utility-like.
+                        1. FILTER: Remove terms that are clearly Generic, Utilities, or meaningless.
+                           - NOISE: "xổ số", "kết quả", "thời tiết", "giá vàng", "lịch vạn niên", "random chars"
+                           - KEEP: "bão Yagi", "iPhone 16", "Man Utd vs Liverpool", "Blackpink"
 
-                        Step 2 – MERGE:
-                        Identify terms that refer to the EXACT SAME real-world event.
-                        
-                        MERGE RULES:
-                        - Canonical term MUST appear verbatim in the input list.
-                        - Merge multilingual sports terms (e.g. "vs" = "đấu với").
-                        - MERGE SUB-EVENTS into the MAIN EVENT.
-                          (e.g., "Lịch thi đấu SEA Games 33", "Bảng tổng sắp SEA Games" -> "SEA Games 33" if present).
-                        - Do NOT merge distinct matches (e.g. "MU vs City" != "MU vs Liverpool").
-
-                        FILTER RULES:
-                        - Remove prices, weather forecasts, generic keywords ("xổ số", "lịch vạn niên").
-                        - If unsure, KEEP.
+                        2. MERGE: Group key terms referring to the EXACT SAME event.
+                           - MUST use one of the input terms as the canonical term.
+                           - Example: "lịch thi đấu aff cup", "bxh aff cup" -> "AFF Cup 2024" (if present)
+                           - Example: "giá xăng hôm nay", "giá xăng tăng" -> "Giá xăng dầu" (if present)
 
                         Input list:
                         {chunk_str}
 
                         Output (JSON ONLY):
                         {{
-                        "filtered": ["term_to_remove"],
+                        "filtered": ["term_to_remove", "term_to_remove"],
                         "merged": {{
                             "variant_term": "canonical_term"
                         }}
                         }}
-
                 """
                 all_prompts.append(prompt)
                 
@@ -465,63 +448,28 @@ class LLMRefiner:
         for i in track(range(0, len(trend_list), chunk_size), description="[cyan]Building filter prompts...[/cyan]", total=total_chunks):
             chunk = trend_list[i:i+chunk_size]
             prompt = f"""
-                You are a strict classifier for TRENDING SEARCH KEYWORDS.
+                Role: Classifier for Google Trends (Vietnam).
+                Task: Return a list of keywords that are NOISE or GENERIC.
 
-                Your task:
-                From the given list, identify ONLY items that are **Noise / Generic searches**.
+                DEFINITION OF NOISE (Remove these):
+                1. Weather: "thời tiết", "nhiệt độ", "mưa", "bão" (generic), "aqi"
+                2. Utilities: "giá vàng", "giá xăng", "lịch âm", "xổ số", "xsmn", "vietlott"
+                3. Betting/Gambling: "bet88", "kubet", "soi cầu", "tỷ lệ cược"
+                4. Generic Tech: "facebook", "gmail", "google", "login", "wifi"
+                5. Vague/Meaningless: "hình ảnh", "video", "clip", "full", "hd", "review", "tin tức"
+                6. Broad Concepts: "tình yêu", "cuộc sống", "học tập", "công việc"
 
-                A keyword is considered NOISE if it belongs to ONE OR MORE of the following:
+                DEFINITION OF EVENTS (KEEP these):
+                - Specific People: "Taylor Swift", "Phạm Minh Chính", "Quang Hải"
+                - Specific Incidents: "Vụ cháy chung cư mini", "Bão Noru" (named storms)
+                - Matches/Games: "MU vs Chelsea", "CKTG 2024"
+                - Products: "iPhone 15", "VinFast VF3"
 
-                1. Weather & Environment (non-event)
-                - temperature, weather, forecast, rain, storm, air quality
-                - examples: "nhiệt độ", "nhiệt độ tphcm", "aqi", "vùng áp thấp", "날씨"
-
-                2. Generic utilities / daily queries
-                - prices, schedules, dates, calendars, public services
-                - examples: "giá xăng dầu", "ngày âm hôm nay", "phạt nguội xe máy", "dich vu cong"
-
-                3. Very broad tech / platform terms WITHOUT a specific event or model
-                - examples: "google", "facebook", "wifi", "mp3", "portal"
-                - BUT NOT specific products like "iphone 17 pro", "samsung galaxy z trifold"
-
-                4. Non-entity common phrases
-                - generic nouns or vague phrases with no clear subject
-                - examples: "hình ảnh", "video", "review", "tin nhanh", "random"
-
-                5. Gambling / lottery / betting
-                - examples: "xsmn", "bk8", "123b", "bet"
-
-                6. Extremely short or meaningless tokens
-                - 1–2 characters or symbols with no semantic meaning
-                - examples: "s", "g", "ra", "cf"
-
-                ---
-
-                IMPORTANT – DO NOT mark as noise:
-                - Named people (politicians, celebrities, athletes)
-                - Countries, cities, regions
-                - Sports matches, tournaments, teams (even if repetitive)
-                - Movies, TV shows, anime, episodes
-                - Games, apps, specific products, brands
-                - Laws, decrees, official events
-                - Natural disasters or incidents tied to a place/event
-
-                If unsure, KEEP the keyword (do NOT classify as noise).
-
-                ---
-
-                Input list:
+                Input keys:
                 {chunk}
 
-                Output format:
-                Return a JSON array of strings.
-                ONLY include keywords that are confidently NOISE.
-                Do NOT explain. Do NOT include markdown.
-
-                Example output:
-                ["nhiệt độ", "aqi", "ngày âm hôm nay"]
-                FINAL CHECK:
-                If a keyword could reasonably be a headline of a news article, it is NOT noise.
+                Output: JSON Array of strings to REMOVE.
+                Example: ["thời tiết", "xổ số miền bắc"]
                 """
 
             all_prompts.append(prompt)
@@ -620,53 +568,32 @@ class LLMRefiner:
             return {}
 
         instruction = custom_instruction or """
-            Role: Senior News Editor (Vietnamese newsroom).
-                Task:
-                Write ONE concise, factual Vietnamese headline for EACH content cluster.
+            Role: Senior News Editor (Vietnam).
+                Task: Rename the cluster into a single, high-quality Vietnamese headline.
 
-                The headline MUST:
-                - Clearly describe the MAIN EVENT
-                - Use SPECIFIC DETAILS found in the posts whenever available:
-                - Time (date, part of day)
-                - Location (city, district, landmark)
-                - Named people, organizations, or teams
-                - Be written in a neutral, journalistic tone
-                - Avoid exaggeration, emotion, or speculation
+                Headline Rules:
+                1. Concise & Factual (≤ 15 words).
+                2. Must contain specific Entities (Who/Where/What).
+                3. Neutral Tone (No sensationalism like "kinh hoàng", "xôn xao", "cực sốc").
+                4. Use standardized Vietnamese (e.g., "TP.HCM" instead of "Sài Gòn" if formal context).
 
-                STRICT RULES:
-                - DO NOT invent facts.
-                - DO NOT generalize if specifics exist.
-                - DO NOT use vague words like:
-                "gây chú ý", "xôn xao", "dậy sóng", "nóng", "bất ngờ".
-                - If multiple similar posts exist, summarize them into ONE concrete event.
+                Anti-Patterns (DO NOT USE):
+                - "Tin tức về..." (News about...)
+                - "Cập nhật mới nhất..." (Latest updates...)
+                - "Những điều cần biết..." (Things to know...)
+                - "Cộng đồng mạng dậy sóng..." (Netizens go wild...)
 
-                Examples:
-                [BAD]: "Tai nạn giao thông"
-                [BAD]: "Sự việc gây xôn xao dư luận"
-                [GOOD]: "Tai nạn liên hoàn tại cầu Phú Mỹ chiều 8/8"
-                [GOOD]: "Hà Nội ghi nhận AQI vượt ngưỡng nguy hại sáng 21/12"
+                Data extraction:
+                - Category: A (Critical/Safety), B (Social/Politics/Sports), C (Entertainment/Business).
+                - Event Type: "Specific" (One-time event) or "Generic" (Recurring/Topic).
+                - Reasoning: 1-sentence explanation of why this name was chosen.
 
-                ---
-
-                Classification (assign one):
-                Category:
-                - A: Critical (Accidents, Safety, Health, Natural disasters)
-                - B: Social (Policy, Public affairs, Education, Sports, Viral events)
-                - C: Market (Business, Technology, Entertainment, Brands)
-
-                Event Type:
-                - Specific: A named, unique event with identifiable time/place
-                - Generic: Routine, recurring, or non-unique activity
-
-                If details are missing:
-                - Write the most specific headline POSSIBLE using available information.
-                - Prefer location over time, and names over descriptions.
-
-                Output format (JSON ONLY):
+                Output JSON:
                 {
-                "refined_title": "...",
-                "category": "A | B | C",
-                "event_type": "Specific | Generic"
+                    "refined_title": "String",
+                    "category": "A/B/C",
+                    "event_type": "Specific/Generic",
+                    "reasoning": "String"
                 }
 
         

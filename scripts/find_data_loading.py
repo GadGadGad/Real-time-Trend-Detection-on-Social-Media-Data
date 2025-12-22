@@ -11,7 +11,7 @@ try:
     for i, cell in enumerate(nb['cells']):
         if cell['cell_type'] == 'code':
             source = "".join(cell['source'])
-            if 'facebook_summarized' in source:
+            if 'posts =' in source or 'posts = [' in source or 'posts = load_posts' in source:
                 print(f"\n--- Cell {i} ---")
                 print(source)
                 print("----------------")

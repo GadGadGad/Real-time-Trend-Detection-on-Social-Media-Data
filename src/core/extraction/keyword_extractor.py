@@ -69,15 +69,22 @@ class KeywordExtractor:
             return ""
             
         prompt = f"""
-        Extract the Main Keywords from this Vietnamese text.
-        Focus on:
-        - Entities (People, Organizations, Locations)
-        - Main Event / Topic
-        - Important Dates/Times
+        Analyze the following Vietnamese text and extract the most important High-Signal Keywords.
+
+        PRIORITIZE:
+        - Named Entities: People (e.g. "Messi", "Tô Lâm"), Organizations ("Vingroup", "FIFA"), Locations ("Hà Nội", "Biển Đông").
+        - Specific Event Names: "Bão Yagi", "SEA Games 33".
+        - Specific Products: "iPhone 15 Pro", "VinFast VF3".
+
+        IGNORE / DO NOT INCLUDE:
+        - Common Nouns: "người dân", "công ty", "báo cáo", "dự án", "hôm nay".
+        - Verbs/Adjectives: "tăng trưởng", "phát triển", "mạnh mẽ".
+        - Generic Topics if specific entities exist.
 
         Text: "{text}"
 
-        Output: JSON list of strings only. Example: ["Hà Nội", "bão Yagi", "ngập lụt"]
+        Output: JSON list of strings only.
+        Example: ["Hà Nội", "bão Yagi", "ngập lụt"]
         """
         
         try:
