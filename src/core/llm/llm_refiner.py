@@ -742,7 +742,15 @@ class LLMRefiner:
                     if results:
                         for item in results:
                             if isinstance(item, dict) and 'id' in item:
-                                all_results[item['id']] = item
+                                # Ensure minimal schema to prevent KeyErrors
+                                sane_item = {
+                                    'id': item['id'],
+                                    'refined_title': item.get('refined_title', f"Cluster {item['id']}"),
+                                    'category': item.get('category', 'B'),
+                                    'event_type': item.get('event_type', 'Generic'),
+                                    'reasoning': item.get('reasoning', 'No reasoning provided')
+                                }
+                                all_results[item['id']] = sane_item
                         
                         # Log a sample to show it's working
                         # Find first valid dict result for sample logging
