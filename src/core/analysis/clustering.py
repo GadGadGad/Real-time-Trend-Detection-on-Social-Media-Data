@@ -41,11 +41,11 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
         except ImportError:
             console.print("[red]❌ BERTopic not installed. Run: pip install bertopic[/red]")
             console.print("[yellow]Falling back to K-Means...[/yellow]")
-            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters)
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
         
         if texts is None:
             console.print("[red]❌ BERTopic requires texts parameter[/red]")
-            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters)
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
         
         console.print(f"[bold cyan]🧩 Running BERTopic clustering (min_topic_size={min_cluster_size})...[/bold cyan]")
         
@@ -79,12 +79,46 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
         cluster_data._bertopic_model = topic_model
         
         return np.array(topics)
+
+    elif method == 'top2vec':
+        try:
+            from top2vec import Top2Vec
+        except ImportError:
+            console.print("[red]❌ Top2Vec not installed. Run: pip install top2vec[sentence_transformers][/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+        
+        if texts is None:
+            console.print("[red]❌ Top2Vec requires 'texts' parameter[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+
+        console.print(f"[bold cyan]🧩 Running Top2Vec (embedding_model='sentence-transformers')...[/bold cyan]")
+        
+        # Use a standard sentence-transformer model compatible with Top2Vec
+        # If embedding_model is a SentenceTransformer object, we can't pass it directly usually, 
+        # Top2Vec expects a string name or specific handling. 
+        # We'll default to a multilingual one or 'keepitreal/vietnamese-sbert' if it works, 
+        # but Top2Vec often prefers universal-sentence-encoder or distiluse-base-multilingual.
+        # Let's try passing the MODEL_NAME if we can, but since this function doesn't receive MODEL_NAME string, 
+        # and embedding_model arg is an object... we might just let Top2Vec use its default or 'distiluse-base-multilingual-cased'.
+        # For best vietnamese support without headache, let's use 'keepitreal/vietnamese-sbert' string if we can,
+        # but safest is 'distiluse-base-multilingual-cased' which satisfies 'sentence-transformers' backend.
+        
+        # NOTE: Top2Vec takes 'embedding_model' as string.
+        try:
+            model = Top2Vec(documents=texts, embedding_model='distiluse-base-multilingual-cased', speed='learn', workers=4, min_count=2)
+        except Exception as e:
+            console.print(f"[red]Error initializing Top2Vec: {e}[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+
+        # Get topic sizes and labels
+        # model.doc_top is the topic index for each doc
+        return model.doc_top
     
     # HDBSCAN path
     console.print("[bold cyan]🔮 Running UMAP dimensionality reduction...[/bold cyan]")
     umap_embeddings = umap.UMAP(
         n_neighbors=30, 
-        n_components=5, 
+        n_components=10, 
         metric='cosine',
         random_state=42
     ).fit_transform(embeddings)

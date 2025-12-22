@@ -20,6 +20,8 @@ sentence-transformers
 transformers>=4.30.0
 umap-learn
 hdbscan
+bertopic
+top2vec[sentence_transformers]
 
 # NER (optional)
 underthesea>=6.8.0
