@@ -26,34 +26,63 @@ class KeywordExtractor:
         self.stopwords = {
             'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
             'cho', 'người', 'những', 'tại', 'về', 'các', 'được', 'ra', 'khi',
-            'mới', 'này', 'cho', 'nhiều'
+            'mới', 'này', 'cho', 'nhiều',
+            # Technical artifacts/noise
+            'volume', 'keywords', 'time', 'automatic', 'ssi', 
+            'doanh_nghiệp', 'việc_làm', # Sometimes noise if just list columns
         }
 
+    # ... (skipping unchanged methods) ...
+
+
+
+    # Global cache for the singleton model
+    _SHARED_VNCORENLP_MODEL = None
+
     def _load_vncorenlp(self):
-        if self.vncorenlp_model is None:
-            try:
-                import py_vncorenlp
-                print(f"[VnCoreNLP] Checking for models at: {self.vncorenlp_path}")
-                
-                # Ensure model is downloaded
-                models_dir = os.path.join(self.vncorenlp_path, 'models')
-                if not os.path.exists(models_dir):
-                    print("[VnCoreNLP] Models not found. Attempting download...")
-                    print("[VnCoreNLP] ⚠️  Note: This requires internet access and may fail on Kaggle.")
-                    py_vncorenlp.download_model(save_dir=self.vncorenlp_path)
-                    print("[VnCoreNLP] ✅ Download complete!")
-                else:
-                    print(f"[VnCoreNLP] ✅ Models found at {models_dir}")
-                
-                # Load segmenter
-                print("[VnCoreNLP] Loading word segmentation model...")
-                self.vncorenlp_model = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=self.vncorenlp_path)
-                print("[VnCoreNLP] ✅ Model loaded successfully!")
-            except Exception as e:
-                print(f"[VnCoreNLP] ❌ Failed to load: {e}")
-                print("[VnCoreNLP] 🔄 Falling back to underthesea (CRF) segmentation")
-                # Set flag to use fallback
-                self.vncorenlp_model = "FALLBACK"
+        # 1. Return instance-level if already set
+        if self.vncorenlp_model:
+            return self.vncorenlp_model
+
+        # 2. Check Class-level singleton
+        if KeywordExtractor._SHARED_VNCORENLP_MODEL:
+            self.vncorenlp_model = KeywordExtractor._SHARED_VNCORENLP_MODEL
+            return self.vncorenlp_model
+
+        # 3. Initialize if global is empty
+        try:
+            import py_vncorenlp
+            print(f"[VnCoreNLP] Checking for models at: {self.vncorenlp_path}")
+            
+            # Ensure model is downloaded
+            models_dir = os.path.join(self.vncorenlp_path, 'models')
+            if not os.path.exists(models_dir):
+                print("[VnCoreNLP] Models not found. Attempting download...")
+                print("[VnCoreNLP] ⚠️  Note: This requires internet access and may fail on Kaggle.")
+                py_vncorenlp.download_model(save_dir=self.vncorenlp_path)
+                print("[VnCoreNLP] ✅ Download complete!")
+            else:
+                print(f"[VnCoreNLP] ✅ Models found at {models_dir}")
+            
+            # Load segmenter
+            print("[VnCoreNLP] Loading word segmentation model...")
+            # Use try-block specifically for wrapping the loader which triggers JVM
+            KeywordExtractor._SHARED_VNCORENLP_MODEL = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=self.vncorenlp_path)
+            self.vncorenlp_model = KeywordExtractor._SHARED_VNCORENLP_MODEL
+            print("[VnCoreNLP] ✅ Model loaded successfully (Singleton)!")
+            
+        except Exception as e:
+            # Check specifically for JVM error to provide helpful context
+            if "VM is already running" in str(e):
+                 print("[VnCoreNLP] ⚠️ VM already running. Attempting to recover existing controller if possible, or fallback.")
+                 # In many cases we can't recover the JAVA object if we lost the reference. Fallback is safer.
+            
+            print(f"[VnCoreNLP] ❌ Failed to load: {e}")
+            print("[VnCoreNLP] 🔄 Falling back to underthesea (CRF) segmentation")
+            # Set flag to use fallback for this session
+            KeywordExtractor._SHARED_VNCORENLP_MODEL = "FALLBACK"
+            self.vncorenlp_model = "FALLBACK"
+            
         return self.vncorenlp_model
 
     def _load_phonlp(self):
@@ -153,7 +182,9 @@ class KeywordExtractor:
 
     def batch_extract(self, texts: List[str]) -> List[str]:
         """Process a list of texts into keyword blobs."""
-        return [self.extract_keywords(t) for t in texts]
+        from rich.progress import track
+        if not texts: return []
+        return [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords...[/cyan]")]
 
 if __name__ == "__main__":
     extractor = KeywordExtractor()

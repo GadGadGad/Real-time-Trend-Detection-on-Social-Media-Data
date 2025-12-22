@@ -75,6 +75,20 @@ def filter_obvious_noise(trends):
     ]
 
     
+    
+    # Sports Filtering Config
+    # Keep matches involving national interest or major events
+    sports_whitelist = ['viet nam', 'việt nam', 'vn', 'u22', 'u23', 'u19', 'u20', 'đtvn', 'tuyển nữ', 'sea games', 'aff cup', 'asian cup', 'world cup', 'euro 20', 'olympic']
+    # Filter out common weekly club matches (unless they play against VN teams)
+    club_blacklist = [
+        'man city', 'man utd', 'mu vs', 'vs mu', 'chelsea', 'arsenal', 'liverpool', 'tottenham', 'aston villa', 'newcastle', 'west ham',
+        'real madrid', 'barcelona', 'barca', 'atletico', 'valencia', 'sevilla', 'betis',
+        'psg', 'marseille', 'monaco', 'lyon',
+        'bayern', 'dortmund', 'leipzig', 'leverkusen',
+        'inter', 'milan', 'juventus', 'roma', 'napoli', 'lazio', 'atalanta',
+        'alnassr', 'al-nassr', 'miami'
+    ]
+
     filtered_trends = {}
     for k, v in trends.items():
         norm_k = normalize_text(k)
@@ -83,11 +97,21 @@ def filter_obvious_noise(trends):
         # Remove standalone numbers or pure date patterns
         if re.match(r'^\d+$', norm_k.replace(' ', '')):
             continue
+            
+        # Sports Logic: Filter generic club matches
+        if ' vs ' in norm_k or ' đấu với ' in norm_k:
+            is_whitelisted = any(w in norm_k for w in sports_whitelist)
+            is_blacklisted = any(c in norm_k for c in club_blacklist)
+            
+            # If it's a club match and NOT a national event -> Skip
+            if is_blacklisted and not is_whitelisted:
+                continue
+
         filtered_trends[k] = v
     
     removed = len(trends) - len(filtered_trends)
     if removed > 0:
-        console.print(f"   🧹 Pre-Filter: Removed {removed} noise terms.")
+        console.print(f"   🧹 Pre-Filter: Removed {removed} noise terms (including club sports).")
     return filtered_trends
 
 def normalize_sports_matches(text):
@@ -611,9 +635,13 @@ def load_news_data(files):
             with open(f, 'r', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
+                    content_str = f"{row.get('title', '')}\n{row.get('content', '')}"
+                    if not content_str.strip(): # Skip empty content
+                        continue
+                        
                     all_data.append({
                         "source": os.path.basename(os.path.dirname(f)).upper(),
-                        "content": f"{row.get('title', '')}\n{row.get('content', '')}",
+                        "content": content_str,
                         "title": row.get('title', ''), "url": row.get('url', ''),
                         "stats": {'likes': 0, 'comments': 0, 'shares': 0},
                         "time": row.get('published_at', '')
