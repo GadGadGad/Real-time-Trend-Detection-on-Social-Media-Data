@@ -275,7 +275,8 @@ class LLMRefiner:
         chunk_size = 20
         all_prompts = []
         chunks = []
-        for i in range(0, len(unique_topics), chunk_size):
+        total_chunks = (len(unique_topics) + chunk_size - 1) // chunk_size
+        for i in track(range(0, len(unique_topics), chunk_size), description="[cyan]Building dedup prompts...[/cyan]", total=total_chunks):
             chunk = unique_topics[i : i + chunk_size]
             chunks.append(chunk)
             chunk_str = "\n".join([f"- {t}" for t in chunk])
@@ -448,8 +449,9 @@ class LLMRefiner:
         all_bad = []
         chunk_size = 50
         all_prompts = []
+        total_chunks = (len(trend_list) + chunk_size - 1) // chunk_size
         
-        for i in range(0, len(trend_list), chunk_size):
+        for i in track(range(0, len(trend_list), chunk_size), description="[cyan]Building filter prompts...[/cyan]", total=total_chunks):
             chunk = trend_list[i:i+chunk_size]
             prompt = f"""
                 You are a strict classifier for TRENDING SEARCH KEYWORDS.
@@ -667,9 +669,9 @@ class LLMRefiner:
         # Build prompts
         all_prompts = []
         cluster_ids_per_chunk = []
-        console.print(f"[cyan]Construction {len(clusters_to_refine)} clusters into prompts...[/cyan]")
+        total_chunks = (len(clusters_to_refine) + chunk_size - 1) // chunk_size
 
-        for i in range(0, len(clusters_to_refine), chunk_size):
+        for i in track(range(0, len(clusters_to_refine), chunk_size), description="[cyan]Building cluster prompts...[/cyan]", total=total_chunks):
             chunk = clusters_to_refine[i : i + chunk_size]
             cluster_ids_per_chunk.append([c['label'] for c in chunk])
             

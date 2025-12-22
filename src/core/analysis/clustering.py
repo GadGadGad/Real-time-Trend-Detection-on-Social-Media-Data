@@ -7,12 +7,31 @@ from collections import Counter
 
 console = Console()
 
-def cluster_data(embeddings, min_cluster_size=5):
+def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15):
     """
-    Cluster embeddings using UMAP + HDBSCAN.
+    Cluster embeddings using UMAP + HDBSCAN or K-Means.
+    
+    Args:
+        embeddings: numpy array of embeddings
+        min_cluster_size: minimum points to form a cluster (HDBSCAN only)
+        epsilon: cluster_selection_epsilon - higher values reduce noise (HDBSCAN only)
+        method: 'hdbscan' or 'kmeans'
+        n_clusters: number of clusters (K-Means only)
+    
+    Use K-Means if your data has even density (k-distance CV < 0.5).
+    Use HDBSCAN if your data has uneven density (CV > 0.5).
     """
+    
+    if method == 'kmeans':
+        from sklearn.cluster import KMeans
+        console.print(f"[bold cyan]🧩 Running K-Means clustering (k={n_clusters})...[/bold cyan]")
+        clusterer = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        labels = clusterer.fit_predict(embeddings)
+        console.print(f"[green]✅ Created {n_clusters} clusters (no noise with K-Means).[/green]")
+        return labels
+    
+    # HDBSCAN path
     console.print("[bold cyan]🔮 Running UMAP dimensionality reduction...[/bold cyan]")
-    # Increased n_neighbors for more global connection, reduced fragmentation
     umap_embeddings = umap.UMAP(
         n_neighbors=30, 
         n_components=5, 
@@ -20,14 +39,13 @@ def cluster_data(embeddings, min_cluster_size=5):
         random_state=42
     ).fit_transform(embeddings)
     
-    console.print(f"[bold cyan]🧩 Running HDBSCAN clustering (min_size={min_cluster_size})...[/bold cyan]")
-    # Added cluster_selection_epsilon to merge very close clusters
+    console.print(f"[bold cyan]🧩 Running HDBSCAN clustering (min_size={min_cluster_size}, eps={epsilon})...[/bold cyan]")
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=min_cluster_size,
         min_samples=2,
         metric='euclidean', 
         cluster_selection_method='eom',
-        cluster_selection_epsilon=0.15 
+        cluster_selection_epsilon=epsilon 
     )
     labels = clusterer.fit_predict(umap_embeddings)
     

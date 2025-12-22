@@ -5,8 +5,18 @@ import gc
 
 console = Console()
 
+# Available Vietnamese summarization models
+SUMMARIZATION_MODELS = {
+    'vit5-large': 'VietAI/vit5-large-vietnews-summarization',  # Best quality, ~1.2GB
+    'vit5-base': 'VietAI/vit5-base-vietnews-summarization',    # Faster, ~900MB
+    'bartpho': 'vinai/bartpho-syllable',                       # Alternative, good for short text
+}
+
 class Summarizer:
     def __init__(self, model_name="VietAI/vit5-large-vietnews-summarization", device=None):
+        # Allow shorthand model names
+        if model_name in SUMMARIZATION_MODELS:
+            model_name = SUMMARIZATION_MODELS[model_name]
         self.model_name = model_name
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.tokenizer = None
@@ -41,7 +51,7 @@ class Summarizer:
             self.load_model()
             if not self.enabled: return texts # Fallback
             
-        console.print(f"[cyan]📝 Summarizing {len(texts)} long articles with ViT5...[/cyan]")
+        console.print(f"[cyan]📝 Summarizing {len(texts)} articles with {self.model_name.split('/')[-1]}...[/cyan]")
         summaries = []
         batch_size = 4 # T4 GPU safe limit
         
@@ -49,17 +59,65 @@ class Summarizer:
         
         for i in track(range(0, len(texts), batch_size), description="[cyan]Summarizing batches...[/cyan]"):
             batch = texts[i : i + batch_size]
-            inputs = self.tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=1024).to(self.device)
+            
+            # ViT5 requires special format: "vietnews: {text} </s>"
+            formatted_batch = [f"vietnews: {text} </s>" for text in batch]
+            
+            inputs = self.tokenizer(
+                formatted_batch, 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True, 
+                max_length=1024
+            ).to(self.device)
             
             with torch.no_grad():
                 outputs = self.model.generate(
-                    inputs["input_ids"],
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"],
                     max_length=max_length,
-                    num_beams=4,
                     early_stopping=True
                 )
             
-            decoded = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            decoded = self.tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=True)
             summaries.extend(decoded)
             
         return summaries
+
+    def sanity_check(self, texts, n_samples=3):
+        """
+        Run a quick sanity check on summarization quality.
+        Shows original vs summary for n random samples.
+        """
+        import random
+        
+        if not self.enabled:
+            self.load_model()
+            if not self.enabled:
+                console.print("[red]Cannot run sanity check - model failed to load[/red]")
+                return
+        
+        # Pick random samples
+        samples = random.sample(texts, min(n_samples, len(texts)))
+        summaries = self.summarize_batch(samples, max_length=150)
+        
+        console.print("\n[bold cyan]📋 Summarization Sanity Check[/bold cyan]")
+        console.print(f"Model: {self.model_name}\n")
+        
+        for i, (orig, summ) in enumerate(zip(samples, summaries)):
+            compression = len(summ) / len(orig) * 100 if orig else 0
+            console.print(f"[bold]--- Sample {i+1} ---[/bold]")
+            console.print(f"[dim]Original ({len(orig)} chars):[/dim]")
+            console.print(f"  {orig[:300]}...")
+            console.print(f"[green]Summary ({len(summ)} chars, {compression:.0f}% of original):[/green]")
+            console.print(f"  {summ}")
+            console.print()
+        
+        # Quality metrics
+        avg_compression = sum(len(s)/len(o) for o, s in zip(samples, summaries)) / len(samples) * 100
+        avg_summary_len = sum(len(s) for s in summaries) / len(summaries)
+        
+        console.print("[bold]Quality Metrics:[/bold]")
+        console.print(f"  Avg compression ratio: {avg_compression:.0f}%")
+        console.print(f"  Avg summary length: {avg_summary_len:.0f} chars")
+        console.print(f"  ✅ Good if compression < 30% and summaries are coherent")

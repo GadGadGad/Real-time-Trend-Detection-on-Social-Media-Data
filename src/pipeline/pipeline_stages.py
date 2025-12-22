@@ -11,13 +11,19 @@ from src.core.analysis.clustering import cluster_data
 
 console = Console()
 
-def run_summarization_stage(post_contents, use_llm=False, summarize_all=False):
+def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, model_name='vit5-large'):
     """
     Phase 0: Summarization.
     Summarizes long posts using the Summarizer model if enabled.
     Handles caching and logging to CSV.
-    Input: list of strings (post contents)
-    Output: list of strings (summarized contents where applicable)
+    
+    Args:
+        post_contents: list of strings (post contents)
+        use_llm: enable summarization
+        summarize_all: if True, summarize all posts; else only > 2500 chars
+        model_name: 'vit5-large', 'vit5-base', 'bartpho' or full HuggingFace path
+        
+    Returns: list of strings (summarized contents where applicable)
     """
     if not use_llm:
         return post_contents
@@ -56,7 +62,7 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False):
         mode_desc = "ALL" if summarize_all else "LONG"
         console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices_to_process)} articles ({mode_desc}) - {len(long_indices_all)-len(long_indices_to_process)} cached...[/cyan]")
         
-        summ = Summarizer()
+        summ = Summarizer(model_name=model_name)
         summ.load_model()
         
         long_texts = [post_contents_enriched[i] for i in long_indices_to_process]
@@ -112,21 +118,25 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False):
          
     return post_contents_enriched
 
-def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5):
+def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
     2. Attach Social to News
     3. Cluster Remaining Social
+    
+    Args:
+        method: 'hdbscan' or 'kmeans'
+        n_clusters: number of clusters (K-Means only)
     """
     # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
     news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
     social_indices = [i for i, p in enumerate(posts) if 'Face' in p.get('source', '')]
     
-    console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles...[/cyan]")
+    console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles ({method})...[/cyan]")
     news_embs = post_embeddings[news_indices]
     if len(news_embs) >= min_cluster_size:
-        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size)
+        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, n_clusters=n_clusters)
     else:
         news_labels = np.array([-1] * len(news_indices))
 
@@ -169,7 +179,7 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5):
     if len(unattached_social_indices) >= min_cluster_size:
         console.print(f"🔭 [cyan]SAHC Phase 3: Researching Discovery trends in {len(unattached_social_indices)} social posts...[/cyan]")
         leftover_embs = post_embeddings[unattached_social_indices]
-        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size)
+        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size, method=method, n_clusters=n_clusters)
         
         # Shift social labels to avoid collision with news clusters
         max_news_label = max(unique_news_clusters) if unique_news_clusters else -1
