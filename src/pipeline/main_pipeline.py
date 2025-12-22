@@ -518,7 +518,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
                         debug_llm=False, summarize_all=False, no_dedup=False,
-                        use_keywords=False, use_llm_keywords=False):
+                        use_keywords=False, use_llm_keywords=False,
+                        cluster_epsilon=0.15):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -578,7 +579,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     )
 
     # --- SAHC PHASE 1-3: CLUSTERING ---
-    cluster_labels = run_sahc_clustering(posts, post_embeddings, min_cluster_size=min_cluster_size)
+    cluster_labels = run_sahc_clustering(posts, post_embeddings, min_cluster_size=min_cluster_size, epsilon=cluster_epsilon)
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
 
