@@ -197,13 +197,26 @@ def filter_obvious_noise(trends):
         if re.match(r'^\d+$', norm_k.replace(' ', '')):
             continue
             
-        # Sports Logic: Filter generic club matches
-        if ' vs ' in norm_k or ' đấu với ' in norm_k:
-            is_whitelisted = any(w in norm_k for w in sports_whitelist)
-            is_blacklisted = any(c in norm_k for c in club_blacklist)
-            
-            # If it's a club match and NOT a national event -> Skip
-            if is_blacklisted and not is_whitelisted:
+        # Sports Logic (Aggressive)
+        
+        # 1. League Filtering
+        if any(l in norm_k for l in league_blacklist):
+             if not any(w in norm_k for w in sports_whitelist):
+                 continue
+
+        # 2. Club Filtering (Aggressive: Any mention of a blacklisted club)
+        # Check against club_blacklist
+        found_club = False
+        for c in club_blacklist:
+            # Use space boundaries for short names to avoid false positives (e.g. "mu" in "music")
+            # But for "juve" or "chelsea", substring is usually fine in this context.
+            # We'll use simple substring for now as per user intent for "juve"
+            if c in norm_k:
+                found_club = True
+                break
+        
+        if found_club:
+            if not any(w in norm_k for w in sports_whitelist):
                 continue
 
         filtered_trends[k] = v
