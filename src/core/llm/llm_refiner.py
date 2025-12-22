@@ -348,31 +348,42 @@ class LLMRefiner:
         return {"filtered": all_filtered, "merged": all_merged}
         
 
-    def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None):
+    def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None, keywords=None):
         if not self.enabled:
             return cluster_name, original_category, ""
 
         instruction = custom_instruction or """Role: Senior News Editor.
             Task: Rename this cluster into a concise, factual news headline in Vietnamese (max 10 words).
             Rules:
+            - PRIORITIZE SPECIFICITY: Include specific entities (Names, Places) and TIMING (Today, Yesterday, Date) if clear from context.
+            - Format: "{Specific Event} at {Location} ({Time})" if applicable.
             - No clickbait.
-            - Focus on the main event/keyword.
             - Classify into:
             * A: Critical (Accidents, Weather, Health, Crime)
             * B: Social (Viral, Controversy, Daily Life)
             * C: Market (Economy, Tech, Entertainment, Sports)
             - Classify Event Significance ("event_type"):
-            * "Specific": A unique, named event (e.g., "SEA Games 33", "Typhoon Yagi", "Blackpink Concert").
-            * "Generic": Routine activity or general topic (e.g., "Football match", "Traffic jam", "Weather is hot", "Today Weather Forecast").
-            - Provide brief reasoning."""
+            * "Specific": Unique event with distinct entities/time/place (e.g., "Fire at X Street on 12/12", "SEA Games 33 Opening").
+            * "Generic": Recurring/Vague (e.g., "Traffic jam", "Raining", "Football match").
+            - Provide brief reasoning citing the entities found."""
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
         context_str = "\n---\n".join(context_texts)
+        
+        # Extract metadata
+        dates = sorted(list(set([str(p.get('time') or p.get('published_at', ''))[:10] for p in posts if p.get('time') or p.get('published_at')])))
+        meta_info = f"Date Range: {dates[0]} to {dates[-1]}" if dates else "Date: Unknown"
+        
+        # Keywords
+        kw_str = f"Keywords: {', '.join(keywords)}" if keywords else ""
 
         prompt = f"""
             Analyze this cluster of social media/news posts from Vietnam.
             Original Label: {cluster_name}
             Topic Type: {topic_type}
+            {meta_info}
+            {kw_str}
+            
             Sample Posts:
             {context_str}
 
@@ -400,14 +411,17 @@ class LLMRefiner:
             return {}
 
         instruction = custom_instruction or """Role: Senior Editor.
-Task: For each cluster, write a short, factual Vietnamese headline.
-Categories:
-- A: Critical (Safety, Accidents, Health)
-- B: Social (Public interest, Viral, Policy)
-- C: Market (Business, Tech, Showbiz)
-Event Types:
-- "Specific": Named, unique events (e.g., "Taylor Swift Tour", "Storm No.3").
-- "Generic": Routine/General activities (e.g., "Jogging", "Football", "Rain")."""
+        Task: Write a precise, factual Vietnamese headline for each cluster.
+        CRITICAL: Use specific details from the posts (Dates, Locations, Names).
+        - BAD: "Tai nạn giao thông" (Traffic accident)
+        - GOOD: "Tai nạn liên hoàn tại cầu Phú Mỹ chiều 8/8"
+        Categories:
+        - A: Critical (Safety, Accidents, Health)
+        - B: Social (Public interest, Viral, Policy)
+        - C: Market (Business, Tech, Showbiz)
+        Event Types:
+        - "Specific": Named, unique events with clear time/place.
+        - "Generic": Routine activities."""
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
         # We'll split into chunks of 3 clusters per request for local models (maximum stability)

@@ -62,17 +62,35 @@ def filter_obvious_noise(trends):
     Stage 1: Pre-Filter. Removes lottery, price charts, and generic dates.
     """
     noise_keywords = [
-        'xo so', 'xo so mb', 'xo so mn', 'xo so mt', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 'gia vang', 'ti gia', 'code', 'wiki',
-        'so mien bac', 'so mien nam', 'so mien dong', 'so mien bắc', 'so mien nam', 'so mien đông', 'so mb', 'so mn', 'so mt',
-        # Tech platforms & apps (generic, not newsworthy)
-        'spotify', 'youtube', 'netflix', 'twitch', 'discord', 'instagram', 'facebook', 'tiktok',
-        'google', 'gemini', 'claude', 'meta', 'twitter', 'x.com', 'reddit',
-        # Generic services
-        'cloudflare', 'disney+', 'k+', 'vtv', 'fpt play', 'tv360', 'my tv',
-        # Generic terms
-        'weather', 'thoi tiet', 'lich am', 'am lich', 'tu vi', 'recap', 'wrapped',
+        # Lottery & Betting (High noise)
+        'xo so', 'xo so mb', 'xo so mn', 'xo so mt', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 
+        'so mien bac', 'so mien nam', 'so mien dong', 'so mb', 'so mn', 'so mt',
+        'thống kề lô', 'thong ke lo', 'đề hôm nay', 'xspy', 'xshcm', 'xsbd',
+        'bet', '88', 'bong88', 'fun88', 'new88', 's666', 'ee88', '188bet', '8xbet', 'w88',
+        
+        # Finance & Market Indicators (Generic)
+        'gia vang', 'ti gia', 'lãi suất', 'lai suat', 'thuế thu nhập', 'thue thu nhap', 
+        'vnindex', 'chung khoan', 'co phieu', 'giá bạc', 'gia bac', 'giá heo', 'gia heo',
+        'crypto', 'bitcoin', 'eth', 'usdt',
+
+        # Weather & Env Features (Generic)
+        'weather', 'thoi tiet', 'nhiệt độ', 'nhiet do',
+        'mưa không', 'mua khong', 'có mưa không', 'dự báo thời tiết', 'du bao thoi tiet',
+        'áp thấp nhiệt đới', 'ap thap nhiet doi', 'bão mặt trời', 'bao mat troi',
+        'cúp điện', 'cup dien', 'lịch cúp điện',
+
+        # Platforms & Generic Terms
+        'code', 'wiki', 'spotify', 'youtube', 'netflix', 'twitch', 'discord', 'instagram', 'facebook', 'tiktok',
+        'google', 'gemini', 'claude', 'meta', 'twitter', 'x.com', 'reddit', 'thread',
+        'cloudflare', 'disney+', 'k+', 'vtv', 'fpt play', 'tv360', 'my tv', 'vieon',
         'live', 'online', 'stream', 'xem', 'truc tiep', 'ket qua', 'lich thi dau',
-        'bxh', 'bang xep hang', 'kqbd', 'livescore', 'socolive', 'xoilac'
+        'bxh', 'bang xep hang', 'kqbd', 'livescore', 'socolive', 'xoilac',
+        'time', 'date', 'doc', 'prep', 'test', 'demo',
+
+        # News Outlets (Source names often appear as trends)
+        'vnexpress', 'tuoi tre', 'thanh nien', 'dan tri', 'kenh14', 'zing', 'bao moi', 
+        'vietnamnet', 'vtv', 'tien phong', 'sggp', 'nld', 'nguoi lao dong', 'lao dong', 
+        'soha', 'vtc', '24h', 'cafea', 'cafef', 'cafebiz', 'yan', 'znews'
     ]
 
     
@@ -500,7 +518,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     if use_keywords:
         console.print("[cyan]🔑 Phase 0.5: Extracting high-signal keywords...[/cyan]")
         kw_extractor = KeywordExtractor()
-        post_contents_enriched = kw_extractor.batch_extract(post_contents_enriched)
+        extracted_kws = kw_extractor.batch_extract(post_contents_enriched)
+        # Concatenate keywords with original text for richer embeddings (Context + Signal)
+        post_contents_enriched = [f"{k}. {t}" if k else t for k, t in zip(extracted_kws, post_contents_enriched)]
 
     # --- PHASE 0: SUMMARIZATION ---
     from src.pipeline.pipeline_stages import run_summarization_stage, run_sahc_clustering, calculate_match_scores
