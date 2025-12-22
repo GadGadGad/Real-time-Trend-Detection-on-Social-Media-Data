@@ -86,7 +86,8 @@ def filter_obvious_noise(trends):
         'cloudflare', 'disney+', 'k+', 'vtv', 'fpt play', 'tv360', 'my tv', 'vieon',
         'live', 'online', 'stream', 'xem', 'truc tiep', 'ket qua', 'lich thi dau',
         'bxh', 'bang xep hang', 'kqbd', 'livescore', 'socolive', 'xoilac',
-        'time', 'date', 'doc', 'prep', 'test', 'demo',
+        'time', 'date', 'doc', 'prep', 'test', 'demo', 'kq', 'cancel', 'bk8',
+        'tết', 'nghỉ tết', 'lịch nghỉ',
 
         # News Outlets (Source names often appear as trends)
         'vnexpress', 'tuoi tre', 'thanh nien', 'dan tri', 'kenh14', 'zing', 'bao moi', 
@@ -354,24 +355,40 @@ def load_trends(csv_files):
         except Exception: pass
     return trends
 
-def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_path, debug_llm, source_files=None):
+def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_path, debug_llm, source_files=None, cache_path=None):
     """
     Dedicated preprocessing step for Google Trends.
     Checks for cache based on input files.
     """
     # 1. Check for cache
-    cache_path = None
+    if cache_path and os.path.exists(cache_path):
+         try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                console.print(f"[green]📂 Loading trend refinement from MANUAL cache: {os.path.basename(cache_path)}[/green]")
+                return json.load(f)
+         except Exception as e:
+             console.print(f"[red]Error loading manual cache: {e}[/red]")
+
+    computed_cache_path = None
     if source_files:
         from hashlib import md5
-        combined_path = "".join(sorted(source_files))
+        # Normalize to absolute paths for stability against CWD
+        abs_files = sorted([os.path.abspath(f) for f in source_files])
+        if debug_llm:
+            console.print(f"[dim]DEBUG: Hashing files for cache: {abs_files}[/dim]")
+        
+        combined_path = "".join(abs_files)
         cache_id = md5(combined_path.encode()).hexdigest()
-        cache_path = os.path.join(project_root, "cache", f"trend_refine_{cache_id}.json")
-        if os.path.exists(cache_path):
+        computed_cache_path = os.path.join(project_root, "cache", f"trend_refine_{cache_id}.json")
+        if os.path.exists(computed_cache_path):
             try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    console.print(f"[green]📂 Loading trend refinement from cache: {os.path.basename(cache_path)}[/green]")
+                with open(computed_cache_path, 'r', encoding='utf-8') as f:
+                    console.print(f"[green]📂 Loading trend refinement from cache: {os.path.basename(computed_cache_path)}[/green]")
                     return json.load(f)
             except Exception: pass
+    
+    # Use computed path for saving later if manual path not provided
+    save_cache_path = cache_path if cache_path else computed_cache_path
 
     # --- Start Multi-Stage Filtering ---
     
@@ -456,9 +473,10 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
         console.print(f"\n   ✨ Refinement Complete: {len(trends)} -> {len(refined_trends)} trends.")
         
         # 3. Save to cache
-        if cache_path:
-            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            with open(cache_path, 'w', encoding='utf-8') as f:
+        # 3. Save to cache
+        if save_cache_path:
+            os.makedirs(os.path.dirname(save_cache_path), exist_ok=True)
+            with open(save_cache_path, 'w', encoding='utf-8') as f:
                 json.dump(refined_trends, f, ensure_ascii=False, indent=2)
             console.print(f"   💾 Saved refinement result to cache.")
             
@@ -500,7 +518,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
                         debug_llm=False, summarize_all=False, no_dedup=False,
-                        use_keywords=False):
+                        use_keywords=False, use_llm_keywords=False):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -535,7 +553,12 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
 
     if use_keywords:
         console.print("[cyan]🔑 Phase 0.5: Extracting high-signal keywords...[/cyan]")
-        kw_extractor = KeywordExtractor()
+        if use_llm_keywords and use_llm:
+             from src.core.llm.llm_refiner import LLMRefiner
+             kw_llm = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path)
+             kw_extractor = KeywordExtractor(use_llm=True, llm_refiner=kw_llm)
+        else:
+             kw_extractor = KeywordExtractor()
         extracted_kws = kw_extractor.batch_extract(post_contents_enriched)
         # Concatenate keywords with original text for richer embeddings (Context + Signal)
         post_contents_enriched = [f"{k}. {t}" if k else t for k, t in zip(extracted_kws, post_contents_enriched)]
@@ -789,10 +812,17 @@ if __name__ == "__main__":
     parser.add_argument("--no-dedup", action="store_true", help="Disable Semantic Deduplication (Phase 4)")
     parser.add_argument("--refine-trends", action="store_true", help="Refine Google Trends inputs before matching")
     parser.add_argument("--use-keywords", action="store_true", help="Extract high-signal keywords before clustering")
+    parser.add_argument("--use-llm-keywords", action="store_true", help="Use LLM for keyword extraction (requires --llm)")
+    parser.add_argument("--trend-cache-path", type=str, help="Manually specify cache file for trend refinement")
     
     args = parser.parse_args()
     
     if args.social and args.trends:
+        # Sort inputs for deterministic processing and cache stability
+        if args.social: args.social = sorted(args.social)
+        if args.trends: args.trends = sorted(args.trends)
+        if args.news: args.news = sorted(args.news)
+
         social_posts = []
         for f in args.social: social_posts.extend(load_json(f))
         trends = load_trends(args.trends)
@@ -805,7 +835,8 @@ if __name__ == "__main__":
                 os.getenv("GEMINI_API_KEY"), # Assuming API key might be in env or passed
                 args.llm_model_path, 
                 False, # debug
-                source_files=args.trends
+                source_files=args.trends,
+                cache_path=args.trend_cache_path
             )
 
         results = find_matches_hybrid(
@@ -816,6 +847,7 @@ if __name__ == "__main__":
             llm_custom_instruction=args.llm_instruction,
             summarize_all=args.summarize_all,
             no_dedup=args.no_dedup,
-            use_keywords=args.use_keywords
+            use_keywords=args.use_keywords,
+            use_llm_keywords=args.use_llm_keywords
         )
         print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")

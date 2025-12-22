@@ -4,21 +4,31 @@ import re
 import os
 from typing import List, Set, Dict
 from collections import Counter
+import json
 from src.utils.config.locations import get_known_locations
 from src.utils.text_processing.alias_normalizer import normalize_with_aliases
 from src.core.extraction.taxonomy_keywords import get_all_event_keywords
 
 class KeywordExtractor:
-    def __init__(self, segmentation_method: str = "underthesea"):
+    def __init__(self, segmentation_method: str = "underthesea", use_llm=False, llm_refiner=None):
         """
         segmentation_method: 
             - "underthesea" (fast, CRF) 
             - "transformer" (accurate, Underthesea Deep)
             - "phonlp" (very accurate, VinAI Multi-task Transformer with VnCoreNLP segmenter)
+        use_llm: If True, uses the provided llm_refiner for extraction (slower but semantic).
+        llm_refiner: Instance of LLMRefiner.
         """
         self.known_locations = get_known_locations()
         self.taxonomy_keywords = get_all_event_keywords()
         self.segmentation_method = segmentation_method
+        self.use_llm = use_llm
+        self.llm = llm_refiner
+        
+        # Cache Init
+        self.cache_path = "data/cache/keyword_llm_cache.json"
+        self.cache = self._load_cache()
+        
         self.phonlp_model = None
         self.vncorenlp_model = None
         self.vncorenlp_path = os.path.join(os.path.expanduser("~"), ".cache", "vncorenlp_models")
@@ -31,6 +41,59 @@ class KeywordExtractor:
             'volume', 'keywords', 'time', 'automatic', 'ssi', 
             'doanh_nghiệp', 'việc_làm', # Sometimes noise if just list columns
         }
+
+    def _load_cache(self):
+        if os.path.exists(self.cache_path):
+            try:
+                with open(self.cache_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except: return {}
+        return {}
+
+    def save_cache(self):
+        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
+        with open(self.cache_path, 'w', encoding='utf-8') as f:
+            json.dump(self.cache, f, ensure_ascii=False, indent=2)
+
+    def _extract_with_llm(self, text):
+        if text in self.cache:
+            return self.cache[text]
+            
+        if not self.llm:
+            return ""
+            
+        prompt = f"""
+        Extract the Main Keywords from this Vietnamese text.
+        Focus on:
+        - Entities (People, Organizations, Locations)
+        - Main Event / Topic
+        - Important Dates/Times
+
+        Text: "{text}"
+
+        Output: JSON list of strings only. Example: ["Hà Nội", "bão Yagi", "ngập lụt"]
+        """
+        
+        try:
+            resp = self.llm._generate(prompt)
+            # Use LLMRefiner's helper if available, or manual extract
+            if hasattr(self.llm, '_extract_json'):
+                kws = self.llm._extract_json(resp, is_list=True)
+            else:
+                # Basic fallback
+                import re
+                kws = re.findall(r'"([^"]+)"', resp)
+            
+            if kws:
+                result = " ".join(kws[:10])
+                self.cache[text] = result
+                # Auto-save every 50 new items or similar? 
+                # For now rely on manual save or pipeline end call.
+                return result
+        except Exception as e:
+            print(f"LLM Extract Error: {e}")
+            
+        return "" # Fallback to rule-based if LLM fails
 
     # ... (skipping unchanged methods) ...
 
@@ -99,6 +162,11 @@ class KeywordExtractor:
         """
         if not text:
             return ""
+
+        # 0. LLM Extraction (Optional)
+        if self.use_llm:
+            llm_res = self._extract_with_llm(text)
+            if llm_res: return llm_res
 
         # 1. Alias Normalization (Phase 0)
         # This prepends canonical terms if informal ones are found
@@ -184,7 +252,10 @@ class KeywordExtractor:
         """Process a list of texts into keyword blobs."""
         from rich.progress import track
         if not texts: return []
-        return [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords...[/cyan]")]
+        results = [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords...[/cyan]")]
+        if self.use_llm:
+            self.save_cache()
+        return results
 
 if __name__ == "__main__":
     extractor = KeywordExtractor()

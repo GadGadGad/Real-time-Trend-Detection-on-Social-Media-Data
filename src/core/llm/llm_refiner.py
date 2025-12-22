@@ -80,7 +80,9 @@ class LLMRefiner:
             return results
         else:
             results = []
-            for prompt in prompts:
+            # Use progress bar for visible inference
+            iterator = track(prompts, description="[cyan]🤖 Generating Responses...[/cyan]") if len(prompts) > 1 else prompts
+            for prompt in iterator:
                 try:
                     # Apply template
                     formatted = ""
@@ -321,7 +323,7 @@ class LLMRefiner:
         console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends with Categorical Grouping...[/cyan]")
         
         all_prompts = []
-        chunk_size = 30
+        chunk_size = 100 # Increased to catch related terms (e.g. "L" vs "S") in same batch
         
         for cat, items in buckets.items():
             if not items: continue
@@ -341,15 +343,17 @@ class LLMRefiner:
                         Only remove if CLEARLY generic or utility-like.
 
                         Step 2 – MERGE:
-                        Identify terms that refer to the SAME entity or SAME event.
-
+                        Identify terms that refer to the EXACT SAME real-world event.
+                        
                         MERGE RULES:
                         - Canonical term MUST appear verbatim in the input list.
-                        - Merge multilingual sports terms (e.g. "vs", "đấu với").
-                        - Do NOT merge related but different matches or events.
+                        - Merge multilingual sports terms (e.g. "vs" = "đấu với").
+                        - MERGE SUB-EVENTS into the MAIN EVENT.
+                          (e.g., "Lịch thi đấu SEA Games 33", "Bảng tổng sắp SEA Games" -> "SEA Games 33" if present).
+                        - Do NOT merge distinct matches (e.g. "MU vs City" != "MU vs Liverpool").
 
                         FILTER RULES:
-                        - Remove prices, weather, schedules, generic queries.
+                        - Remove prices, weather forecasts, generic keywords ("xổ số", "lịch vạn niên").
                         - If unsure, KEEP.
 
                         Input list:
@@ -612,12 +616,12 @@ class LLMRefiner:
         chunk_size = 3 if self.provider != "gemini" else 30
         all_results = {}
         
-        # Use rich progress bar
-        iterator = track(range(0, len(clusters_to_refine), chunk_size), description="[cyan]Refining batches...[/cyan]")
+        # Build prompts
         all_prompts = []
         cluster_ids_per_chunk = []
+        console.print(f"[cyan]Construction {len(clusters_to_refine)} clusters into prompts...[/cyan]")
 
-        for i in iterator:
+        for i in range(0, len(clusters_to_refine), chunk_size):
             chunk = clusters_to_refine[i : i + chunk_size]
             cluster_ids_per_chunk.append([c['label'] for c in chunk])
             
