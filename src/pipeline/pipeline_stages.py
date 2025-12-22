@@ -198,14 +198,38 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
                 
     return final_labels
 
-def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold):
-    """Helper to match a cluster to existing trends."""
+def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold, bm25_index=None):
+    """Helper to match a cluster to existing trends. Supports Hybrid Search (Dense + BM25)."""
     assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
 
     if len(trend_embeddings) > 0:
+        # Dense Score
         cluster_emb = embedder.encode(cluster_query)
-        sims = cosine_similarity([cluster_emb], trend_embeddings)[0]
-        top_idx = np.argsort(sims)[-3:][::-1]
+        dense_sims = cosine_similarity([cluster_emb], trend_embeddings)[0]
+        
+        final_scores = dense_sims
+        
+        # Sparse Score (BM25) Fusion
+        if bm25_index:
+             try:
+                tokenized_query = cluster_query.lower().split()
+                sparse_scores = np.array(bm25_index.get_scores(tokenized_query))
+                
+                # Normalize BM25 (Min-Max to 0-1 range) to allow fair fusion
+                if sparse_scores.max() > 0:
+                    sparse_scores = sparse_scores / sparse_scores.max()
+                
+                # Fusion: 0.5 Dense + 0.5 Sparse
+                # Adjustable alpha could be passed in future
+                final_scores = 0.5 * dense_sims + 0.5 * sparse_scores
+                
+                # console.print(f"[dim]Hybrid Fusion debug: Dense={dense_sims.max():.3f}, Sparse={sparse_scores.max():.3f}[/dim]")
+             except Exception as e:
+                 # Fallback to dense if BM25 fails
+                 pass
+
+        # Select Top Candidates based on FINAL (Hybrid) score
+        top_idx = np.argsort(final_scores)[-3:][::-1]
         
         if rerank and reranker:
             # Pair (query, candidate)
@@ -213,13 +237,15 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
             rerank_scores = reranker.predict(pairs)
             best_s = np.argmax(rerank_scores)
             # Reranker score is usually logit, -2 is a heuristic threshold (verify this!)
-            # Assuming the user's previous code logic is correct.
             if rerank_scores[best_s] > -2: 
-                best_match_score = float(sims[top_idx[best_s]])
+                # Return the hybrid score as "match score" for consistency, or reranker score?
+                # Usually we return similarity 0-1. Let's return the hybrid score of the winner.
+                # But reranker picks the WINNER, so we trust it.
+                best_match_score = float(final_scores[top_idx[best_s]])
                 assigned_trend = trend_keys[top_idx[best_s]]
                 topic_type = "Trending"
-        elif sims[top_idx[0]] > threshold:
-            best_match_score = float(sims[top_idx[0]])
+        elif final_scores[top_idx[0]] > threshold:
+            best_match_score = float(final_scores[top_idx[0]])
             assigned_trend = trend_keys[top_idx[0]]
             topic_type = "Trending"
             

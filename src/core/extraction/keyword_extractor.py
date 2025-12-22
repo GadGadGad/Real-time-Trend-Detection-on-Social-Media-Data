@@ -339,7 +339,7 @@ class KeywordExtractor:
         return " ".join(final_keywords[:max_keywords])
 
     def batch_extract(self, texts: List[str]) -> List[str]:
-        """Process a list of texts into keyword blobs. Uses batch LLM inference if enabled."""
+        """Process a list of texts into keyword blobs. Uses MEGA-BATCHING for LLM inference."""
         if not texts: return []
         
         # 1. Standard extraction if NO LLM
@@ -347,86 +347,96 @@ class KeywordExtractor:
             from rich.progress import track
             return [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords (Rule-based)...[/cyan]")]
 
-        # 2. Batch LLM Extraction
-        print(f"⚡ Batch extracting keywords for {len(texts)} items using LLM...")
+        # 2. MEGA-BATCH LLM Extraction (200 posts per API call)
+        CHUNK_SIZE = 200  # ~25 API calls for 5000 posts
+        print(f"⚡ Batch extracting keywords for {len(texts)} items using LLM (Mega-Batch: {CHUNK_SIZE}/req)...")
+        
         results_map = {}
-        missing_indices = []
-        prompts = []
+        missing_texts = []  # (original_idx, text)
         
         # Check cache first
         for idx, text in enumerate(texts):
             if text in self.cache:
                 results_map[idx] = self.cache[text]
             else:
-                missing_indices.append(idx)
-                # Construct Prompt Inline (Duplicated from _extract_with_llm to avoid modifying it lightly)
-                prompt = f"""
-        Analyze the following Vietnamese text and extract the most important High-Signal Keywords.
-
-        PRIORITIZE:
-        - Named Entities: People (e.g. "Messi", "Tô Lâm"), Organizations ("Vingroup", "FIFA"), Locations ("Hà Nội", "Biển Đông").
-        - Specific Event Names: "Bão Yagi", "SEA Games 33".
-        - Specific Products: "iPhone 15 Pro", "VinFast VF3".
-
-        IGNORE / DO NOT INCLUDE:
-        - Common Nouns: "người dân", "công ty", "báo cáo", "dự án", "hôm nay".
-        - Verbs/Adjectives: "tăng trưởng", "phát triển", "mạnh mẽ".
-        - Generic Topics if specific entities exist.
-
-        Text: "{text[:1000]}"
-
-        Output: JSON list of strings only.
-        Example: ["Hà Nội", "bão Yagi", "ngập lụt"]
-        """
-                prompts.append(prompt)
+                missing_texts.append((idx, text))
         
-        # Run Batch
-        if prompts and self.llm:
+        print(f"   📦 {len(texts) - len(missing_texts)} cached, {len(missing_texts)} to process.")
+        
+        if not missing_texts:
+            return [results_map.get(i, "") for i in range(len(texts))]
+        
+        # Build MEGA prompts (200 posts per prompt)
+        from rich.progress import track
+        num_chunks = (len(missing_texts) + CHUNK_SIZE - 1) // CHUNK_SIZE
+        
+        for chunk_idx in track(range(num_chunks), description="[cyan]Processing keyword chunks...[/cyan]"):
+            start = chunk_idx * CHUNK_SIZE
+            end = min(start + CHUNK_SIZE, len(missing_texts))
+            chunk = missing_texts[start:end]
+            
+            # Build the numbered list for this chunk
+            numbered_items = []
+            for i, (orig_idx, text) in enumerate(chunk):
+                # Truncate each text to 300 chars for prompt efficiency
+                numbered_items.append(f"{i+1}. {text[:300]}")
+            
+            prompt = f"""
+Role: Keyword Extractor for Vietnamese Text.
+
+Task: For EACH numbered item below, extract High-Signal Keywords.
+
+PRIORITIZE:
+- Named Entities: People, Organizations, Locations.
+- Specific Event Names (e.g., "Bão Yagi", "SEA Games 33").
+- Specific Products (e.g., "iPhone 15", "VinFast VF3").
+
+IGNORE:
+- Common nouns, verbs, adjectives.
+- Generic topics if specific entities exist.
+
+Items:
+{chr(10).join(numbered_items)}
+
+Output: JSON array of {len(chunk)} arrays, one per item. Each inner array contains the keywords for that item.
+Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["VinFast"]]
+"""
+            
             try:
-                responses = self.llm._generate_batch(prompts)
+                resp = self.llm._generate(prompt)
+                parsed = self.llm._extract_json(resp, is_list=True)
                 
-                for i, resp in enumerate(responses):
-                    orig_idx = missing_indices[i]
-                    text_key = texts[orig_idx]
-                    
-                    # Parse
-                    result_str = ""
-                    try:
-                        if hasattr(self.llm, '_extract_json'):
-                            kws = self.llm._extract_json(resp, is_list=True)
+                if parsed and isinstance(parsed, list):
+                    for i, (orig_idx, text_key) in enumerate(chunk):
+                        if i < len(parsed) and isinstance(parsed[i], list):
+                            result_str = " ".join(str(k) for k in parsed[i][:15])
                         else:
-                            import re
-                            kws = re.findall(r'"([^"]+)"', resp)
+                            # Fallback to rule-based
+                            self.use_llm = False
+                            result_str = self.extract_keywords(text_key)
+                            self.use_llm = True
                         
-                        if kws:
-                            result_str = " ".join(kws[:15])
-                    except: pass
-                    
-                    # Fallback to rule-based if LLM returned nothing meaningful
-                    if not result_str:
-                         # Temporarily disable LLM to avoid recursion loop
-                         self.use_llm = False
-                         result_str = self.extract_keywords(text_key)
-                         self.use_llm = True
-                    
-                    self.cache[text_key] = result_str
-                    results_map[orig_idx] = result_str
-                    
-                self.save_cache()
+                        self.cache[text_key] = result_str
+                        results_map[orig_idx] = result_str
+                else:
+                    # Fallback all items in this chunk
+                    for orig_idx, text_key in chunk:
+                        self.use_llm = False
+                        results_map[orig_idx] = self.extract_keywords(text_key)
+                        self.use_llm = True
+                        
             except Exception as e:
-                print(f"[red]Batch Keyword Error: {e}[/red]")
-                # Fallback all failures to rule-based
-                for idx in missing_indices:
-                     self.use_llm = False
-                     results_map[idx] = self.extract_keywords(texts[idx])
-                     self.use_llm = True
+                print(f"[red]Chunk {chunk_idx} Error: {e}[/red]")
+                # Fallback
+                for orig_idx, text_key in chunk:
+                    self.use_llm = False
+                    results_map[orig_idx] = self.extract_keywords(text_key)
+                    self.use_llm = True
+        
+        self.save_cache()
 
         # Reconstruct list order
-        final_results = []
-        for i in range(len(texts)):
-            final_results.append(results_map.get(i, ""))
-            
-        return final_results
+        return [results_map.get(i, "") for i in range(len(texts))]
 
 if __name__ == "__main__":
     extractor = KeywordExtractor()

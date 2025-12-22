@@ -594,6 +594,21 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         cache_dir="embeddings_cache" if use_cache else None
     ) if trend_queries else []
     
+    # --- BM25 INDEXING (Hybrid Search) ---
+    bm25_index = None
+    use_bm25 = True # Default to True for this pipeline
+    if use_bm25 and trend_queries:
+        try:
+            from rank_bm25 import BM25Okapi
+            # Simple whitespace tokenization for BM25
+            tokenized_trends = [doc.lower().split() for doc in trend_queries]
+            bm25_index = BM25Okapi(tokenized_trends)
+            console.print("[cyan]🔍 Hybrid Search Enabled: BM25 Index built on Trends.[/cyan]")
+        except ImportError:
+            console.print("[dim yellow]⚠️ rank_bm25 not installed. Skipping Hybrid Search.[/dim yellow]")
+        except Exception as e:
+             console.print(f"[dim red]BM25 Build Error: {e}[/dim red]")
+
     cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method, anchors=anchors)
     cluster_mapping = {}
 
@@ -603,7 +618,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         cluster_query = cluster_names.get(label, f"Cluster {label}")
         assigned_trend, topic_type, best_match_score = calculate_match_scores(
             cluster_query, label, trend_embeddings, trend_keys, trend_queries, 
-            embedder, reranker, rerank, threshold
+            embedder, reranker, rerank, threshold, bm25_index=bm25_index
         )
 
         trend_data = trends.get(assigned_trend, {'volume': 0})

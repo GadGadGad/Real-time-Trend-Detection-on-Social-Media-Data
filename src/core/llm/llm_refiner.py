@@ -176,11 +176,15 @@ class LLMRefiner:
                     content = text[start:end]
             
             # --- SANITIZATION STEP ---
-            # 1. Remove "..." if the model hallucinated it
-            content = content.replace("...", "")
+            # 0. Ensure we have clean text - strip leading/trailing whitespace
+            content = content.strip()
             
-            # 2. Replace literal newlines with spaces (fixes multiline strings)
-            content = content.replace('\n', ' ').replace('\r', '')
+            # 1. Remove "..." if the model hallucinated it (as placeholder for truncation)
+            content = content.replace("...", "")
+            content = content.replace("…", "")  # Unicode ellipsis
+            
+            # 2. Normalize whitespace (convert all whitespace including tabs/newlines to single spaces)
+            content = re.sub(r'\s+', ' ', content)
             
             # 3. Clean trailing commas (common LLM error)
             content = re.sub(r",\s*([\]}])", r"\1", content)
