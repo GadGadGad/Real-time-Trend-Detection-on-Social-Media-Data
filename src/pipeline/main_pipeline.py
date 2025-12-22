@@ -74,7 +74,8 @@ def filter_obvious_noise(trends):
         'crypto', 'bitcoin', 'eth', 'usdt',
 
         # Weather & Env Features (Generic)
-        'weather', 'thoi tiet', 'nhiệt độ', 'nhiet do',
+        'weather', 'thoi tiet', 'nhiệt độ', 'nhiet do', 'nhiet do tphcm', 'nhiet do hcm', 'nhiet do hcm city', 'nhiet do hcm city'
+        'nhiet do ha noi', 'nhiet do da nang',
         'mưa không', 'mua khong', 'có mưa không', 'dự báo thời tiết', 'du bao thoi tiet',
         'áp thấp nhiệt đới', 'ap thap nhiet doi', 'bão mặt trời', 'bao mat troi',
         'cúp điện', 'cup dien', 'lịch cúp điện',
@@ -90,7 +91,7 @@ def filter_obvious_noise(trends):
         # News Outlets (Source names often appear as trends)
         'vnexpress', 'tuoi tre', 'thanh nien', 'dan tri', 'kenh14', 'zing', 'bao moi', 
         'vietnamnet', 'vtv', 'tien phong', 'sggp', 'nld', 'nguoi lao dong', 'lao dong', 
-        'soha', 'vtc', '24h', 'cafea', 'cafef', 'cafebiz', 'yan', 'znews'
+        'soha', 'vtc', '24h', 'cafea', 'cafef', 'cafebiz', 'yan', 'znews' 'dan viet'
     ]
 
     
