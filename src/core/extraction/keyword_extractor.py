@@ -368,12 +368,22 @@ class KeywordExtractor:
         
         # Build MEGA prompts (200 posts per prompt)
         from rich.progress import track
-        num_chunks = (len(missing_texts) + CHUNK_SIZE - 1) // CHUNK_SIZE
+        import time
         
-        for chunk_idx in track(range(num_chunks), description="[cyan]Processing keyword chunks...[/cyan]"):
+        num_chunks = (len(missing_texts) + CHUNK_SIZE - 1) // CHUNK_SIZE
+        print(f"   📊 Will process in {num_chunks} API calls (~{num_chunks * 15}s estimated).")
+        
+        success_count = 0
+        fallback_count = 0
+        total_start = time.time()
+        
+        for chunk_idx in range(num_chunks):
+            chunk_start = time.time()
             start = chunk_idx * CHUNK_SIZE
             end = min(start + CHUNK_SIZE, len(missing_texts))
             chunk = missing_texts[start:end]
+            
+            print(f"   🔄 Chunk {chunk_idx+1}/{num_chunks}: Processing items {start+1}-{end}...", end=" ", flush=True)
             
             # Build the numbered list for this chunk
             numbered_items = []
@@ -406,15 +416,20 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                 resp = self.llm._generate(prompt)
                 parsed = self.llm._extract_json(resp, is_list=True)
                 
+                chunk_success = 0
+                chunk_fallback = 0
+                
                 if parsed and isinstance(parsed, list):
                     for i, (orig_idx, text_key) in enumerate(chunk):
                         if i < len(parsed) and isinstance(parsed[i], list):
                             result_str = " ".join(str(k) for k in parsed[i][:15])
+                            chunk_success += 1
                         else:
                             # Fallback to rule-based
                             self.use_llm = False
                             result_str = self.extract_keywords(text_key)
                             self.use_llm = True
+                            chunk_fallback += 1
                         
                         self.cache[text_key] = result_str
                         results_map[orig_idx] = result_str
@@ -424,15 +439,27 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                         self.use_llm = False
                         results_map[orig_idx] = self.extract_keywords(text_key)
                         self.use_llm = True
+                        chunk_fallback += 1
+                
+                # Log chunk completion
+                elapsed = time.time() - chunk_start
+                success_count += chunk_success
+                fallback_count += chunk_fallback
+                print(f"✅ {elapsed:.1f}s (LLM: {chunk_success}, Fallback: {chunk_fallback})")
                         
             except Exception as e:
-                print(f"[red]Chunk {chunk_idx} Error: {e}[/red]")
+                elapsed = time.time() - chunk_start
+                print(f"❌ Error ({elapsed:.1f}s): {e}")
                 # Fallback
                 for orig_idx, text_key in chunk:
                     self.use_llm = False
                     results_map[orig_idx] = self.extract_keywords(text_key)
                     self.use_llm = True
+                    fallback_count += 1
         
+        # Final Summary
+        total_elapsed = time.time() - total_start
+        print(f"   🎉 Done! {success_count} LLM, {fallback_count} fallback in {total_elapsed:.1f}s")
         self.save_cache()
 
         # Reconstruct list order
