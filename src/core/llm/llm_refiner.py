@@ -4,6 +4,7 @@ import json
 from rich.console import Console
 from rich.progress import track
 from dotenv import load_dotenv
+import torch
 
 load_dotenv()
 console = Console()
