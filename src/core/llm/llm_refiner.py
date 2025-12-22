@@ -252,9 +252,9 @@ class LLMRefiner:
                 {chunk_str}
 
                 Output format (JSON object ONLY):
-                {
+                {{
                 "Original Title": "Canonical Title (copied verbatim from input)"
-                }
+                }}
 
                 Include ONLY titles that are merged.
                 Do NOT include titles that remain unique.
@@ -352,12 +352,12 @@ class LLMRefiner:
                         {chunk_str}
 
                         Output (JSON ONLY):
-                        {
+                        {{
                         "filtered": ["term_to_remove"],
-                        "merged": {
+                        "merged": {{
                             "variant_term": "canonical_term"
-                        }
-                        }
+                        }}
+                        }}
 
                 """
                 all_prompts.append(prompt)
