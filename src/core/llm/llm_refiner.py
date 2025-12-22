@@ -600,11 +600,9 @@ class LLMRefiner:
         # We'll split into chunks of 3 clusters per request for local models (maximum stability)
         chunk_size = 3 if self.provider != "gemini" else 30
         all_results = {}
-
-        all_results = {}
         
         # Use rich progress bar
-        iterator = range(0, len(clusters_to_refine), chunk_size)
+        iterator = track(range(0, len(clusters_to_refine), chunk_size), description="[cyan]Refining batches...[/cyan]")
         all_prompts = []
         cluster_ids_per_chunk = []
 
