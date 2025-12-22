@@ -62,7 +62,8 @@ def filter_obvious_noise(trends):
     Stage 1: Pre-Filter. Removes lottery, price charts, and generic dates.
     """
     noise_keywords = [
-        'xo so', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 'gia vang', 'ti gia', 'code', 'wiki',
+        'xo so', 'xo so mb', 'xo so mn', 'xo so mt', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 'gia vang', 'ti gia', 'code', 'wiki',
+        'so mien bac', 'so mien nam', 'so mien dong', 'so mien bắc', 'so mien nam', 'so mien đông', 'so mb', 'so mn', 'so mt',
         # Tech platforms & apps (generic, not newsworthy)
         'spotify', 'youtube', 'netflix', 'twitch', 'discord', 'instagram', 'facebook', 'tiktok',
         'google', 'gemini', 'claude', 'meta', 'twitter', 'x.com', 'reddit',
@@ -78,16 +79,96 @@ def filter_obvious_noise(trends):
     
     # Sports Filtering Config
     # Keep matches involving national interest or major events
-    sports_whitelist = ['viet nam', 'việt nam', 'vn', 'u22', 'u23', 'u19', 'u20', 'đtvn', 'tuyển nữ', 'sea games', 'aff cup', 'asian cup', 'world cup', 'euro 20', 'olympic']
-    # Filter out common weekly club matches (unless they play against VN teams)
-    club_blacklist = [
-        'man city', 'man utd', 'mu vs', 'vs mu', 'chelsea', 'arsenal', 'liverpool', 'tottenham', 'aston villa', 'newcastle', 'west ham',
-        'real madrid', 'barcelona', 'barca', 'atletico', 'valencia', 'sevilla', 'betis',
-        'psg', 'marseille', 'monaco', 'lyon',
-        'bayern', 'dortmund', 'leipzig', 'leverkusen',
-        'inter', 'milan', 'juventus', 'roma', 'napoli', 'lazio', 'atalanta',
-        'alnassr', 'al-nassr', 'miami'
+    sports_whitelist = [
+        # Việt Nam – cách gọi
+        'viet nam', 'việt nam', 'vietnam', 'vn',
+        'đtvn', 'dtvn', 'doi tuyen viet nam', 'đội tuyển việt nam',
+        'tuyen viet nam',
+
+        # Đội trẻ & nữ
+        'u15', 'u16', 'u17', 'u18', 'u19', 'u20', 'u21', 'u22', 'u23',
+        'tuyển nữ', 'đội tuyển nữ', 'nu viet nam', 'nữ việt nam',
+
+        # Giải khu vực & châu lục (VN rất hay viết)
+        'sea games', 'seagame', 'seagames',
+        'aff cup', 'asean cup', 'asean championship',
+        'vck u23', 'vck u23 chau a',
+        'u23 chau a', 'u23 châu á',
+        'asian cup', 'vck asian cup',
+        'vong loai asian cup',
+
+        # World Cup
+        'world cup', 'vong loai world cup',
+        'world cup chau a', 'world cup nữ',
+
+        # Olympic
+        'olympic', 'olympic paris', 'olympic 2024', 'olympic 2028',
+        'vong loai olympic',
+
+        # Euro (báo VN hay viết dù không có VN)
+        'euro', 'euro 2024', 'euro 2020', 'euro 2021',
+
+        # Cách viết match báo VN
+        'viet nam vs', 'việt nam vs', 'vietnam vs', 'vn vs',
     ]
+    # Filter out common weekly club matches (unless they play against VN teams)
+    league_blacklist = [
+    'premier league', 'epl',
+    'la liga',
+    'serie a',
+    'bundesliga',
+    'ligue 1',
+    'champions league', 'ucl',
+    'europa league',
+    'conference league',
+]
+
+
+    club_blacklist = [
+        # England
+        'man city', 'manchester city', 'mc',
+        'man utd', 'man united', 'manchester united', 'mu', 'man u',
+        'arsenal', 'chelsea', 'liverpool', 'tottenham', 'spurs',
+        'aston villa', 'newcastle', 'west ham', 'fulham',
+        'brighton', 'wolves', 'everton', 'bournemouth',
+        'crystal palace', 'nottingham forest', 'nottm forest',
+        'leicester', 'leeds', 'southampton', 'burnley', 'brentford',
+
+        # Spain
+        'real madrid', 'barcelona', 'barca',
+        'atletico', 'atlético', 'betis',
+        'sevilla', 'valencia', 'villarreal',
+        'athletic bilbao', 'ath bilbao',
+        'real sociedad', 'getafe', 'osasuna', 'alaves', 'alavés',
+
+        # Italy
+        'juventus', 'juve',
+        'inter', 'inter milan',
+        'milan', 'ac milan',
+        'roma', 'as roma',
+        'napoli', 'lazio', 'atalanta',
+        'bologna', 'fiorentina', 'torino',
+        'udinese', 'genoa', 'cagliari', 'sassuolo',
+
+        # Germany
+        'bayern', 'bayern munich',
+        'dortmund', 'borussia dortmund',
+        'leipzig', 'rb leipzig',
+        'leverkusen', 'bayer leverkusen',
+        'stuttgart', 'werder bremen',
+        'union berlin', 'freiburg', 'hoffenheim',
+
+        # France
+        'psg', 'paris saint germain',
+        'marseille', 'monaco', 'lyon', 'lille', 'nice', 'brest',
+
+        # Others
+        'benfica', 'porto', 'sporting', 'ajax', 'psv',
+        'galatasaray', 'fenerbahçe', 'celtic',
+        'al nassr', 'al-nassr', 'alnassr',
+        'inter miami',
+    ]
+
 
     filtered_trends = {}
     for k, v in trends.items():
