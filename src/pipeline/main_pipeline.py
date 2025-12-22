@@ -738,10 +738,12 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 "source": post.get('source'), "time": post.get('time'), "post_content": post.get('content'),
                 "final_topic": m["final_topic"], "topic_type": m["topic_type"], "category": m["category"],
                 "score": m["match_score"], "trend_score": m["trend_score"], "llm_reasoning": m["llm_reasoning"],
-                "sentiment": sentiments[i], "is_matched": (m["topic_type"] == "Trending"), "trend": m["final_topic"]
+                "sentiment": sentiments[i], "is_matched": (m["topic_type"] == "Trending"), "trend": m["final_topic"],
+                "embeddings": post_embeddings[i], "trend_embeddings": trend_embeddings[best_idx]
             })
         elif save_all:
-            matches.append({"final_topic": "Unassigned", "topic_type": "Noise", "sentiment": sentiments[i], "is_matched": False})
+            matches.append({"final_topic": "Unassigned", "topic_type": "Noise", "sentiment": sentiments[i], "is_matched": False,
+                            "embeddings": post_embeddings[i], "trend_embeddings": trend_embeddings[best_idx]})
 
     return matches
 
@@ -766,7 +768,7 @@ def find_matches(posts, trends, model_name=None, threshold=0.35,
             matches.append({
                 "source": post.get('source'), "time": post.get('time'), "post_content": post.get('content'),
                 "trend": topic, "score": float(best_score), "is_matched": (topic != "Unassigned"),
-                "final_topic": topic
+                "final_topic": topic, "embeddings": post_embeddings[i], "trend_embeddings": trend_embeddings[best_idx]
             })
     return matches
 
