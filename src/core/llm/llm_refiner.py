@@ -360,8 +360,8 @@ class LLMRefiner:
                 all_prompts.append(prompt)
                 
         if all_prompts:
-            # Process in chunks to show progress
-            inference_batch_size = 5
+            # Process one by one to show granular progress
+            inference_batch_size = 1
             
             # Using rich progress track
             for i in track(range(0, len(all_prompts), inference_batch_size), description="[cyan]Processing Trend Batches...[/cyan]"):
