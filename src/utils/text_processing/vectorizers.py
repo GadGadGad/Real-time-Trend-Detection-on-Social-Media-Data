@@ -177,19 +177,22 @@ def get_glove_embeddings(texts: list, glove_path: str = None, dim: int = 100) ->
     return embeddings
 
 
-def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 32) -> np.ndarray:
+def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 5) -> np.ndarray:
     """
     Create embeddings using ProtonX Vietnamese Embedding API.
     
     Args:
         texts: List of text strings
         api_key: ProtonX API key (uses PROTONX_API_KEY env var if not provided)
-        batch_size: Number of texts to send per API call
+        batch_size: Number of texts to send per API call (max 5-10 to avoid rate limits)
         
     Returns:
         numpy array of shape (n_texts, embedding_dim)
+        
+    Note: ProtonX has 10 requests/minute limit. This function adds delays between batches.
     """
     global _protonx_client
+    import time
     
     # Get API key
     if api_key is None:
@@ -202,6 +205,7 @@ def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 3
         )
     
     console.print(f"[cyan]🌐 Creating ProtonX embeddings for {len(texts)} texts...[/cyan]")
+    console.print(f"[dim]Rate limit: 10 req/min. Using batch_size={batch_size} with delays.[/dim]")
     
     # Set env var for protonx library
     os.environ["PROTONX_API_KEY"] = api_key
@@ -220,10 +224,17 @@ def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 3
     client = _protonx_client
     embeddings = []
     
-    # Process in batches
+    # Process in batches with rate limiting
     from rich.progress import track
-    for i in track(range(0, len(texts), batch_size), description="[cyan]ProtonX encoding...[/cyan]"):
+    total_batches = (len(texts) + batch_size - 1) // batch_size
+    
+    for batch_idx, i in enumerate(track(range(0, len(texts), batch_size), description="[cyan]ProtonX encoding...[/cyan]", total=total_batches)):
         batch = texts[i:i + batch_size]
+        
+        # Add delay between batches to respect rate limit (10 req/min = 1 req/6sec)
+        if batch_idx > 0:
+            time.sleep(7)  # 7 seconds between batches
+        
         for text in batch:
             try:
                 result = client.embeddings.create(text)
@@ -235,8 +246,22 @@ def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 3
                     console.print(f"[yellow]⚠️ Empty response for text, using zero vector[/yellow]")
                     embeddings.append([0.0] * 768)  # ProtonX uses 768-dim
             except Exception as e:
-                console.print(f"[red]❌ ProtonX error: {e}[/red]")
-                embeddings.append([0.0] * 768)
+                error_str = str(e)
+                if "429" in error_str:
+                    console.print(f"[yellow]⚠️ Rate limited, waiting 60 seconds...[/yellow]")
+                    time.sleep(60)
+                    # Retry
+                    try:
+                        result = client.embeddings.create(text)
+                        if result and 'data' in result:
+                            embeddings.append(result['data'][0]['embedding'])
+                        else:
+                            embeddings.append([0.0] * 768)
+                    except:
+                        embeddings.append([0.0] * 768)
+                else:
+                    console.print(f"[red]❌ ProtonX error: {e}[/red]")
+                    embeddings.append([0.0] * 768)
     
     embeddings = np.array(embeddings)
     console.print(f"[green]✅ ProtonX: Shape {embeddings.shape}[/green]")

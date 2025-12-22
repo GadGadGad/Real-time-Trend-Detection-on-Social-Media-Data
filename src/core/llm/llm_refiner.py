@@ -719,7 +719,7 @@ class LLMRefiner:
             {batch_str}
 
             Respond with ONLY this JSON (no other text):
-            [{"id": 0, "refined_title": "Vietnamese headline", "category": "A", "event_type": "Specific", "reasoning": "why"}]
+            [{{"id": 0, "refined_title": "Vietnamese headline", "category": "A", "event_type": "Specific", "reasoning": "why"}}]
             """
             all_prompts.append(prompt)
 
