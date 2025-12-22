@@ -10,6 +10,7 @@ SUMMARIZATION_MODELS = {
     'vit5-large': 'VietAI/vit5-large-vietnews-summarization',  # Best quality, ~1.2GB
     'vit5-base': 'VietAI/vit5-base-vietnews-summarization',    # Faster, ~900MB
     'bartpho': 'vinai/bartpho-syllable',                       # Alternative, good for short text
+    'gemini': 'gemini-1.5-flash',                              # Cloud LLM, handles massive batches
 }
 
 class Summarizer:
@@ -24,6 +25,14 @@ class Summarizer:
         self.enabled = False
 
     def load_model(self):
+        if self.model_name.startswith('gemini'):
+            from src.core.llm.llm_refiner import LLMRefiner
+            self.model = LLMRefiner(provider="gemini", model_path=self.model_name)
+            self.enabled = self.model.enabled
+            if self.enabled:
+                console.print(f"[green]✅ Summarizer using Gemini ({self.model_name})[/green]")
+            return
+
         console.print(f"[cyan]📥 Loading Summarizer: {self.model_name}...[/cyan]")
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
@@ -51,6 +60,36 @@ class Summarizer:
             self.load_model()
             if not self.enabled: return texts # Fallback
             
+        if self.model_name.startswith('gemini'):
+            # True batching for Gemini: group articles into one long prompt
+            summaries = []
+            gemini_batch_size = 20 # Can handle more, but 20 is safe for response parsing
+            for i in range(0, len(texts), gemini_batch_size):
+                chunk = texts[i : i + gemini_batch_size]
+                chunk_str = "\n".join([f"--- ARTICLE {idx+1} ---\n{t[:2000]}" for idx, t in enumerate(chunk)])
+                prompt = (
+                    "You are a Senior News Editor. Summarize each given article below into ONE short Vietnamese paragraph (max 100 words).\n"
+                    "Maintain key facts, figures, and names.\n"
+                    "Output a JSON list of strings only.\n"
+                    "EXAMPLE: [\"Summary 1\", \"Summary 2\"]\n\n"
+                    f"{chunk_str}\n\n"
+                    "JSON Output:"
+                )
+                try:
+                    res_text = self.model._generate(prompt)
+                    chunk_summaries = self.model._extract_json(res_text, is_list=True)
+                    if chunk_summaries and len(chunk_summaries) == len(chunk):
+                        summaries.extend(chunk_summaries)
+                    else:
+                        # Fallback/Error recovery: individual generation if batch failed
+                        console.print(f"[yellow]⚠️ Batch summary failed/mismatched for chunk {i//gemini_batch_size}. Retrying individually...[/yellow]")
+                        for t in chunk:
+                            summaries.append(self.model.summarize_text(t))
+                except Exception as e:
+                    console.print(f"[red]Gemini Batch Summarization Error: {e}[/red]")
+                    summaries.extend([t[:256] for t in chunk]) # Truncation fallback
+            return summaries
+
         console.print(f"[cyan]📝 Summarizing {len(texts)} articles with {self.model_name.split('/')[-1]}...[/cyan]")
         summaries = []
         batch_size = 4 # T4 GPU safe limit

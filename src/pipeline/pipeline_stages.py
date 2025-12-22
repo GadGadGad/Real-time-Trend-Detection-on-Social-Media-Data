@@ -112,7 +112,7 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, m
                 console.print(f"   💾 [green]Cached {new_cache_entries} new summaries to {summary_cache_file}[/green]")
             except: pass
 
-        console.print(f"   ✅ [green]Summarized {len(long_indices_to_process)} posts with ViT5.[/green]")
+        console.print(f"   ✅ [green]Summarized {len(long_indices_to_process)} posts with {model_name}.[/green]")
     elif long_indices_all:
          console.print(f"   ✅ [green]All {len(long_indices_all)} target posts were found in cache![/green]")
          

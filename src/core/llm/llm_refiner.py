@@ -23,7 +23,10 @@ class LLMRefiner:
                     console.print("[yellow]⚠️ GEMINI_API_KEY not found. LLM Refinement disabled.[/yellow]")
                 else:
                     genai.configure(api_key=self.api_key)
-                    self.model = genai.GenerativeModel("gemini-1.5-flash") # Default
+                    # Allow specifying model via model_path (e.g. 'gemini-1.5-pro')
+                    gemini_model = model_path or "gemini-1.5-flash"
+                    console.print(f"[cyan]♊ Using Gemini Model: {gemini_model}[/cyan]")
+                    self.model = genai.GenerativeModel(gemini_model)
                     self.enabled = True
             except ImportError:
                 console.print("[red]❌ google-generativeai not installed.[/red]")
@@ -71,12 +74,20 @@ class LLMRefiner:
         if not prompts: return []
         
         if self.provider == "gemini":
-            results = []
-            for p in prompts:
+            import concurrent.futures
+            
+            def get_content(p):
                 try:
-                    results.append(self.model.generate_content(p).text)
-                except Exception:
-                    results.append("")
+                    # Using a higher safety threshold or simplified generation for speed
+                    return self.model.generate_content(p).text
+                except Exception as e:
+                    if self.debug: console.print(f"[dim red]Gemini Error: {e}[/dim red]")
+                    return ""
+
+            # Use ThreadPoolExecutor for parallel API calls
+            # Gemini 1.5 Flash has high rate limits
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                results = list(executor.map(get_content, prompts))
             return results
         else:
             results = []
@@ -270,9 +281,9 @@ class LLMRefiner:
 
         mapping = {t: t for t in topic_list}
         
-        # Chunking for long lists (LLM context limit)
-        # Reduced from 50 to 20 to prevent hallucinations/over-merging
-        chunk_size = 20
+        # Reduced from 50 to 20 to prevent hallucinations/over-merging for local models
+        # But Gemini can handle 100+ easily
+        chunk_size = 100 if self.provider == "gemini" else 20
         all_prompts = []
         chunks = []
         total_chunks = (len(unique_topics) + chunk_size - 1) // chunk_size
@@ -369,10 +380,10 @@ class LLMRefiner:
         all_filtered = []
         all_merged = {}
         
-        console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends with Categorical Grouping...[/cyan]")
+        console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends with Categorical Grouping (Provider: {self.provider})...[/cyan]")
         
         all_prompts = []
-        chunk_size = 100 # Increased to catch related terms (e.g. "L" vs "S") in same batch
+        chunk_size = 300 if self.provider == "gemini" else 100 # Gemini handles massive lists
         
         for cat, items in buckets.items():
             if not items: continue
@@ -445,9 +456,9 @@ class LLMRefiner:
         """
         if not self.enabled: return []
         
-        console.print(f"[cyan]🧹 Intelligent Noise Filtering via LLM for {len(trend_list)} trends...[/cyan]")
+        console.print(f"[cyan]🧹 Intelligent Noise Filtering via {self.provider} for {len(trend_list)} trends...[/cyan]")
         all_bad = []
-        chunk_size = 50
+        chunk_size = 500 if self.provider == "gemini" else 50 # Gemini handles 500+ items easily
         all_prompts = []
         total_chunks = (len(trend_list) + chunk_size - 1) // chunk_size
         
