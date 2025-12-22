@@ -428,6 +428,10 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
         norm_key_map = {normalize_text(k): k for k in refined_trends.keys()}
 
         for variant, canonical in merged.items():
+            if isinstance(canonical, list):
+                canonical = canonical[0] if canonical else ""
+            if not isinstance(canonical, str): continue
+            
             norm_v = normalize_text(variant)
             norm_c = normalize_text(canonical)
             var_key = norm_key_map.get(norm_v)
