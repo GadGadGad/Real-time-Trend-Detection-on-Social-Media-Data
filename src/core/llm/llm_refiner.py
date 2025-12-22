@@ -708,18 +708,18 @@ class LLMRefiner:
             Analyze these {len(chunk)} news/social clusters from Vietnam.
             {instruction}
 
-            CRITICAL: 
-            - Base your 'reasoning' ONLY on the provided Context and Keywords for THAT cluster. 
-            - Do NOT mix facts between clusters. 
-            - Ensure 'id' in JSON matches the 'Cluster ID'.
-            - DO NOT add any explanation before or after the JSON.
-            - Output ONLY valid JSON, nothing else.
+            RULES:
+            1. Output ONLY a JSON array, nothing else
+            2. Start your response with [ and end with ]
+            3. Each cluster must have: id, refined_title, category, event_type, reasoning
+            4. Category must be A, B, or C
+            5. event_type must be "Specific" or "Generic"
 
             Input Clusters:
             {batch_str}
 
-            Output ONLY this JSON structure (no markdown, no explanation):
-            [{{\"id\": 0, \"refined_title\": \"...\", \"category\": \"A\", \"event_type\": \"Specific\", \"reasoning\": \"...\"}}, {{\"id\": 1, \"refined_title\": \"...\", \"category\": \"B\", \"event_type\": \"Generic\", \"reasoning\": \"...\"}}]
+            Respond with ONLY this JSON (no other text):
+            [{"id": 0, "refined_title": "Vietnamese headline", "category": "A", "event_type": "Specific", "reasoning": "why"}]
             """
             all_prompts.append(prompt)
 
@@ -740,11 +740,14 @@ class LLMRefiner:
                     else:
                         console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i+1}[/yellow]")
                         if self.debug:
-                            console.print(f"[dim yellow]DEBUG Raw Response: {text}[/dim yellow]")
+                            # Show first 500 chars of response for debugging
+                            console.print(f"[dim yellow]DEBUG Raw Response (first 500 chars):[/dim yellow]")
+                            console.print(f"[dim]{text[:500]}[/dim]")
                 except Exception as e:
                     console.print(f"[red]Batch LLM error in chunk {i+1}: {e}[/red]")
-        
-        return all_results
+                    if self.debug:
+                        import traceback
+                        console.print(f"[dim red]{traceback.format_exc()}[/dim red]")
         
         return all_results
 
