@@ -704,8 +704,8 @@ class LLMRefiner:
         """
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
-        # We'll split into chunks of 3 clusters per request for local models (maximum stability)
-        chunk_size = 3 if self.provider != "gemini" else 30
+        # [QUOTA OPTIMIZATION] For Gemini Free Tier, reduce chunk size to stay under token limits (e.g. 15k tokens/min)
+        chunk_size = 3 if self.provider != "gemini" else 10
         all_results = {}
         
         # Build prompts
