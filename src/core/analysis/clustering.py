@@ -19,10 +19,13 @@ VIETNAMESE_STOPWORDS = [
 ]
 
 def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15, 
-                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100):
+                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, selection_method='leaf'):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
+    
+    selection_method: 'eom' (Excess of Mass - larger clusters) or 'leaf' (Fine-grained clusters).
+                      'leaf' is better for separating distinct topics.
     """
     labels = None
 
@@ -109,12 +112,12 @@ def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan',
             # Fallback for very small data
             umap_embeddings = embeddings
         
-        console.print(f"[bold cyan]🧩 Running HDBSCAN clustering (min_size={min_cluster_size}, eps={epsilon:.3f})...[/bold cyan]")
+        console.print(f"[bold cyan]🧩 Running HDBSCAN (min_size={min_cluster_size}, eps={epsilon:.3f}, method={selection_method})...[/bold cyan]")
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=min_cluster_size,
             min_samples=2,
             metric='euclidean', 
-            cluster_selection_method='eom',
+            cluster_selection_method=selection_method,
             cluster_selection_epsilon=epsilon 
         )
         labels = clusterer.fit_predict(umap_embeddings)
@@ -291,3 +294,184 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors
             cluster_names[label] = f"Cluster {label}"
             
     return cluster_names
+
+def filter_cluster_outliers(embeddings, labels, cluster_titles, embedding_model, threshold=0.3, texts=None):
+    """
+    Refines cluster membership by verifying semantic similarity between each post 
+    and its cluster's Refined Title (the Dominant Topic chosen by LLM).
+    
+    If a post is too dissimilar to the title (similarity < threshold), 
+    it is reassigned to the Noise cluster (-1).
+    
+    Args:
+        embeddings: Numpy array of post embeddings shape (N, D)
+        labels: Array of cluster labels shape (N,)
+        cluster_titles: Dict mapping {cluster_id: "Refined Title String"}
+        embedding_model: Model with .encode(text) -> np.array
+        threshold: Cosine similarity threshold (default 0.3). Lower for broad topics.
+        texts: Optional list of texts for debug logging (must correspond to embeddings indices)
+        
+    Returns:
+        new_labels: Refined label array
+        stats: Dictionary with 'outliers_removed' count
+    """
+    if len(embeddings) != len(labels):
+        raise ValueError(f"Embeddings length ({len(embeddings)}) != Labels length ({len(labels)})")
+
+    new_labels = np.array(labels).copy()
+    stats = {'outliers_removed': 0, 'clusters_processed': 0}
+    
+    # Pre-compute title embeddings
+    title_embeddings = {}
+    valid_clusters = [c for c in cluster_titles.keys() if c != -1]
+    
+    if not valid_clusters:
+        return new_labels, stats
+
+    console.print(f"[cyan]🔄 Semantic Filtering: Validating posts against {len(valid_clusters)} cluster titles...[/cyan]")
+    
+    # Handle cases where some titles might be None or empty
+    safe_titles = []
+    safe_clusters = []
+    
+    for c in valid_clusters:
+        # cluster_titles values might be dicts (if refiner returns raw result) or strings
+        # Adjust based on expected input. Usually this function expects strings.
+        val = cluster_titles[c]
+        t_str = val['refined_title'] if isinstance(val, dict) and 'refined_title' in val else val
+        
+        if t_str and isinstance(t_str, str):
+            safe_titles.append(t_str)
+            safe_clusters.append(c)
+
+    if not safe_titles:
+        return new_labels, stats
+
+    # Batch encode titles
+    try:
+        t_embs = embedding_model.encode(safe_titles)
+        if not isinstance(t_embs, np.ndarray):
+            t_embs = np.array(t_embs)
+    except AttributeError:
+        t_embs = np.array([embedding_model.encode(t) for t in safe_titles])
+        
+    for i, cid in enumerate(safe_clusters):
+        title_embeddings[cid] = t_embs[i]
+
+    # Iterate through valid clusters
+    for cluster_id in safe_clusters:
+        if cluster_id not in title_embeddings:
+            continue
+            
+        # Get indices of posts in this cluster
+        indices = np.where(labels == cluster_id)[0]
+        if len(indices) == 0:
+            continue
+            
+        stats['clusters_processed'] += 1
+        
+        # Get post embeddings for this cluster
+        cluster_post_embs = embeddings[indices]
+        
+        # Calculate similarity: (N_posts, D) vs (1, D)
+        title_vec = title_embeddings[cluster_id].reshape(1, -1)
+        sims = cosine_similarity(cluster_post_embs, title_vec).flatten()
+        
+        # Identify outliers
+        outlier_mask = sims < threshold
+        outlier_indices = indices[outlier_mask]
+        
+        if len(outlier_indices) > 0:
+            new_labels[outlier_indices] = -1 # Reassign to noise
+            stats['outliers_removed'] += len(outlier_indices)
+            
+            if texts and len(outlier_indices) > 0:
+                first_outlier_idx = outlier_indices[0]
+                # Check if texts is indexable
+                try:
+                    # console.print(f"[dim]      Moved outlier to noise: {texts[first_outlier_idx][:50]}...[/dim]")
+                    pass
+                except: pass
+
+    if stats['outliers_removed'] > 0:
+        console.print(f"[green]✅ Semantic Filtering Complete. Removed {stats['outliers_removed']} outliers.[/green]")
+    else:
+        console.print(f"[dim]Semantic Filtering: No outliers found.[/dim]")
+        
+    return new_labels, stats
+
+def recluster_noise(embeddings, labels, min_cluster_size=3, epsilon=0.1):
+    """
+    Attempts to re-cluster items labeled as noise (-1) to identify missed micro-clusters.
+    Useful after "Semantic Filtering" to recover valid topics from rejected outliers.
+    
+    Args:
+        embeddings: Full embeddings array
+        labels: Current labels array
+        min_cluster_size: Stricter than global default (e.g., 3)
+        epsilon: Stricter than global default (e.g., 0.1)
+        
+    Returns:
+        updated_labels: Labels array with noise points potentially assigned to new clusters
+    """
+    import hdbscan
+    import umap
+    
+    updated_labels = np.array(labels).copy()
+    noise_mask = (updated_labels == -1)
+    noise_indices = np.where(noise_mask)[0]
+    
+    if len(noise_indices) < min_cluster_size:
+        return updated_labels 
+        
+    console.print(f"[cyan]♻️  Re-clustering {len(noise_indices)} noise/rejected items...[/cyan]")
+    
+    try:
+        noise_embeddings = embeddings[noise_indices]
+        
+        # Lightweight UMAP for noise subset
+        if len(noise_embeddings) > 15:
+             noise_umap = umap.UMAP(n_neighbors=min(10, len(noise_embeddings)-1), 
+                                  n_components=5, metric='cosine', random_state=42).fit_transform(noise_embeddings)
+        else:
+             noise_umap = noise_embeddings
+             
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=1, 
+            metric='euclidean',
+            cluster_selection_epsilon=epsilon
+        )
+        sub_labels = clusterer.fit_predict(noise_umap)
+        
+        unique_sub = set(sub_labels)
+        if -1 in unique_sub: unique_sub.remove(-1)
+        
+        if not unique_sub:
+            console.print("[dim]   No new clusters found in noise.[/dim]")
+            return updated_labels
+            
+        # Determine next available cluster ID
+        current_max = max(updated_labels) if len(updated_labels) > 0 else 0
+        next_id = current_max + 1
+        
+        count = 0
+        for l in unique_sub:
+            # Mask for this new cluster in the noise subset
+            l_mask = (sub_labels == l)
+            
+            # Find corresponding indices in original array
+            target_indices = noise_indices[l_mask]
+            
+            # Assign new global ID
+            global_id = next_id + count
+            updated_labels[target_indices] = global_id
+            
+            count += 1
+            
+        console.print(f"[green]✅ Recovered {count} new clusters from noise![/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Re-clustering noise failed: {e}[/red]")
+        
+    return updated_labels

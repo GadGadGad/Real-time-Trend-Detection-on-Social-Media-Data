@@ -673,6 +673,13 @@ class LLMRefiner:
                 2. Must contain specific Entities (Who/Where/What).
                 3. Neutral Tone (No sensationalism like "kinh hoàng", "xôn xao", "cực sốc").
                 4. Use standardized Vietnamese (e.g., "TP.HCM" instead of "Sài Gòn" if formal context).
+                
+                IMPORTANT - Handling Mixed Clusters:
+                - If the posts refer to multiple UNRELATED events (e.g., "Apple iPhone" AND "Flood in Hue"):
+                  - DO NOT combine them (e.g., "Apple ra iPhone và Lũ lụt ở Huế" is WRONG).
+                  - PICK THE DOMINANT TOPIC (the one with more posts or higher news value).
+                  - Generate the title for that dominant topic ONLY.
+                  - Mention the removed topic in the 'reasoning' field.
 
                 Anti-Patterns (DO NOT USE):
                 - "Tin tức về..." (News about...)
@@ -683,7 +690,7 @@ class LLMRefiner:
                 Data extraction:
                 - Category: A (Critical/Safety), B (Social/Politics/Sports), C (Entertainment/Business).
                 - Event Type: "Specific" (One-time event) or "Generic" (Recurring/Topic).
-                - Reasoning: 1-sentence explanation of why this name was chosen.
+                - Reasoning: explain your choice and mention if you dropped any unrelated topics from a mixed cluster.
 
                 Output JSON:
                 {
