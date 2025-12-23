@@ -303,35 +303,45 @@ class LLMRefiner:
                 
                 # 8. NESTED ARRAYS: Salvage complete inner [...] arrays from truncated response
                 # This handles: [["kw1"], ["kw2"], ["kw3  <- incomplete
-                # We extract the first two complete arrays
-                if is_list and '[[' in content:
+                # We extract all complete inner arrays
+                # Check for nested arrays with optional whitespace: [ [ or [[
+                if is_list and re.search(r'\[\s*\[', content):
                     inner_arrays = []
                     bracket_depth = 0
                     current_arr = ""
                     in_string = False
                     prev_char = ""
-                    started = False  # Skip the outer [
                     
                     for char in content:
+                        # Track string state (respecting escaped quotes)
                         if char == '"' and prev_char != '\\':
                             in_string = not in_string
                         
+                        # Handle brackets (only when not inside a string)
                         if not in_string:
                             if char == '[':
-                                if bracket_depth == 1:  # Inside outer [
-                                    current_arr = ""
                                 bracket_depth += 1
-                            elif char == ']':
-                                bracket_depth -= 1
-                                if bracket_depth == 1:  # Completed an inner array
+                                if bracket_depth == 2:  # Starting an inner array
+                                    current_arr = "["
+                                elif bracket_depth > 2:  # Nested bracket inside inner array
                                     current_arr += char
+                            elif char == ']':
+                                if bracket_depth == 2:  # Completing an inner array
+                                    current_arr += "]"
                                     inner_arrays.append(current_arr)
                                     current_arr = ""
-                                    prev_char = char
-                                    continue
+                                elif bracket_depth > 2:  # Nested bracket inside inner array
+                                    current_arr += char
+                                bracket_depth -= 1
+                            else:
+                                # Non-bracket char outside string, add if in inner array
+                                if bracket_depth >= 2:
+                                    current_arr += char
+                        else:
+                            # Inside a string, add to current array if we're in an inner array
+                            if bracket_depth >= 2:
+                                current_arr += char
                         
-                        if bracket_depth >= 2:  # Inside an inner array
-                            current_arr += char
                         prev_char = char
                     
                     # If we captured complete inner arrays, parse them
@@ -341,7 +351,8 @@ class LLMRefiner:
                             data = json.loads(fixed_json)
                             if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} nested arrays from truncated response.[/dim green]")
                             return data
-                        except:
+                        except Exception as e:
+                            if self.debug: console.print(f"[dim yellow]DEBUG: Nested array salvage failed to parse: {e}. Arrays: {inner_arrays[:3]}...[/dim yellow]")
                             pass
                 
                 if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:200]}...[/dim red]")
