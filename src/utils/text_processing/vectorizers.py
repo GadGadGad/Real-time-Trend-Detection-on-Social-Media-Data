@@ -266,7 +266,48 @@ def get_protonx_embeddings(texts: list, api_key: str = None, batch_size: int = 5
     embeddings = np.array(embeddings)
     console.print(f"[green]✅ ProtonX: Shape {embeddings.shape}[/green]")
     
-    return embeddings
+def get_gemini_embeddings(texts: list, api_key: str = None, model_name: str = "models/text-embedding-004", batch_size: int = 50) -> np.ndarray:
+    """
+    Create embeddings using Google Gemini Embedding API.
+    
+    Args:
+        texts: List of text strings
+        api_key: Gemini API key
+        model_name: Model version (default: text-embedding-004)
+        batch_size: Texts per API call (max 100)
+        
+    Returns:
+        numpy array of shape (n_texts, embedding_dim)
+    """
+    import google.generativeai as genai
+    
+    if api_key is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+    
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY required for Gemini embeddings.")
+    
+    genai.configure(api_key=api_key)
+    
+    console.print(f"[cyan]🌐 Creating Gemini embeddings for {len(texts)} texts using {model_name}...[/cyan]")
+    
+    embeddings = []
+    # Gemini allows batching (up to 100 prompts)
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        try:
+            result = genai.embed_content(
+                model=model_name,
+                content=batch,
+                task_type="clustering" # Best for our use case
+            )
+            embeddings.extend(result['embedding'])
+        except Exception as e:
+            console.print(f"[red]❌ Gemini error: {e}[/red]")
+            # Fallback for failed batch
+            embeddings.extend([[0.0] * 768] * len(batch))
+            
+    return np.array(embeddings)
 
 
 import hashlib
@@ -351,9 +392,23 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
             console.print(f"[green]💾 Saved embeddings to {cache_path}[/green]")
             
         return embeddings
+
+    elif method == "gemini":
+        embeddings = get_gemini_embeddings(
+            texts,
+            api_key=kwargs.get('api_key'),
+            model_name=model_name or "models/text-embedding-004"
+        )
+        
+        if cache_dir:
+            cache_path = os.path.join(cache_dir, cache_filename)
+            np.save(cache_path, embeddings)
+            console.print(f"[green]💾 Saved embeddings to {cache_path}[/green]")
+            
+        return embeddings
     
     else:
-        raise ValueError(f"Unknown embedding method: {method}. Available: tfidf, bow, glove, sentence-transformer, protonx")
+        raise ValueError(f"Unknown embedding method: {method}. Available: tfidf, bow, glove, sentence-transformer, protonx, gemini")
 
 
 # Test
