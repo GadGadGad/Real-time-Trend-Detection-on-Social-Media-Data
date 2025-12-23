@@ -49,6 +49,15 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
             console.print("[red]❌ BERTopic requires texts parameter[/red]")
             return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
         
+        # [ROBUSTNESS] Check length alignment
+        if len(texts) != embeddings.shape[0]:
+            console.print(f"[red]❌ Shape Mismatch: len(texts)={len(texts)} but embeddings.shape={embeddings.shape}[/red]")
+            console.print("[yellow]Check if you filtered posts but kept old embeddings.[/yellow]")
+            # Attempt to align if mismatch is small or keep the smallest to avoid crash (risky but better for playground)
+            min_len = min(len(texts), embeddings.shape[0])
+            texts = list(texts)[:min_len]
+            embeddings = embeddings[:min_len]
+        
         console.print(f"[bold cyan]🧩 Running BERTopic (min_topic_size={min_cluster_size}, n_clusters={n_clusters})...[/bold cyan]")
         
         # 1. Custom Vectorizer to filter generic words
