@@ -15,11 +15,11 @@ VIETNAMESE_STOPWORDS = [
     "cho", "để", "lại", "vừa", "cũng", "đang", "sẽ", "đã", "có", "không",
     "cái", "con", "chiếc", "bài", "vụ", "trận", "đấu", "tại", "vào", 
     "được", "bị", "nêu", "cho_biết", "cho_hay", "về", "của", "từ",
-    "thành_phố", "tphcm", "hà_nội", "việt_nam", "ngày", "năm", "tháng"
+    # "thành_phố", "tphcm", "hà_nội", "việt_nam", "ngày", "năm", "tháng"
 ]
 
-def cluster_data(embeddings, min_cluster_size=5, epsilon=0.15, method='hdbscan', n_clusters=15, 
-                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, selection_method='leaf'):
+def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
+                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, selection_method='eom'):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
@@ -475,3 +475,66 @@ def recluster_noise(embeddings, labels, min_cluster_size=3, epsilon=0.1):
         console.print(f"[red]Re-clustering noise failed: {e}[/red]")
         
     return updated_labels
+
+def diagnose_clustering(posts, labels, embeddings, console=None):
+    import numpy as np
+    from sklearn.metrics import silhouette_score
+    from sklearn.metrics.pairwise import cosine_similarity
+    
+    if console is None:
+        from rich.console import Console
+        console = Console()
+
+    unique_labels = set(labels)
+    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    n_noise = list(labels).count(-1)
+    noise_ratio = n_noise / len(labels) if len(labels) > 0 else 0
+    
+    console.print(f"\n[bold]🕵️ Clustering Diagnosis[/bold]")
+    console.print(f"   • Clusters: {n_clusters}")
+    console.print(f"   • Noise: {n_noise} ({noise_ratio:.1%})")
+    
+    if len(set(labels)) > 1:
+        try:
+            sil = silhouette_score(embeddings, labels)
+            console.print(f"   • Silhouette Score: {sil:.3f} (Target: >0.1)")
+        except: pass
+
+    # 0. Global Similarity Check
+    if len(embeddings) > 0:
+        sample_size = min(1000, len(embeddings))
+        indices = np.random.choice(len(embeddings), sample_size, replace=False)
+        subset = embeddings[indices]
+        sims = cosine_similarity(subset)
+        avg_sim = np.mean(sims)
+        console.print(f"   • Avg Global Similarity: {avg_sim:.3f} (If >0.8, everything is the same!)")
+
+    # 1. Analyze Noise
+    if n_noise > 0:
+        console.print(f"\n[bold red]🔊 Noise Samples (-1)[/bold red]")
+        noise_idx = [i for i, l in enumerate(labels) if l == -1]
+        for i in noise_idx[:5]:
+            content = posts[i].get('content', '') if isinstance(posts[i], dict) else str(posts[i])
+            console.print(f"   - {content[:100]}...")
+
+    # 2. Analyze Top Clusters
+    console.print(f"\n[bold cyan]📦 Top 5 Clusters Analysis[/bold cyan]")
+    counts = {l: list(labels).count(l) for l in unique_labels if l != -1}
+    top_clusters = sorted(counts.items(), key=lambda x: -x[1])[:5]
+    
+    for label, size in top_clusters:
+        indices = [i for i, l in enumerate(labels) if l == label]
+        c_embeddings = embeddings[indices]
+        c_posts = [posts[i].get('content', '') if isinstance(posts[i], dict) else str(posts[i]) for i in indices]
+        
+        # Cohesion
+        if len(c_embeddings) > 0:
+            center = np.mean(c_embeddings, axis=0).reshape(1, -1)
+            sims = cosine_similarity(c_embeddings, center)
+            cohesion = np.mean(sims)
+        else:
+            cohesion = 0
+        
+        console.print(f"\n   [bold]Cluster {label}[/bold] (n={size}, Cohesion={cohesion:.2f})")
+        for p in c_posts[:3]:
+             console.print(f"      - {p[:100]}...")
