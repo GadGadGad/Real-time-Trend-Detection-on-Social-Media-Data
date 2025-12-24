@@ -595,7 +595,7 @@ class LLMRefiner:
             Rename the cluster into a concise Vietnamese news headline (≤10 words).
 
             SECONDARY tasks:
-            - Assign category (A/B/C)
+            - Assign category (T1..T7)
             - Assign event_type (Specific / Generic)
 
             RULES:
@@ -615,7 +615,7 @@ class LLMRefiner:
             Respond STRICTLY in JSON format:
             {{
                 "refined_title": "...",
-                "category": "A/B/C",
+                "category": "T1/T2/.../T7",
                 "event_type": "Specific/Generic",
                 "reasoning": "..."
             }}
@@ -646,7 +646,7 @@ class LLMRefiner:
             Respond STRICTLY in JSON format:
                 {{
                     "refined_title": "...",
-                    "category": "A/B/C",
+                    "category": "T1/T2/.../T7",
                     "event_type": "Specific/Generic",
                     "reasoning": "..."
                 }}
@@ -688,7 +688,14 @@ class LLMRefiner:
                 - "Cộng đồng mạng dậy sóng..." (Netizens go wild...)
 
                 Data extraction:
-                - Category: A (Critical/Safety), B (Social/Politics/Sports), C (Entertainment/Business).
+                - Category: 
+                    * T1 (Crisis & Risk): Accidents, disasters, riots.
+                    * T2 (Policy Signal): Regulations, government, politics.
+                    * T3 (Reputation): Scandals, boycotts, controversies.
+                    * T4 (Market Demand): Products, travel, food trends.
+                    * T5 (Cultural Trend): Memes, viral entertainment, celebs.
+                    * T6 (Operational): Traffic, outages, public service failures.
+                    * T7 (Noise): Weather, lottery, daily routines (ignore these if possible).
                 - Event Type: "Specific" (One-time event) or "Generic" (Recurring/Topic).
                 - Reasoning: explain your choice and mention if you dropped any unrelated topics from a mixed cluster.
 

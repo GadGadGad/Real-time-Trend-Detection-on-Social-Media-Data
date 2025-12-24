@@ -17,29 +17,110 @@ The project aims to build a system for **real-time detection of trends and event
 
 ## **2. Taxonomy of Events**
 
-To ensure commercial viability and clear actionable insights, events are categorized into **3 Action-Oriented Groups** based on urgency and target audience:
+To ensure commercial viability and clear actionable insights, events are categorized into **7 distinct usage-based groups**:
 
-### **Group A: Critical Alerts (High Urgency)**
+## **T1. Crisis & Public Risk**
 
-*Target: Emergency Services, Local Government.*
+**Question:** *Is immediate intervention required?*
 
-1. **Public Safety & Security:** Accidents, fires, explosions, crimes.
-2. **Disaster & Environment:** Floods, storms, pollution, health outbreaks.
-3. **Civil Unrest:** Protests, strikes, riots (physical gatherings).
+**Includes:**
+Accidents, fires, natural disasters, epidemics, riots, high-risk misinformation.
 
-### **Group B: Social Signals (Monitoring & Sentiment)**
+**Primary Users:**
+Emergency services, local government, crisis management teams.
 
-*Target: Policy Makers, PR Agencies.*
+**System Action:**
+Alert escalation, priority notification, real-time monitoring.
 
-4. **Socio-Political:** New policies, elections, statements by officials (neutral until analyzed for sentiment).
-5. **Controversy & Scandal:** "Drama", boycotts, public accusations, moral debates (often negative sentiment).
+---
 
-### **Group C: Market Trends (Opportunity)**
+## **T2. Policy & Governance Signal**
 
-*Target: Marketing, Brands, Businesses.*
+**Question:** *How is the public reacting to policies or official actions?*
 
-6. **Consumer & Lifestyle:** Food trends (e.g., "mãng cầu tea"), fashion, travel, tech.
-7. **Pop Culture & Entertainment:** Movies, music, celebrities, memes.
+**Includes:**
+New regulations, policy announcements, government statements, administrative reforms.
+
+**Primary Users:**
+Policy makers, ministries, public communication units.
+
+**System Action:**
+Sentiment monitoring, polarization detection, policy feedback analysis.
+
+---
+
+## **T3. Reputation & Trust Risk**
+
+**Question:** *Is public trust being damaged?*
+
+**Includes:**
+Scandals, accusations, boycotts, corporate or institutional controversies.
+
+**Primary Users:**
+PR teams, large enterprises, public institutions.
+
+**System Action:**
+Early reputation risk detection, negative sentiment tracking, influencer amplification analysis.
+
+---
+
+## **T4. Consumer Demand & Market Opportunity**
+
+**Question:** *Is there monetizable demand emerging?*
+
+**Includes:**
+Product trends, lifestyle changes, travel demand, food & beverage trends, technology adoption.
+
+**Primary Users:**
+Marketing teams, product managers, brand strategists.
+
+**System Action:**
+Trend growth scoring, opportunity ranking, campaign triggering.
+
+---
+
+## **T5. Cultural & Attention Trend**
+
+**Question:** *Is this trend worth riding for attention?*
+
+**Includes:**
+Memes, celebrities, entertainment events, viral social phenomena.
+
+**Primary Users:**
+Media companies, content creators, social marketing teams.
+
+**System Action:**
+Short-term trend detection, virality tracking, lifecycle estimation.
+
+---
+
+## **T6. Operational & Service Pain Point**
+
+**Question:** *What problems are people complaining about?*
+
+**Includes:**
+Traffic congestion, healthcare overload, public service failures, platform outages.
+
+**Primary Users:**
+Local authorities, service operators, platform administrators.
+
+**System Action:**
+Complaint clustering, geographic concentration analysis, operational prioritization.
+
+---
+
+## **T7. Background & Routine Signals (Auto-Suppressed)**
+
+**Question:** *Should this be filtered out?*
+
+**Includes:**
+Daily weather updates, routine sports results, recurring commodity prices.
+
+**Primary Users:**
+System-level filtering.
+
+**System Action:**
+Automatic down-ranking to reduce dashboard noise.
 
 *Why multi-source?* Search reflects *intent*, Social reflects *virality* (but noisy), News reflects *verification* (but delayed).
 
