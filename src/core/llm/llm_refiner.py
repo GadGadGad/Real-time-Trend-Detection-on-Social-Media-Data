@@ -24,7 +24,7 @@ class LLMRefiner:
                 else:
                     genai.configure(api_key=self.api_key)
                     # Allow specifying model via model_path (e.g. 'gemini-1.5-pro')
-                    gemini_model = model_path or "gemini-1.5-flash"
+                    gemini_model = model_path or "models/gemma-3-27b-it"
                     console.print(f"[cyan]♊ Using Gemini Model: {gemini_model}[/cyan]")
                     self.model = genai.GenerativeModel(gemini_model)
                     self.enabled = True
