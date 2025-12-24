@@ -802,6 +802,99 @@ class LLMRefiner:
         
         return all_results
 
+    def classify_batch(self, topic_data_list):
+        """
+        Classify a batch of topics into Categories (A/B/C) and Event Types (Specific/Generic).
+        
+        Args:
+            topic_data_list: List of dicts, each containing:
+                - id: Unique ID
+                - label: Refined title
+                - reasoning: Reasoning from Phase 3
+                
+        Returns:
+            Dict mapping id -> {category, event_type, classification_reasoning}
+        """
+        if not self.enabled:
+            return {item['id']: {'category': 'B', 'event_type': 'Specific', 'classification_reasoning': 'LLM Disabled'} for item in topic_data_list}
+
+        results = {}
+        batch_size = 10  # Process 10 classifications at a time
+        
+        # Prepare batches
+        batches = [topic_data_list[i:i + batch_size] for i in range(0, len(topic_data_list), batch_size)]
+        
+        all_prompts = []
+        all_items_ordered = []
+        
+        for batch in batches:
+            # Construct prompt for the batch
+            batch_str = json.dumps([{
+                "id": item['id'],
+                "title": item['label'],
+                "context": item.get('reasoning', '')[:200]
+            } for item in batch], ensure_ascii=False, indent=2)
+            
+            prompt = f"""
+            Role: Crisis Event Classifier for Vietnam.
+            
+            Task: Classify each topic into:
+            1. CATEGORY (A, B, or C):
+               - A (Critical): Disasters (Storms, Floods), Major Accidents, National Policy Changes, Crimes.
+               - B (Social Signal): Viral trends, Public Debates, Celebrity News, Sports Finals.
+               - C (Routine/Noise): Weather reports, Lottery, Daily traffic, Generic ads.
+               
+            2. EVENT TYPE:
+               - Specific: A concrete event (e.g., "Bão Yagi", "Vụ cháy chung cư A").
+               - Generic: A broad topic (e.g., "Tình hình thời tiết", "Giá vàng hôm nay").
+               
+            Input Topics:
+            {batch_str}
+            
+            Output: JSON Object mapping ID -> Classification.
+            Example:
+            {{
+                "0": {{ "category": "A", "event_type": "Specific", "reasoning": "Major natural disaster impacting thousands." }},
+                "1": {{ "category": "C", "event_type": "Generic", "reasoning": "Routine daily report." }}
+            }}
+            """
+            all_prompts.append(prompt)
+            all_items_ordered.extend(batch)
+            
+        # Execute batch generation
+        if not all_prompts: return {}
+        
+        console.print(f"[cyan]🛡️ Classifying {len(topic_data_list)} topics in {len(batches)} batches...[/cyan]")
+        
+        responses = self._generate_batch(all_prompts)
+        
+        # Process results
+        current_idx = 0
+        for i, resp in enumerate(responses):
+            batch_items = batches[i]
+            parsed = self._extract_json(resp, is_list=False)
+            
+            if not parsed:
+                # Fallback if parsing fails
+                for item in batch_items:
+                    results[item['id']] = {"category": "B", "event_type": "Specific", "classification_reasoning": "Parse Error"}
+                continue
+                
+            for item in batch_items:
+                # ID might be int or str in JSON keys
+                key = str(item['id'])
+                if key in parsed:
+                    info = parsed[key]
+                    results[item['id']] = {
+                        "category": info.get("category", "B"),
+                        "event_type": info.get("event_type", "Specific"),
+                        "classification_reasoning": info.get("reasoning", "")
+                    }
+                else:
+                    results[item['id']] = {"category": "B", "event_type": "Specific", "classification_reasoning": "Missing in response"}
+
+        return results
+
     def summarize_text(self, text, max_words=100):
         """
         Summarize a long text into a concise paragraph.
