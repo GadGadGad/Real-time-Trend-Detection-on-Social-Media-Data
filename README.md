@@ -5,12 +5,18 @@ Real-time trend detection từ multiple sources: Google Trends, Facebook, News s
 ## 📁 Project Structure
 
 ```
-├── crawlers/                   # Core analysis modules
-│   ├── analyze_trends.py       # Main trend matching pipeline
-│   ├── evaluate_trends.py      # Visualization & scoring
-│   ├── alias_normalizer.py     # Text normalization with aliases
-│   ├── ner_extractor.py        # NER enrichment (optional)
-│   ├── trend_scoring.py        # G/F/N score calculator
+├── src/                        # Core analysis modules
+│   ├── pipeline/               # Pipeline orchestration
+│   │   ├── main_pipeline.py    # Main trend discovery pipeline
+│   │   ├── pipeline_stages.py  # SAHC clustering & matching stages
+│   │   └── trend_scoring.py    # G/F/N score calculator
+│   ├── core/                   # NLP & Analysis engines
+│   │   ├── analysis/           # Clustering & Summarization
+│   │   ├── extraction/         # NER & Taxonomy classification
+│   │   └── llm/                # LLM Refinement logic
+│   └── utils/                  # Shared utilities
+│
+├── crawlers/                   # Data collection crawlers
 │   ├── vnexpress_crawler.py    # VNExpress news crawler
 │   ├── thanhnien_crawler.py    # Thanh Nien news crawler
 │   └── facebook/               # Facebook page crawler
@@ -29,6 +35,8 @@ Real-time trend detection từ multiple sources: Google Trends, Facebook, News s
 └── run_crawlers.py             # Crawler orchestration
 ```
 
+## Results Output
+
 ## Quick Start
 
 ### 1. Install Dependencies
@@ -41,14 +49,11 @@ playwright install firefox
 ### 2. Run Trend Analysis
 
 ```bash
-# Basic usage (alias normalization, recommended)
-python crawlers/analyze_trends.py --output results.json
+# Basic usage (Search-Social-News integration)
+python src/pipeline/main_pipeline.py --social crawlers/facebook/*.json --trends crawlers/trendings/*.csv --output results.json
 
-# With NER (alternative, requires underthesea)
-python crawlers/analyze_trends.py --use-ner --output results.json
-
-# Skip text enrichment
-python crawlers/analyze_trends.py --no-aliases --output results.json
+# Advanced: Enable LLM refinement & Summarization
+python src/pipeline/main_pipeline.py --social crawlers/facebook/*.json --trends crawlers/trendings/*.csv --llm --summarize-all --output results.json
 ```
 
 ### 3. Evaluate & Visualize
@@ -66,7 +71,7 @@ python crawlers/evaluate_trends.py --input results.json --filter-routine
 
 ## Pipeline Flow
 
-```
+```mermaid
 Google Trends CSV → Build Aliases → Normalize Texts
                                          ↓
 News + FB Posts → Normalize → Embed → Match → Valid Trends → Score → Classify
@@ -74,15 +79,19 @@ News + FB Posts → Normalize → Embed → Match → Valid Trends → Score →
 
 ## Options
 
-### analyze_trends.py
+### main_pipeline.py
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--model` | `paraphrase-multilingual-mpnet-base-v2` | Embedding model |
-| `--threshold` | `0.55` | Similarity threshold |
-| `--use-ner` | `False` | Use NER instead of aliases |
-| `--no-aliases` | `False` | Disable text normalization |
-| `--save-all` | `False` | Include unmatched posts |
+| Option | Description |
+| :--- | :--- |
+| `--social` | Path to social/FB JSON files (supports globs) |
+| `--trends` | Path to Google Trends CSV files |
+| `--news` | Path to News CSV files |
+| `--llm` | Enable LLM Refinement for naming and classification |
+| `--refine-trends` | Use LLM to clean Google Trends noise before matching |
+| `--save-all` | Include unmatched posts in the output JSON |
+| `--output` | Save results to specified JSON file |
+
+### evaluate_trends.py
 
 ### evaluate_trends.py
 

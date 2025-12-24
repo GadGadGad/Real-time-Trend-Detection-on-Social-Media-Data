@@ -27,8 +27,11 @@ st.markdown("""
 def load_data(filepath="crawlers/results/results.json"):
     if not os.path.exists(filepath):
         return []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return []
 
 # Sidebar
 st.sidebar.title("🔍 Config & Filter")
@@ -41,24 +44,34 @@ view_mode = st.sidebar.radio("View Mode", [
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Pipeline Config")
-use_ner = st.sidebar.checkbox("Use NER (Named Entity Recognition)", value=False)
-no_aliases = st.sidebar.checkbox("Disable Alias Normalization", value=False)
-use_hybrid = st.sidebar.checkbox("Use Hybrid Pipeline (Cluster-First)", value=False)
+use_llm = st.sidebar.checkbox("Enable LLM Refinement", value=False)
+refine_trends = st.sidebar.checkbox("Refine Trends (LLM)", value=False)
+use_keywords = st.sidebar.checkbox("Use Keyword Extraction", value=True)
 results_path = st.sidebar.text_input("Results File Path", "crawlers/results/results.json")
 
 if st.sidebar.button("🚀 Run Analysis"):
     st.info("Running Analysis... This may take a minute.")
-    cmd = "python crawlers/analyze_trends.py --save-all --output crawlers/results/results.json --embedding tfidf"
-    if use_hybrid:
-        cmd += " --method hybrid"
-    if use_ner:
-        cmd += " --use-ner"
-    if no_aliases:
-        cmd += " --no-aliases"
+    cmd = (
+        "python src/pipeline/main_pipeline.py "
+        "--social crawlers/facebook/*.json "
+        "--trends crawlers/trendings/*.csv "
+        "--news crawlers/news/*.csv crawlers/news_v2/*.csv "
+        "--save-all "
+        f"--output {results_path}"
+    )
+    if use_llm:
+        cmd += " --llm"
+    if refine_trends:
+        cmd += " --refine-trends"
+    if use_keywords:
+        cmd += " --use-keywords"
         
-    os.system(cmd)
-    st.success("Analysis Complete! Refreshing data...")
-    st.rerun()
+    result = os.system(cmd)
+    if result == 0:
+        st.success("Analysis Complete! Refreshing data...")
+        st.rerun()
+    else:
+        st.error("Analysis failed. Check console for errors.")
 
 data = load_data(results_path)
 

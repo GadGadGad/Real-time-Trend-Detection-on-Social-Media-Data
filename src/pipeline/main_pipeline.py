@@ -833,6 +833,9 @@ if __name__ == "__main__":
     parser.add_argument("--use-llm-keywords", action="store_true", help="Use LLM for keyword extraction (requires --llm)")
     parser.add_argument("--trend-cache-path", type=str, help="Manually specify cache file for trend refinement")
     
+    parser.add_argument("--save-all", action="store_true", help="Include unmatched/noise posts in output")
+    parser.add_argument("--output", type=str, help="Path to save results JSON")
+    
     args = parser.parse_args()
     
     if args.social and args.trends:
@@ -850,7 +853,7 @@ if __name__ == "__main__":
             trends = refine_trends_preprocessing(
                 trends, 
                 args.llm_provider, 
-                os.getenv("GEMINI_API_KEY"), # Assuming API key might be in env or passed
+                os.getenv("GEMINI_API_KEY"), 
                 args.llm_model_path, 
                 False, # debug
                 source_files=args.trends,
@@ -866,6 +869,26 @@ if __name__ == "__main__":
             summarize_all=args.summarize_all,
             no_dedup=args.no_dedup,
             use_keywords=args.use_keywords,
-            use_llm_keywords=args.use_llm_keywords
+            use_llm_keywords=args.use_llm_keywords,
+            save_all=args.save_all
         )
-        print(f"Analyzed {len(social_posts)} posts. Found {len(set(r['final_topic'] for r in results))} trends.")
+        
+        console.print(f"\n[bold green]✅ Analysis Complete![/bold green]")
+        console.print(f"Matched {len([r for r in results if r.get('is_matched')])} / {len(social_posts)} posts.")
+        console.print(f"Detected {len(set(r['final_topic'] for r in results if r.get('topic_type') != 'Noise'))} active trends.")
+
+        if args.output:
+            # Convert numpy embeddings to list for JSON serialization
+            serializable_results = []
+            for r in results:
+                s_r = r.copy()
+                if 'embeddings' in s_r and isinstance(s_r['embeddings'], np.ndarray):
+                    s_r['embeddings'] = s_r['embeddings'].tolist()
+                if 'trend_embeddings' in s_r and isinstance(s_r['trend_embeddings'], np.ndarray):
+                    s_r['trend_embeddings'] = s_r['trend_embeddings'].tolist()
+                serializable_results.append(s_r)
+                
+            os.makedirs(os.path.dirname(args.output), exist_ok=True)
+            with open(args.output, 'w', encoding='utf-8') as f:
+                json.dump(serializable_results, f, ensure_ascii=False, indent=2)
+            console.print(f"[bold green]💾 Results saved to {args.output}[/bold green]")
