@@ -1,278 +1,157 @@
-# 📝 **PROJECT PROPOSAL**
+# **PROJECT PROPOSAL**
 
-# **Multi-Source Trend Detection System Using Search, Social, and News Signals**
+# **Real-time Trend Detection and Sentiment Analysis System**
 
 ## **1. Introduction**
 
-In the digital age, public attention shifts rapidly across search platforms, social networks, and online news outlets. Traditional trend detection systems (e.g., Google Trends) rely mainly on search queries, which captures *intent-based interest* but misses trends that emerge purely on social media or are driven by news coverage without triggering search behavior.
+The project aims to build a system for **real-time detection of trends and events** from social media and news data, bridging the gap between *raw data* and *actionable information*.
 
-This project proposes a **multi-source trend detection system** that integrates signals from **Google Trends**, **verified Facebook news pages**, and **online newspapers** to detect emerging trends more accurately and earlier than single-source systems. By combining **search behavior**, **social engagement**, and **news publishing patterns**, the system aims to produce a more holistic and reliable trend score.
+### **Target Audience**
 
----
+1. **Government / Public Safety:** Early detection of social risks, disaster damages, protests, fake news, etc. (*Social Risk*).
+2. **Business / Marketing:** Rapidly capturing consumer trends, viral trends, etc. (*Market Opportunity*).
 
-## **2. Problem Statement**
-
-Existing trend detection tools suffer from major limitations:
-
-1. **Google Trends** only captures queries typed into Google.
-   → Misses trends that people read passively on social media or news but do not search.
-
-2. **Facebook** contains rapid viral dynamics but is noisy and lacks validation.
-   → Many social spikes are not “real events”.
-
-3. **News outlets** report verified events but do not guarantee public attention.
-   → Some topics receive heavy coverage but little public interest.
-
-Because each platform captures **different aspects of public behavior**, relying on one alone leads to incomplete or inaccurate trend detection.
+**Approach:** combining **multi-source signals** (Search, Social, News) and NLP to **cluster topics**, **score trends**, and capture the status and public reaction to the latest trends.
 
 ---
 
-## **3. Project Objective**
+## **2. Taxonomy of Events**
 
-The project aims to build a system that:
+To ensure commercial viability and clear actionable insights, events are categorized into **3 Action-Oriented Groups** based on urgency and target audience:
 
-1. **Collects** trending data from 3 independent sources:
+### **Group A: Critical Alerts (High Urgency)**
 
-   * Google Trends (search intent)
-   * Facebook news pages (social buzz)
-   * Online newspapers (verified events)
+*Target: Emergency Services, Local Government.*
 
-2. **Normalizes and merges** heterogeneous signals into a unified format.
+1. **Public Safety & Security:** Accidents, fires, explosions, crimes.
+2. **Disaster & Environment:** Floods, storms, pollution, health outbreaks.
+3. **Civil Unrest:** Protests, strikes, riots (physical gatherings).
 
-3. **Clusters related keywords / headlines into topics** using NLP techniques.
+### **Group B: Social Signals (Monitoring & Sentiment)**
 
-4. **Computes a composite Trend Score** based on cross-platform signals.
+*Target: Policy Makers, PR Agencies.*
 
-5. **Classifies trends** into:
+4. **Socio-Political:** New policies, elections, statements by officials (neutral until analyzed for sentiment).
+5. **Controversy & Scandal:** "Drama", boycotts, public accusations, moral debates (often negative sentiment).
 
-   * Social-only trends
-   * News-only trends
-   * Search-driven trends
-   * Strong multi-source confirmed trends
+### **Group C: Market Trends (Opportunity)**
 
-6. **Visualizes** the detected trends over time.
+*Target: Marketing, Brands, Businesses.*
 
----
+6. **Consumer & Lifestyle:** Food trends (e.g., "mãng cầu tea"), fashion, travel, tech.
+7. **Pop Culture & Entertainment:** Movies, music, celebrities, memes.
 
-## **4. Data Sources & Collection Method**
-
-### **4.1 Google Trends**
-
-* Use pytrends (unofficial API)
-* Collect:
-
-  * *Top rising queries* (realtime)
-  * *Interest-over-time*
-* Data fields:
-
-  * query
-  * relative popularity (0–100)
-  * category
-
-### **4.2 Facebook Verified News Pages**
-
-Examples:
-
-* VnExpress, Tuổi Trẻ, Thanh Niên, Vietnamnet, Zing, Báo Công An.
-
-Methods:
-
-* Facebook Graph API (if token available)
-* Or headless crawler (Playwright/Selenium)
-
-Extract:
-
-* post text
-* timestamp
-* engagement: likes, shares, comments
-* engagement/minute (normalized)
-
-### **4.3 Online Newspapers**
-
-* RSS feeds (very easy & reliable)
-* Crawl headlines every 5 minutes
-
-Extract:
-
-* title
-* publish time
-* category
-* article url
+*Why multi-source?* Search reflects *intent*, Social reflects *virality* (but noisy), News reflects *verification* (but delayed).
 
 ---
 
-## **5. Processing & NLP Pipeline**
+## **3. Data Sources & Collection**
 
-### **5.1 Text Normalization**
+### **3.1 Social Media (Facebook)**
 
-* lowercasing
-* remove HTML/emoji
-* Vietnamese normalization (Unicode NFC)
-* Remove boilerplate (e.g., “[VIDEO]”, “[HOT]”)
+* **Source:** Large Fanpages / News pages (Theanh28, Dan tri, ...).
+* **Format:** JSON (content + post time + interactions).
+* **Trend Signals:** likes / comments / shares.
+* **Status:** Crawled and unified schema.
+* **Improvement (Apify):**
+  * **Goal:** Use **Apify** to crawl Facebook with **accurate timestamps** (hour/minute/second) even for old posts.
+  * **Fields:** `pageName`, `postId`, `time` (ISO), `timestamp` (epoch), `text`, `likes`, `comments`, `shares`.
+  * **Benefit:** More accurate engagement calculation over time $\rightarrow$ earlier trend detection.
 
-### **5.2 Keyword → Topic Clustering**
+### **3.2 News**
 
-Because the three sources express the same event differently, we use **topic clustering**:
-
-Methods:
-
-* Sentence-BERT for embeddings
-* HDBSCAN or Agglomerative Clustering
-* Cosine similarity threshold-based merging
-
-Example:
-
-* “bão yagi”, “bão số 5”, “áp thấp Yagi” → same topic cluster.
+* **Source:** Thanh Nien, Tuoi Tre, VnExpress, Vietnamnet, ...
+* **Format:** CSV (title, content, publish time, url).
+* **Role:** Event verification + signal of **news density** over time.
+* **Status:** **Crawled** and merged into the common pipeline.
 
 ---
 
-## **6. Trend Scoring**
+## **4. System Architecture**
 
-Each topic has 3 components:
+The system logic is divided into two operational modes, utilizing a specialized clustering strategy to handle multi-source variety:
 
-### **6.1 Google Search Score (G)**
+### **4.1 Social-Aware Hierarchical Clustering (SAHC)**
 
-[
-G = \frac{\Delta popularity}{baseline}
-]
+Instead of standard flat clustering, we implement a **3-phase SAHC strategy** to balance factual grounding with viral discovery:
 
-### **6.2 Facebook Engagement Score (F)**
+1. **Phase 1: News-First Anchoring:** Perform high-confidence clustering on verified News data to establish a factual "ground truth" for major current events.
+2. **Phase 2: Social Attachment:** Map social media posts to the established News clusters using centroid-similarity. This validates viral chatter against reported news.
+3. **Phase 3: Social Discovery:** Cluster all remaining unattached social posts to detect "Social-Only" trends (memes, drama, or early-breaking news not yet in professional media).
 
-[
-F = \frac{likes + shares + comments}{minutes}
-]
+### **4.2 Processing Phases**
 
-### **6.3 News Coverage Score (N)**
+* **Offline Discovery:** Historical data analysis to establish baseline trends and category rules.
+* **Online Real-time:** Periodic streaming through the SAHC pipeline to track trend evolution, score growth, and analyze sentiment.
 
-[
-N = \text{number of articles in topic per hour}
-]
+---
 
-### **6.4 Unified Trend Score**
+## **5. NLP Trend Detection & LLM Refinement**
 
-[
+The pipeline moves beyond pure embedding matching by utilizing **LLM-in-the-Loop** refinement for high-quality output:
+
+* **Stage 0: Context Summarization:** LLM/ViT5 summarizes long posts to distill core information before vectorization, reducing noise in high-dimensional space.
+* **Stage 1: Semantic Representation:** Vietnamese-tuned embeddings (PhoBERT/mpnet) with NER and Keyword enrichment.
+* **Stage 2: SAHC Clustering:** (As described in Section 4.1).
+* **Stage 3: LLM Refinement & Naming:**
+  * **Headline Generation:** LLM transforms raw cluster keywords into concise, factual Vietnamese headlines.
+  * **Intelligent Taxonomy:** LLM assigns Group (A/B/C) based on event context and urgency.
+  * **Specificity Filtering:** Automatic downgrading of "Generic" topics (weather, daily sports results) to prevent dashboard clutter.
+* **Stage 4: Semantic Deduplication:** A final LLM pass identifies and merges clusters that refer to the same real-world event but were split due to linguistic variation.
+
+### **Issues & Adjustments**
+
+* **Problem:** Data has many small topics with no density peaks, often causing 80%+ noise in standard HDBSCAN.
+* **Solution:** Transitioned to **SAHC** and **LLM Refinement** to proactively define and merge topics rather than relying purely on unsupervised density.
+
+---
+
+## **6. Trend Scoring (Concept)**
+
+For each **topic**, synthesize 3 signals:
+
+* **Google Search Score (G):** Interest/growth in search.
+* **Facebook Engagement Score (F):** Interaction normalized over time.
+* **News Coverage Score (N):** Density of articles over time.
+
+**Unified Trend Score:**
+$$
 T = w_G \cdot G + w_F \cdot F + w_N \cdot N
-]
+$$
 
-Default weights:
-
-* ( w_G = 0.4 )
-* ( w_F = 0.35 )
-* ( w_N = 0.25 )
-
-Weights are tunable depending on objective.
+**Trend Classification:** Search-only / Social-only / News-only / Multi-source confirmed / Emerging / Fading.
 
 ---
 
-## **7. Trend Classification**
+## **7. Challenges & Future Plan**
 
-Using threshold-based rules or a simple classifier:
+### **Current Challenges**
 
-| Class                         | Conditions             |
-| ----------------------------- | ---------------------- |
-| **Search-only trend**         | G high, F low, N low   |
-| **Social-only trend**         | F high, G low, N low   |
-| **News-only trend**           | N high, G low, F low   |
-| **Strong multi-source trend** | G, F, N all high       |
-| **Emerging trend (early)**    | F↑ before G↑ & N↑      |
-| **Fading trend**              | All signals decreasing |
+1. **Clustering Issues:**
+  * Cluster quality is not yet high; topics overlap.
+  * Some clusters are too large due to absorbing noise (daily/spam).
+2. **Noise Filtering:**
+  * No thorough mechanism to remove recurring news (gold price, weather).
+  * Need rule-based (cycle/keyword) + temporal statistics.
+3. **Time Synchronization:**
+  * Social is fast, News has delay, Search reflects intent.
+  * Need **time-binning** normalization for fair scoring.
 
----
+### **Project Timeline (Status)**
 
-## **8. System Architecture**
-
-```
-            ┌───────────┐       ┌────────────┐
-            │ Google     │       │ Facebook    │
-            │ Trends API │       │ News Pages  │
-            └──────┬────┘       └──────┬──────┘
-                   │                   │
-                   └─────┬─────────────┘
-                         ↓
-                ┌───────────────────┐
-                │   Data Collector  │
-                └─────┬────────────┘
-                      ↓
-           ┌─────────────────────────┐
-           │ NLP Preprocessing       │
-           └──────────┬─────────────┘
-                      ↓
-           ┌─────────────────────────┐
-           │ Topic Clustering (NLP)  │
-           └──────────┬─────────────┘
-                      ↓
-           ┌─────────────────────────┐
-           │ Multi-source Scoring    │
-           └──────────┬─────────────┘
-                      ↓
-           ┌─────────────────────────┐
-           │ Trend Classification    │
-           └──────────┬─────────────┘
-                      ↓
-           ┌─────────────────────────┐
-           │ Dashboard / Report      │
-           └─────────────────────────┘
-```
+| Task | Description | Status |
+| :--- | :--- | :--- |
+| **Task 1** | Schema normalization + Basic cleaning (Unicode/boilerplate) | **Completed** |
+| **Task 2** | Data Collection (Crawler) | **Completed** |
+| **Task 3** | Semantic matching (embedding) + alias/NER enrichment | **Completed** |
+| **Task 4** | Optimize Clustering (SAHC/HDBSCAN) + Cluster quality eval | **Completed** |
+| **Task 5** | Trend Naming and Core Information Summarization | **Completed** |
+| **Task 6** | Sentiment/Psychology Analysis from detected trends | **Completed** |
+| **Task 7** | Trend Scoring + Multi-source classification | **Completed** |
+| **Task 8** | Dashboard/Report + Integrated periodic/streaming pipeline | **Completed** |
 
 ---
 
-## **9. Expected Outcomes**
+## **8. References**
 
-* A working system capable of detecting trends faster and more accurately than Google Trends alone.
-* Identification of:
-
-  * viral social events
-  * news-driven events
-  * search-driven public interest
-  * strong multi-platform trends
-* Visual dashboards showing:
-
-  * top daily/weekly trends
-  * signal contributions (search/social/news)
-  * trend evolution over time
-
----
-
-## **10. Tools & Technologies**
-
-* **Python**
-* **Libraries:**
-
-  * pytrends
-  * requests / playwright
-  * BeautifulSoup4
-  * pandas
-  * sentence-transformers
-  * scikit-learn / HDBSCAN
-  * matplotlib / seaborn / streamlit
-* **Database:** SQLite or MongoDB
-* **Deployment:** Streamlit dashboard or local notebook
-
----
-
-## **11. Project Timeline**
-
-| Week | Task                                   |
-| ---- | -------------------------------------- |
-| 1    | Data pipeline setup, collect 3 sources |
-| 2    | Text normalization + preprocessing     |
-| 3    | Topic clustering experiments           |
-| 4    | Build scoring system                   |
-| 5    | Build trend classification             |
-| 6    | Visualization + dashboard              |
-| 7    | Testing + report writing               |
-| 8    | Final presentation                     |
-
----
-
-## **12. Contribution to Research / Novelty**
-
-* Multi-source approach (search + social + news)
-* Vietnamese-language trend detection
-* Topic-level fusion rather than keyword-level
-* Time-aligned cross-platform trend scoring
-* Detect social-only vs news-only vs real public attention trends
-
-No existing system in Vietnam currently combines these three sources in this way.
-
----
+* (References to be added as per `references.bib`)

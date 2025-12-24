@@ -23,6 +23,10 @@ Thumbs.db
 data/
 results/
 my_firefox_profile/
+old_facebook/
+news*/
+trendings/
+facebook/
 fb_data.json
 debug_*.html
 geckodriver.log

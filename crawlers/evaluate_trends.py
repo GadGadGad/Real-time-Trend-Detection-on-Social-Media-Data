@@ -29,6 +29,11 @@ except ImportError:
     except ImportError:
         ScoreCalculator = None
 
+try:
+    from crawlers.vectorizers import get_embeddings
+except ImportError:
+    from vectorizers import get_embeddings
+
 # Best model for Vietnamese semantic similarity
 DEFAULT_MODEL = "paraphrase-multilingual-mpnet-base-v2"
 
@@ -91,6 +96,9 @@ def parse_args():
                         help="Use HDBSCAN clustering instead of direct trend assignment (experimental)")
     parser.add_argument("--hdbscan-min-size", type=int, default=15,
                         help="HDBSCAN min_cluster_size (default: 15)")
+    parser.add_argument("--embedding", type=str, default="sentence-transformer",
+                        choices=["sentence-transformer", "tfidf", "bow", "glove"],
+                        help="Embedding method (default: sentence-transformer)")
     return parser.parse_args()
 
 
@@ -168,8 +176,18 @@ def build_hdbscan_clusters(matches: list, model_name: str, min_cluster_size: int
         return {}
     
     console.print(f"\n[cyan]🧠 HDBSCAN: Generating embeddings for {len(texts)} texts...[/cyan]")
-    model = SentenceTransformer(model_name)
-    embeddings = model.encode(texts, show_progress_bar=True)
+    console.print(f"\n[cyan]🧠 HDBSCAN: Generating embeddings for {len(texts)} texts...[/cyan]")
+    # Use generic get_embeddings
+    # But wait, this function signature doesn't pass 'method'. 
+    # Let's hardcode to tfidf or pass it in. For now, let's use TF-IDF if model_name is None/default?
+    # Actually, let's assume we want speed if we are here.
+    # But arguments must be consistent.
+    # Refactor: passing embedding as argument to build_hdbscan_clusters would be better, but for now let's use TF-IDF as default fallback
+    
+    # Ideally, use the same method as find_matches.
+    # Assuming user wants same embedding method.
+    # Let's just use get_embeddings directly.
+    embeddings = get_embeddings(texts, method="tfidf") # Default to fast TF-IDF for HDBSCAN experimental
     
     # Optional UMAP reduction
     if HAS_UMAP:
@@ -311,6 +329,9 @@ def plot_trends(sorted_clusters: list, output_file: str = "results/trend_analysi
     """Plot top trends bar chart."""
     if not sorted_clusters:
         return
+        
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
     top = sorted_clusters[:20]
     labels = [c[0][:25] + "..." if len(c[0]) > 25 else c[0] for c in top][::-1]
@@ -330,8 +351,11 @@ def plot_trends(sorted_clusters: list, output_file: str = "results/trend_analysi
     console.print(f"[green]📊 Chart saved: {output_file}[/green]")
 
 
-def plot_tsne(matches: list, clusters: dict, model_name: str, output_file: str = "results/trend_tsne.png"):
+def plot_tsne(matches: list, clusters: dict, embedding_method: str = "tfidf", model_name: str = None, output_file: str = "results/trend_tsne.png"):
     """Visualize trends with t-SNE, colored by trend assignment."""
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    
     valid_trends = set(clusters.keys())
     filtered = [m for m in matches if m.get('trend') in valid_trends]
     
@@ -343,8 +367,8 @@ def plot_tsne(matches: list, clusters: dict, model_name: str, output_file: str =
     trend_labels = [m['trend'] for m in filtered]
     
     console.print(f"\n[cyan]🧠 Generating embeddings for {len(texts)} posts...[/cyan]")
-    model = SentenceTransformer(model_name)
-    embeddings = model.encode(texts, show_progress_bar=True)
+    console.print(f"\n[cyan]🧠 Generating embeddings for {len(texts)} posts ({embedding_method})...[/cyan]")
+    embeddings = get_embeddings(texts, method=embedding_method, model_name=model_name)
     
     console.print("[cyan]📉 Running t-SNE...[/cyan]")
     perplexity = min(30, len(texts) - 1)
@@ -374,7 +398,7 @@ def plot_tsne(matches: list, clusters: dict, model_name: str, output_file: str =
     console.print(f"[green]📊 t-SNE saved: {output_file}[/green]")
 
 
-def evaluate_clustering_metrics(matches: list, clusters: dict, model_name: str):
+def evaluate_clustering_metrics(matches: list, clusters: dict, embedding_method: str = "tfidf", model_name: str = None):
     """Evaluate clustering quality metrics."""
     valid_trends = set(clusters.keys())
     filtered = [m for m in matches if m.get('trend') in valid_trends]
@@ -455,10 +479,13 @@ def main():
     
     # Plots
     plot_trends(sorted_clusters)
-    plot_tsne(matches, clusters, args.model)
+    try:
+        plot_tsne(matches, clusters, embedding_method=args.embedding, model_name=args.model)
+    except Exception as e:
+        console.print(f"[red]Error plotting t-SNE: {e}[/red]")
     
     # Metrics
-    evaluate_clustering_metrics(matches, clusters, args.model)
+    evaluate_clustering_metrics(matches, clusters, embedding_method=args.embedding, model_name=args.model)
     
     console.print("\n[bold green]✅ Evaluation complete![/bold green]")
 

@@ -20,6 +20,8 @@ sentence-transformers
 transformers>=4.30.0
 umap-learn
 hdbscan
+bertopic
+top2vec[sentence_transformers]
 
 # NER (optional)
 underthesea>=6.8.0
@@ -27,6 +29,13 @@ underthesea>=6.8.0
 # Visualization
 matplotlib
 seaborn
+streamlit
 
 # Development
 jupyter
+python-dotenv
+google-generativeai
+
+torch
+accelerate
+bitsandbytes
