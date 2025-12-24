@@ -34,17 +34,17 @@ def classify_by_keywords(text):
     # Check A (High Priority)
     for kw in KEYWORDS_A:
         if kw in text_lower:
-            return "Group A (Critical Alert)"
+            return "A"
             
     # Check B
     for kw in KEYWORDS_B:
         if kw in text_lower:
-            return "Group B (Social Signal)"
+            return "B"
             
     # Check C
     for kw in KEYWORDS_C:
         if kw in text_lower:
-            return "Group C (Market Trend)"
+            return "C"
             
     return None
 
@@ -83,8 +83,8 @@ class TaxonomyClassifier:
             
             if best_score > threshold:
                 cat_name = self.categories[best_idx]
-                if cat_name == "Group A": return "Group A (Critical Alert)", "Semantic"
-                if cat_name == "Group B": return "Group B (Social Signal)", "Semantic"
-                if cat_name == "Group C": return "Group C (Market Trend)", "Semantic"
+                if cat_name == "Group A": return "A", "Semantic"
+                if cat_name == "Group B": return "B", "Semantic"
+                if cat_name == "Group C": return "C", "Semantic"
                 
         return "Unclassified", "None"

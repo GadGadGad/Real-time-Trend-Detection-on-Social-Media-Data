@@ -695,8 +695,6 @@ class LLMRefiner:
                 Output JSON:
                 {
                     "refined_title": "String",
-                    "category": "A/B/C",
-                    "event_type": "Specific/Generic",
                     "reasoning": "String"
                 }
 
@@ -753,15 +751,14 @@ class LLMRefiner:
             RULES:
             1. Output ONLY a JSON array, nothing else
             2. Start your response with [ and end with ]
-            3. Each cluster must have: id, refined_title, category, event_type, reasoning
-            4. Category must be A, B, or C
-            5. event_type must be "Specific" or "Generic"
+            3. Each cluster must have: id, refined_title, reasoning
+            4. Focus purely on renaming the cluster into a high-quality headline.
 
             Input Clusters:
             {batch_str}
 
             Respond with ONLY this JSON (no other text):
-            [{{"id": 0, "refined_title": "Vietnamese headline", "category": "A", "event_type": "Specific", "reasoning": "why"}}]
+            [[{{"id": 0, "refined_title": "Vietnamese headline", "reasoning": "why"}}]]
             """
             all_prompts.append(prompt)
 
@@ -777,8 +774,6 @@ class LLMRefiner:
                                 sane_item = {
                                     'id': item['id'],
                                     'refined_title': item.get('refined_title', f"Cluster {item['id']}"),
-                                    'category': item.get('category', 'B'),
-                                    'event_type': item.get('event_type', 'Generic'),
                                     'reasoning': item.get('reasoning', 'No reasoning provided')
                                 }
                                 all_results[item['id']] = sane_item

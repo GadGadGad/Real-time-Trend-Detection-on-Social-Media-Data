@@ -555,7 +555,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     if use_keywords:
         console.print("[cyan]🔑 Phase 0.5: Extracting high-signal keywords...[/cyan]")
         if use_llm_keywords and use_llm:
-             from src.core.llm.llm_refiner import LLMRefiner
+             # LLMRefiner is already imported at the top of the file
              kw_llm = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path)
              kw_extractor = KeywordExtractor(use_llm=True, llm_refiner=kw_llm)
         else:
@@ -678,24 +678,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m = cluster_mapping[label_key]
                     if m["topic_type"] == "Discovery":
                         m["final_topic"] = f"New: {res['refined_title']}"
-                    m["category"] = res["category"]
-                    m["event_type"] = res.get("event_type", "Specific") # Default to specific if missing
-                    m["category_method"] = "LLM"
                     m["llm_reasoning"] = res["reasoning"]
-
-                    # FILTER: Downgrade "Generic" events or routine Category C unless they are massive viral hits
-                    is_routine_c = (res["category"] == "C" and m["trend_score"] < 90)
-                    if m["event_type"] == "Generic" or is_routine_c:
-                        if m["trend_score"] < 80 or is_routine_c:
-                            m["topic_type"] = "Noise"
-                            reason = "Routine Category C" if is_routine_c else "Generic"
-                            m["category"] = f"{reason}/Routine"
-                            m["final_topic"] = f"[{reason}] {res['refined_title']}"
-                            if debug_llm:
-                                console.print(f"      🗑️  Downgraded cluster {l} to Noise ({reason}): {res['refined_title']}")
-                        else:
-                            # Keep it but mark it
-                            m["final_topic"] = f"Viral: {res['refined_title']}"
+                    # Metadata (Category/Event Type) will be assigned in Phase 5
             
             success_count = len(batch_results)
             console.print(f"   ✅ [bold green]LLM Pass Complete: Successfully refined {success_count}/{len(to_refine)} clusters.[/bold green]")
@@ -703,7 +687,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         # --- PHASE 4: SEMANTIC DEDUPLICATION ---
         if not no_dedup:
             console.print("🔗 [cyan]Phase 4: Semantic Topic Deduplication...[/cyan]")
-        all_topics = [m["final_topic"] for m in cluster_mapping.values() if m["topic_type"] != "Discovery"]
+        
+        # IMPROVEMENT: Include Discovery topics in deduplication to merge redundant new trends
+        all_topics = [m["final_topic"] for m in cluster_mapping.values()]
         if all_topics:
             canonical_map = llm_refiner.deduplicate_topics(all_topics)
             dedup_count = 0
@@ -726,17 +712,67 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
 
     for topic, labels in topic_groups.items():
         all_posts = []
+        all_categories = []
+        all_reasonings = []
+        
         for l in labels:
             idx = [i for i, val in enumerate(cluster_labels) if val == l]
             all_posts.extend([posts[i] for i in idx])
+            m_l = cluster_mapping[l]
+            all_categories.append(m_l.get("category", "C"))
+            if m_l.get("llm_reasoning"):
+                all_reasonings.append(m_l["llm_reasoning"])
         
-        m = cluster_mapping[labels[0]]
+        # PRIORITY MERGE: A > B > C
+        final_cat = "C"
+        if "A" in all_categories: final_cat = "A"
+        elif "B" in all_categories: final_cat = "B"
+        
+        # Pick first cluster mapping but override merged fields
+        m = cluster_mapping[labels[0]].copy()
         t_data = trends.get(topic, {'volume': 0})
         t_time_str = t_data.get('time')
         t_time = parser.parse(t_time_str) if t_time_str else None
         
         combined_score, combined_comp = calculate_unified_score(t_data, all_posts, trend_time=t_time)
-        consolidated_mapping[topic] = {**m, "trend_score": combined_score, "score_components": combined_comp}
+        
+        consolidated_mapping[topic] = {
+            **m, 
+            "category": final_cat,
+            "trend_score": combined_score, 
+            "score_components": combined_comp,
+            "llm_reasoning": " | ".join(list(set(all_reasonings))) if all_reasonings else m.get("llm_reasoning", ""),
+            "posts": all_posts # Keep posts for final classification
+        }
+
+    # --- PHASE 5: BATCH LLM CLASSIFICATION ---
+    if use_llm and consolidated_mapping:
+        topics_to_classify = []
+        for topic, m in consolidated_mapping.items():
+            if m["topic_type"] != "Noise":
+                topics_to_classify.append({
+                    "final_topic": topic,
+                    "sample_posts": m["posts"]
+                })
+        
+        if topics_to_classify:
+            console.print(f"⚖️ [cyan]Phase 5: Classifying {len(topics_to_classify)} canonical topics...[/cyan]")
+            classification_results = llm_refiner.classify_batch(topics_to_classify)
+            
+            for topic, res in classification_results.items():
+                if topic in consolidated_mapping:
+                    m = consolidated_mapping[topic]
+                    m["category"] = res["category"]
+                    m["event_type"] = res["event_type"]
+                    m["llm_reasoning"] += f" | Classification: {res['reasoning']}"
+                    m["category_method"] = "LLM-Final"
+
+                    # POST-CLASSIFICATION NOISE FILTER
+                    is_routine_c = (res["category"] == "C" and m["trend_score"] < 90)
+                    if res["event_type"] == "Generic" or is_routine_c:
+                         if m["trend_score"] < 80:
+                             m["topic_type"] = "Noise"
+                             m["final_topic"] = f"[Routine/Generic] {topic}"
 
     matches = []
     for i, post in enumerate(posts):
@@ -753,12 +789,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 "source": post.get('source'), "time": post.get('time'), "post_content": post.get('content'),
                 "final_topic": m["final_topic"], "topic_type": m["topic_type"], "category": m["category"],
                 "score": m["match_score"], "trend_score": m["trend_score"], "llm_reasoning": m["llm_reasoning"],
-                "sentiment": sentiments[i], "is_matched": (m["topic_type"] == "Trending"), "trend": m["final_topic"],
-                "embeddings": post_embeddings[i], "trend_embeddings": trend_embeddings[best_idx]
+                "sentiment": sentiments[i], "is_matched": (m["topic_type"] == "Trending"), "trend": m["final_topic"]
             })
         elif save_all:
-            matches.append({"final_topic": "Unassigned", "topic_type": "Noise", "sentiment": sentiments[i], "is_matched": False,
-                            "embeddings": post_embeddings[i], "trend_embeddings": trend_embeddings[best_idx]})
+            matches.append({"final_topic": "Unassigned", "topic_type": "Noise", "sentiment": sentiments[i], "is_matched": False})
 
     return matches
 
