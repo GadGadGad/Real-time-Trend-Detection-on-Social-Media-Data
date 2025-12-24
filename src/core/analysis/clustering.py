@@ -9,23 +9,47 @@ from collections import Counter
 console = Console()
 
 # Expanded Vietnamese Stopwords to reduce "garbage bin" clustering
+# Updated based on TF-IDF analysis showing these dominate cluster labels
 VIETNAMESE_STOPWORDS = [
-    "ông", "bà", "anh", "chị", "em", "này", "đó", "kia", "là", "và", 
-    "một", "hai", "ba", "như", "trên", "dưới", "trong", "ngoài", "với", 
-    "cho", "để", "lại", "vừa", "cũng", "đang", "sẽ", "đã", "có", "không",
-    "cái", "con", "chiếc", "bài", "vụ", "trận", "đấu", "tại", "vào", 
-    "được", "bị", "nêu", "cho_biết", "cho_hay", "về", "của", "từ",
-    # "thành_phố", "tphcm", "hà_nội", "việt_nam", "ngày", "năm", "tháng"
+    # Pronouns & Titles
+    "ông", "bà", "anh", "chị", "em", "tôi", "chúng", "họ", "mình", "ta",
+    # Demonstratives
+    "này", "đó", "kia", "ấy", "nọ", "đây", "kìa",
+    # Copula & Common Verbs
+    "là", "có", "không", "được", "bị", "làm", "đi", "đến", "cho", "lấy",
+    # Conjunctions & Prepositions
+    "và", "với", "để", "của", "từ", "về", "tại", "trong", "ngoài", "trên", "dưới",
+    "vào", "ra", "qua", "lại", "theo", "bởi", "vì", "nên", "mà", "nhưng",
+    # Adverbs & Modifiers
+    "rất", "quá", "lắm", "hơn", "nhất", "đang", "sẽ", "đã", "vừa", "mới",
+    "cũng", "còn", "chỉ", "ngay", "luôn", "thường", "hay",
+    # Quantifiers & Numbers
+    "một", "hai", "ba", "các", "những", "nhiều", "ít", "mọi", "tất_cả", "vài",
+    # Classifiers
+    "cái", "con", "chiếc", "bài", "vụ", "trận", "đấu", "người", "việc", "điều",
+    # Reporter/News phrases
+    "nêu", "cho_biết", "cho_hay", "theo", "nguồn", "tin",
+    # High-frequency from TF-IDF analysis
+    "công", "quốc", "động", "nam", "thống", "như", "khi", "sau", "trước",
+    "nước", "nhà", "đầu", "cuối", "giữa", "ngày", "năm", "tháng", "tuần",
+
 ]
 
+
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
-                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, selection_method='eom'):
+                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
+                 selection_method='eom', recluster_garbage=False, min_pairwise_sim=0.35):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
     
-    selection_method: 'eom' (Excess of Mass - larger clusters) or 'leaf' (Fine-grained clusters).
-                      'leaf' is better for separating distinct topics.
+    Args:
+        selection_method: 'eom' (Excess of Mass - larger clusters) or 'leaf' (Fine-grained clusters).
+                          'leaf' is better for separating distinct topics.
+        recluster_garbage: If True, filter clusters with low pairwise similarity and attempt to 
+                           re-cluster them into meaningful micro-clusters.
+        min_pairwise_sim: Minimum average pairwise similarity threshold for quality clusters.
+                          Clusters below this are considered 'garbage' (default: 0.35).
     """
     labels = None
 
@@ -194,6 +218,14 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
     if labels is not None and min_cohesion is not None and min_cohesion > 0:
         labels = refine_clusters_by_cohesion(embeddings, labels, threshold=min_cohesion)
 
+    # --- POST-PROCESSING: Re-cluster Garbage Clusters ---
+    if labels is not None and recluster_garbage:
+        labels = recluster_garbage_clusters(
+            embeddings, labels, 
+            min_pairwise_sim=min_pairwise_sim,
+            min_cluster_size=min_cluster_size
+        )
+
     return labels
 
 def refine_clusters_by_cohesion(embeddings, labels, threshold=0.5):
@@ -228,6 +260,93 @@ def refine_clusters_by_cohesion(embeddings, labels, threshold=0.5):
         console.print(f"[yellow]🧹 Cohesion Filter: Removed {removed_count} clusters due to low cohesion (<{threshold}).[/yellow]")
         
     return new_labels
+
+def recluster_garbage_clusters(embeddings, labels, min_pairwise_sim=0.35, min_cluster_size=3):
+    """
+    Filter clusters with low pairwise similarity and attempt to re-cluster them.
+    
+    Args:
+        embeddings: Original embedding matrix
+        labels: Current cluster labels
+        min_pairwise_sim: Clusters below this threshold are considered garbage
+        min_cluster_size: Min size for re-clustering
+        
+    Returns:
+        Updated labels with garbage clusters either re-clustered or marked as noise
+    """
+    from collections import defaultdict
+    
+    new_labels = labels.copy()
+    unique_labels = sorted(list(set(labels)))
+    if -1 in unique_labels: unique_labels.remove(-1)
+    
+    # Step 1: Identify garbage clusters based on pairwise similarity
+    garbage_cluster_ids = []
+    garbage_indices = []
+    
+    for label in unique_labels:
+        mask = (labels == label)
+        cluster_embs = embeddings[mask]
+        
+        if len(cluster_embs) > 1:
+            pairwise = cosine_similarity(cluster_embs)
+            avg_sim = np.mean(pairwise[np.triu_indices(len(cluster_embs), k=1)])
+        else:
+            avg_sim = 1.0
+        
+        if avg_sim < min_pairwise_sim:
+            garbage_cluster_ids.append(label)
+            indices = np.where(mask)[0]
+            garbage_indices.extend(indices.tolist())
+    
+    if not garbage_cluster_ids:
+        console.print("[green]✅ No garbage clusters found (all clusters have good pairwise similarity).[/green]")
+        return new_labels
+    
+    console.print(f"[yellow]♻️ Garbage Re-clustering: Found {len(garbage_cluster_ids)} low-quality clusters ({len(garbage_indices)} posts).[/yellow]")
+    
+    # Step 2: Mark garbage clusters as noise first
+    for gid in garbage_cluster_ids:
+        new_labels[labels == gid] = -1
+    
+    # Step 3: Attempt to re-cluster garbage embeddings
+    if len(garbage_indices) >= min_cluster_size * 2:
+        garbage_embs = embeddings[garbage_indices]
+        
+        try:
+            # Re-cluster with tighter parameters
+            reclustered = hdbscan.HDBSCAN(
+                min_cluster_size=max(3, min_cluster_size - 1),
+                min_samples=2,
+                metric='euclidean',
+                cluster_selection_method='leaf'  # Finer-grained for micro-clusters
+            ).fit_predict(garbage_embs)
+            
+            # Assign new labels (offset from existing max)
+            max_label = max(set(new_labels)) if set(new_labels) - {-1} else 0
+            next_label = max_label + 1
+            
+            recovered_count = 0
+            label_remap = {}
+            
+            for i, (orig_idx, new_cluster) in enumerate(zip(garbage_indices, reclustered)):
+                if new_cluster != -1:
+                    if new_cluster not in label_remap:
+                        label_remap[new_cluster] = next_label
+                        next_label += 1
+                    new_labels[orig_idx] = label_remap[new_cluster]
+                    recovered_count += 1
+            
+            num_new_clusters = len(label_remap)
+            console.print(f"[green]✅ Recovered {recovered_count}/{len(garbage_indices)} posts into {num_new_clusters} micro-clusters.[/green]")
+            
+        except Exception as e:
+            console.print(f"[red]⚠️ Re-clustering failed: {e}. Keeping garbage as noise.[/red]")
+    else:
+        console.print(f"[dim]   Too few garbage posts ({len(garbage_indices)}) for re-clustering. Marked as noise.[/dim]")
+    
+    return new_labels
+
 
 def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors=None):
     """
