@@ -44,7 +44,7 @@ def run_summarization_stage(post_contents, use_llm, summarize_all, model_name='v
 
     if long_indices_to_process:
         console.print(f"   ✂️ [cyan]Summarizing {len(long_indices_to_process)} long/target posts...[/cyan]")
-        from src.core.extraction.summarizer import Summarizer
+        from src.core.analysis.summarizer import Summarizer
         summarizer = Summarizer(model_name=model_name)
         summaries = summarizer.batch_summarize(to_process)
         
