@@ -572,8 +572,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     else:
         post_contents_enriched = post_contents
 
-    if anchors:
-        post_contents_enriched = [apply_guidance_enrichment(t, anchors) for t in post_contents_enriched]
+    # DISABLE: Guidance enrichment causes label leakage/hallucinations in clustering
+    # if anchors:
+    #     post_contents_enriched = [apply_guidance_enrichment(t, anchors) for t in post_contents_enriched]
 
     if use_keywords:
         console.print("[cyan]🔑 Phase 0.5: Extracting high-signal keywords...[/cyan]")
@@ -716,10 +717,44 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 label_key = int(l) if isinstance(l, (str, int)) else l
                 if label_key in cluster_mapping:
                     m = cluster_mapping[label_key]
+                    refined_title = res['refined_title']
+                    
+                    # TREND VERIFICATION (Discovery Swap)
+                    # If this was a Trending topic, verify the LLM's title still aligns with it
+                    if m["topic_type"] == "Trending":
+                        trend_name = m["final_topic"]
+                        # Use embedder to check similarity between Matched Trend and LLM's Title
+                        try:
+                            # We need embedder, which might have been deleted in Phase 2
+                            # If deleted, we re-initialize it temporarily or just trust the LLM's title?
+                            # Let's check if 'embedder' exists in locals, if not we use a simpler heuristic or skip
+                            if 'embedder' in locals() and embedder is not None:
+                                embs = embedder.encode([trend_name, refined_title])
+                                sim = cosine_similarity([embs[0]], [embs[1]])[0][0]
+                                
+                                if sim < 0.6: # If similarity < 0.6, it's likely a mismatch
+                                    console.print(f"   ⚠️ [yellow]Trend mismatch detected: '{trend_name}' vs LLM's '{refined_title}' (sim={sim:.2f}). Swapping to Discovery.[/yellow]")
+                                    m["topic_type"] = "Discovery"
+                                    m["final_topic"] = f"New: {refined_title}"
+                                else:
+                                    # Still aligned, just use refined formatting if desired, 
+                                    # or keep original trend name for consistency?
+                                    # Let's use trend name but update reasoning.
+                                    pass
+                            else:
+                                # Fallback: If no embedder, check if keyword overlap is zero
+                                t_words = set(trend_name.lower().split())
+                                r_words = set(refined_title.lower().split())
+                                if not (t_words & r_words): # No overlapping words
+                                     m["topic_type"] = "Discovery"
+                                     m["final_topic"] = f"New: {refined_title}"
+                        except Exception as e:
+                            console.print(f"   [dim]Trend verification error: {e}[/dim]")
+                    
                     if m["topic_type"] == "Discovery":
-                        m["final_topic"] = f"New: {res['refined_title']}"
+                        m["final_topic"] = f"New: {refined_title}"
+                    
                     m["llm_reasoning"] = res["reasoning"]
-                    # Metadata (Category/Event Type) will be assigned in Phase 5
             
             success_count = len(batch_results)
             console.print(f"   ✅ [bold green]LLM Pass Complete: Successfully refined {success_count}/{len(to_refine)} clusters.[/bold green]")
