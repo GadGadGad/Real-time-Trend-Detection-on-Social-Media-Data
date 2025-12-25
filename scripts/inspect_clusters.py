@@ -74,12 +74,28 @@ def audit_cluster_reasoning(df, n_clusters=3, sample_posts=3):
         topic_sentiment = first_row.get('topic_sentiment', 'Neutral')
         s_color = "green" if topic_sentiment == "Positive" else "red" if topic_sentiment == "Negative" else "yellow"
 
+        # Get Intelligence (5W1H)
+        intel = first_row.get('intelligence', {})
+        if not isinstance(intel, dict): intel = {}
+        
+        intel_txt = ""
+        if intel and any(v and v != "N/A" for v in intel.values()):
+            intel_txt = (
+                f"\n[bold white]--- 5W1H Intelligence ---[/bold white]\n"
+                f"[dim]Who:[/dim]   {intel.get('who', '-')}\n"
+                f"[dim]What:[/dim]  {intel.get('what', '-')}\n"
+                f"[dim]Where:[/dim] {intel.get('where', '-')}\n"
+                f"[dim]When:[/dim]  {intel.get('when', '-')}\n"
+                f"[dim]Why:[/dim]   {intel.get('why', '-')}\n"
+            )
+
         # 1. Header
         console.print(Panel(
             f"[bold cyan]Topic:[/bold cyan] {topic}\n"
             f"[bold magenta]Category:[/bold magenta] {category}\n"
             f"[bold {s_color}]Final Sentiment:[/bold {s_color}] {topic_sentiment}\n"
             f"[bold green]Summary:[/bold green] {summary}\n"
+            f"{intel_txt}"
             f"[bold yellow]Reasoning:[/bold yellow] {reasoning}", 
             title="Cluster Audit", expand=False
         ))

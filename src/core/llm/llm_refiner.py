@@ -619,6 +619,11 @@ class LLMRefiner:
                 "event_type": "Specific/Generic",
                 "summary": "Short 2-3 sentence summary of the trend/incident.",
                 "overall_sentiment": "Positive/Negative/Neutral",
+                "who": "Key entities/people involved (or N/A)",
+                "what": "Core event/action occurred",
+                "where": "Location (City/Country) (or N/A)",
+                "when": "Timeframe mentioned (or N/A)",
+                "why": "Reason/Cause (or N/A)",
                 "reasoning": "..."
             }
         """
@@ -652,6 +657,11 @@ class LLMRefiner:
                     "event_type": "Specific/Generic",
                     "summary": "...",
                     "overall_sentiment": "Positive/Negative/Neutral",
+                    "who": "...",
+                    "what": "...",
+                    "where": "...",
+                    "when": "...",
+                    "why": "...",
                     "reasoning": "..."
                 }
         """
@@ -665,11 +675,18 @@ class LLMRefiner:
                     data.get('reasoning', ""), 
                     data.get('event_type', "Specific"),
                     data.get('summary', ""),
-                    data.get('overall_sentiment', 'Neutral')
+                    data.get('overall_sentiment', 'Neutral'),
+                    {
+                        "who": data.get('who', 'N/A'),
+                        "what": data.get('what', 'N/A'),
+                        "where": data.get('where', 'N/A'),
+                        "when": data.get('when', 'N/A'),
+                        "why": data.get('why', 'N/A')
+                    }
                 )
-            return cluster_name, original_category, "", "Specific", "", "Neutral"
+            return cluster_name, original_category, "", "Specific", "", "Neutral", {}
         except Exception:
-            return cluster_name, original_category, "", "Specific", "", "Neutral"
+            return cluster_name, original_category, "", "Specific", "", "Neutral", {}
 
     def refine_batch(self, clusters_to_refine, custom_instruction=None):
         if not self.enabled or not clusters_to_refine:
@@ -779,7 +796,7 @@ class LLMRefiner:
             {batch_str}
 
             Respond with ONLY this JSON (no other text):
-            [ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "reasoning": "..."}} ]
+            [ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "reasoning": "..."}} ]
             """
             all_prompts.append(prompt)
 
@@ -797,6 +814,11 @@ class LLMRefiner:
                                     'refined_title': item.get('refined_title', f"Cluster {item['id']}"),
                                     'summary': item.get('summary', 'No summary provided'),
                                     'overall_sentiment': item.get('overall_sentiment', 'Neutral'),
+                                    'who': item.get('who', 'N/A'),
+                                    'what': item.get('what', 'N/A'),
+                                    'where': item.get('where', 'N/A'),
+                                    'when': item.get('when', 'N/A'),
+                                    'why': item.get('why', 'N/A'),
                                     'reasoning': item.get('reasoning', 'No reasoning provided')
                                 }
                                 all_results[item['id']] = sane_item

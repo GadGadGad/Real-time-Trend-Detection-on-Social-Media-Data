@@ -360,7 +360,7 @@ def load_trends(csv_files):
         except Exception: pass
     return trends
 
-def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_path, debug_llm, source_files=None, cache_path=None):
+def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_path, debug_llm, source_files=None, cache_path=None, use_llm=True):
     """
     Dedicated preprocessing step for Google Trends.
     Checks for cache based on input files.
@@ -413,21 +413,24 @@ def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_
     trends = normalized_trends
 
     # 2. Refine using LLM
-    refiner = LLMRefiner(
-        provider=llm_provider,
-        api_key=gemini_api_key,
-        model_path=llm_model_path,
-        debug=debug_llm
-    )
-    
-    if not refiner.enabled:
-        return post_refinement_clean(trends) # Still clean if LLM disabled
-
-    # Map normalized names to original keys for robust matching
-    norm_map = {normalize_text(k): k for k in trends.keys()}
-    
-    result = refiner.refine_trends(trends)
-    if result:
+    if use_llm:
+        refiner = LLMRefiner(
+            provider=llm_provider,
+            api_key=gemini_api_key,
+            model_path=llm_model_path,
+            debug=debug_llm
+        )
+        
+        if refiner.enabled:
+            # Map normalized names to original keys for robust matching
+            norm_map = {normalize_text(k): k for k in trends.keys()}
+            
+            result = refiner.refine_trends(trends)
+    else:
+        # Dummy result to trigger fallback
+        result = None 
+            
+    if use_llm and result:
         filtered = result.get("filtered", [])
         merged = result.get("merged", {})
         
@@ -530,7 +533,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
                         custom_stopwords=None, min_member_similarity=0.45,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
-                        match_weights={'dense': 0.6, 'sparse': 0.4}):
+                        match_weights={'dense': 0.6, 'sparse': 0.4},
+                        embedding_char_limit=500):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -556,13 +560,16 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     reranker = None
     if rerank:
         ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
-        try: reranker = CrossEncoder(ce_model, device=embedding_device)
-        except: pass
+        try: 
+            reranker = CrossEncoder(ce_model, device=embedding_device, trust_remote_code=trust_remote_code)
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Failed to load Reranker {ce_model}: {e}[/yellow]")
+            reranker = None
 
     # Apply cleaning and source stripping
     post_contents = []
     for p in posts:
-        txt = p.get('content', '')[:500]
+        txt = p.get('content', '')[:embedding_char_limit]
         txt = clean_text(txt)
         txt = strip_news_source_noise(txt)
         post_contents.append(txt)
@@ -731,6 +738,14 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m["llm_reasoning"] = res["reasoning"]
                     m["summary"] = res.get("summary", "")
                     m["sentiment"] = res.get("overall_sentiment", m.get("sentiment", "Neutral"))
+                    # Capture 5W1H Intelligence
+                    m["intelligence"] = {
+                        "who": res.get("who"),
+                        "what": res.get("what"),
+                        "where": res.get("where"),
+                        "when": res.get("when"),
+                        "why": res.get("why")
+                    }
                     # Metadata (Category/Event Type) will be assigned in Phase 5
             
             success_count = len(batch_results)
@@ -915,6 +930,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 "trend_score": m["trend_score"], 
                 "llm_reasoning": m["llm_reasoning"],
                 "summary": m.get("summary", ""),
+                "intelligence": m.get("intelligence", {}),
                 "sentiment": sentiments[i], 
                 "topic_sentiment": m.get("sentiment", "Neutral"),
                 "topic_sentiment_dist": m.get("sentiment_distribution", {}),
