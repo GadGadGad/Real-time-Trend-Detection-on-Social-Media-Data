@@ -752,12 +752,20 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             if m["topic_type"] != "Noise":
                 topics_to_classify.append({
                     "final_topic": topic,
-                    "sample_posts": m["posts"]
+                    "sample_posts": m["posts"] # Keep posts in case refiner needs it later
                 })
         
         if topics_to_classify:
             console.print(f"⚖️ [cyan]Phase 5: Classifying {len(topics_to_classify)} canonical topics...[/cyan]")
-            classification_results = llm_refiner.classify_batch(topics_to_classify)
+            
+            # Final fix: Map internal names to refiner schema (id, label, reasoning)
+            refiner_inputs = [{
+                "id": t['final_topic'],
+                "label": t['final_topic'],
+                "reasoning": consolidated_mapping.get(t['final_topic'], {}).get('llm_reasoning', '')
+            } for t in topics_to_classify]
+            
+            classification_results = llm_refiner.classify_batch(refiner_inputs)
             
             for topic, res in classification_results.items():
                 if topic in consolidated_mapping:
@@ -768,21 +776,39 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m["category_method"] = "LLM-Final"
 
                     # POST-CLASSIFICATION NOISE FILTER
-                    is_routine_c = (res["category"] == "C" and m["trend_score"] < 90)
-                    if res["event_type"] == "Generic" or is_routine_c:
-                         if m["trend_score"] < 80:
+                    # Only demote to Noise if signal is truly low or it's a routine generic topic
+                    is_generic = (res["event_type"] == "Generic")
+                    is_routine = (res["category"] == "C")
+                    
+                    if is_generic and is_routine:
+                        # Both generic and routine (e.g., general weather, daily lottery)
+                        if m["trend_score"] < 50:
                              m["topic_type"] = "Noise"
-                             m["final_topic"] = f"[Routine/Generic] {topic}"
+                             m["final_topic"] = f"[Noise] {topic}"
+                    elif is_routine:
+                        # Routine but might be specific (e.g., "Xổ số miền Bắc ngày 15/10")
+                        # Keep if there's significant trend volume, otherwise hide
+                        if m["trend_score"] < 30:
+                             m["topic_type"] = "Noise"
+                             m["final_topic"] = f"[Routine] {topic}"
+                    elif is_generic:
+                        # Generic but social/trending (e.g., "iPhone 16 reviews") - keep mostly
+                             m["final_topic"] = f"[Generic] {topic}"
 
     matches = []
+    noise_count = 0
     for i, post in enumerate(posts):
         label = cluster_labels[i]
         if label != -1:
-            t_name = cluster_mapping[label]["final_topic"]
-            m = consolidated_mapping[t_name]
+            t_name = cluster_mapping.get(label, {}).get("final_topic")
+            if not t_name: continue
             
-            # Filter Noise unless debug
+            m = consolidated_mapping.get(t_name)
+            if not m: continue
+            
+            # Filter Noise unless debug or save_all
             if m["topic_type"] == "Noise" and not save_all:
+                noise_count += 1
                 continue
 
             matches.append({
@@ -793,6 +819,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             })
         elif save_all:
             matches.append({"final_topic": "Unassigned", "topic_type": "Noise", "sentiment": sentiments[i], "is_matched": False})
+
+    if not matches and posts:
+        console.print(f"[yellow]⚠️  Warning: Pipeline returned 0 results. {noise_count} posts were filtered as Noise.[/yellow]")
+        console.print(f"[dim]Try setting save_all=True or decreasing min_cluster_size to see more results.[/dim]")
 
     return matches
 

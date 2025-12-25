@@ -836,11 +836,22 @@ class LLMRefiner:
         
         for batch in batches:
             # Construct prompt for the batch
-            batch_str = json.dumps([{
-                "id": item['id'],
-                "title": item['label'],
-                "context": item.get('reasoning', '')[:200]
-            } for item in batch], ensure_ascii=False, indent=2)
+            batch_items = []
+            for item in batch:
+                # Defensive check for required keys
+                try:
+                    batch_items.append({
+                        "id": item.get('id', item.get('final_topic', 'unknown')),
+                        "title": item.get('label', item.get('final_topic', 'Unknown Topic')),
+                        "context": item.get('reasoning', '')[:200]
+                    })
+                except Exception:
+                    continue
+            
+            if not batch_items:
+                continue
+
+            batch_str = json.dumps(batch_items, ensure_ascii=False, indent=2)
             
             prompt = f"""
             Role: Crisis Event Classifier for Vietnam.
@@ -889,16 +900,17 @@ class LLMRefiner:
                 
             for item in batch_items:
                 # ID might be int or str in JSON keys
-                key = str(item['id'])
+                item_id = item.get('id') or item.get('final_topic', 'unknown')
+                key = str(item_id)
                 if key in parsed:
                     info = parsed[key]
-                    results[item['id']] = {
+                    results[item_id] = {
                         "category": info.get("category", "B"),
                         "event_type": info.get("event_type", "Specific"),
                         "classification_reasoning": info.get("reasoning", "")
                     }
                 else:
-                    results[item['id']] = {"category": "B", "event_type": "Specific", "classification_reasoning": "Missing in response"}
+                    results[item_id] = {"category": "B", "event_type": "Specific", "classification_reasoning": "Missing in response"}
 
         return results
 
