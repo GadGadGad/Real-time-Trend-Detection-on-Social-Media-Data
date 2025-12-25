@@ -34,14 +34,15 @@ VIETNAMESE_STOPWORDS = [
     "nước", "nhà", "đầu", "cuối", "giữa", "ngày", "năm", "tháng", "tuần",
     # Common News Outlets (Prevent Source Bias)
     "vnexpress", "vtv", "nld", "tuổi_trẻ", "thanh_niên", "dân_trí", "kenh14", 
-    "zing", "vietnamnet", "tien_phong", "sggp", "soha", "vtc", "znews", "cafef"
+    "zing", "vietnamnet", "tien_phong", "sggp", "soha", "vtc", "znews", "cafef",
+    "theanh28", "tuoitre", "thanhnien", "baomoi", "dantri", "baotuoitre", "baodantri"
 ]
 
 
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
                  selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
-                 min_quality_cohesion=0.5):
+                 min_quality_cohesion=0.5, trust_remote_code=False):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
@@ -93,6 +94,11 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
         # 2. Stronger UMAP for better separation (default 5 is too small)
         umap_model = umap.UMAP(n_neighbors=15, n_components=10, min_dist=0.0, metric='cosine', random_state=42)
         
+        # Prepare embedding model for BERTopic
+        if isinstance(embedding_model, str):
+             from sentence_transformers import SentenceTransformer
+             embedding_model = SentenceTransformer(embedding_model, trust_remote_code=trust_remote_code)
+
         topic_model = BERTopic(
             embedding_model=embedding_model,
             umap_model=umap_model,

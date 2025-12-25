@@ -118,7 +118,7 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, m
          
     return post_contents_enriched
 
-def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, post_contents=None, epsilon=0.15):
+def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, post_contents=None, epsilon=0.15, trust_remote_code=False):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
@@ -142,7 +142,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
     if len(news_embs) >= min_cluster_size:
         news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, 
                                    n_clusters=n_clusters, texts=news_texts, epsilon=epsilon,
-                                   selection_method='leaf', min_quality_cohesion=0.55)
+                                   selection_method='leaf', min_quality_cohesion=0.55,
+                                   trust_remote_code=trust_remote_code)
     else:
         news_labels = np.array([-1] * len(news_indices))
 
@@ -189,7 +190,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         leftover_embs = post_embeddings[unattached_social_indices]
         leftover_texts = [post_contents[i] for i in unattached_social_indices] if post_contents else None
         social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size, 
-                                               method=method, n_clusters=n_clusters, texts=leftover_texts, epsilon=epsilon)
+                                               method=method, n_clusters=n_clusters, texts=leftover_texts, epsilon=epsilon,
+                                               trust_remote_code=trust_remote_code)
         
         # Shift social labels to avoid collision with news clusters
         max_news_label = max(unique_news_clusters) if unique_news_clusters else -1

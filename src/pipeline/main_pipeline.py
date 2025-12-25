@@ -56,6 +56,36 @@ def clean_text(text):
     for p in patterns: cleaned = re.sub(p, '', cleaned)
     return cleaned.strip()
 
+def strip_news_source_noise(text):
+    """
+    Strips news source prefixes that cause clustering bias.
+    Examples: 
+      - "(VTV.vn) - Tình hình bão..." -> "Tình hình bão..."
+      - "VNExpress - Giá vàng..." -> "Giá vàng..."
+      - "NLD.COM.VN - " -> ""
+    """
+    if not text: return ""
+    
+    # 1. Start-of-string prefixes (Source - ) or (Source) -
+    patterns = [
+        # Face: Theanh28 - or Face: baodantri - 
+        r'^Face:\s*[^:]+[-–—:]\s*',
+        # (VTV.vn) - or [VTV.vn] - 
+        r'^[\(\[][^\]\)]+[\)\]]\s*[-–—:]\s*',
+        # VNExpress - or NLD - 
+        r'^[A-Z0-9.\s]{2,20}\s*[-–—:]\s*',
+        # Catch just the source name at start followed by colon/dash
+        r'^(VNEXPRESS|NLD|THANHNIEN|TUOITRE|VIETNAMNET|VTV|ZING)\s*[:\-–—]\s*',
+        # (Source) without dash
+        r'^[\(\[][^\]\)]+[\)\]]\s*',
+    ]
+    
+    cleaned = text
+    for p in patterns:
+        cleaned = re.sub(p, '', cleaned, count=1)
+        
+    return cleaned.strip()
+
 
 def filter_obvious_noise(trends):
     """
@@ -520,7 +550,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
                        cluster_epsilon=0.05, min_quality_cohesion=0.55,
-                       summarize_posts=False, summarization_model='vit5-large'):
+                       summarize_posts=False, summarization_model='vit5-large',
+                       trust_remote_code=True, use_keywords=True, use_llm_keywords=False):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -530,7 +561,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     embedding_device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     console.print(f"🚀 [cyan]Phase 1: High-Speed Embeddings & Sentiment on {embedding_device}...[/cyan]")
-    embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device)
+    embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device, trust_remote_code=trust_remote_code)
     
     # --- PHASE 1: EMBEDDINGS ---
     
@@ -541,7 +572,14 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         try: reranker = CrossEncoder(ce_model, device=embedding_device)
         except: pass
 
-    post_contents = [p.get('content', '')[:500] for p in posts]
+    # Apply cleaning and source stripping
+    post_contents = []
+    for p in posts:
+        txt = p.get('content', '')[:500]
+        txt = clean_text(txt)
+        txt = strip_news_source_noise(txt)
+        post_contents.append(txt)
+
     anchors = extract_dynamic_anchors(posts, trends)
     
     if use_aliases:
@@ -576,11 +614,18 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         model_name=model_name,
         existing_model=embedder,
         device=embedding_device,
-        cache_dir="embeddings_cache" if use_cache else None
+        cache_dir="embeddings_cache" if use_cache else None,
+        trust_remote_code=trust_remote_code
     )
 
     # --- SAHC PHASE 1-3: CLUSTERING ---
-    cluster_labels = run_sahc_clustering(posts, post_embeddings, min_cluster_size=min_cluster_size, epsilon=cluster_epsilon)
+    cluster_labels = run_sahc_clustering(
+        posts, post_embeddings, 
+        min_cluster_size=min_cluster_size, 
+        epsilon=cluster_epsilon,
+        trust_remote_code=trust_remote_code,
+        post_contents=post_contents_enriched
+    )
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
 
@@ -592,7 +637,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         model_name=model_name,
         existing_model=embedder,
         device=embedding_device,
-        cache_dir="embeddings_cache" if use_cache else None
+        cache_dir="embeddings_cache" if use_cache else None,
+        trust_remote_code=trust_remote_code
     ) if trend_queries else []
     
     # --- BM25 INDEXING (Hybrid Search) ---
