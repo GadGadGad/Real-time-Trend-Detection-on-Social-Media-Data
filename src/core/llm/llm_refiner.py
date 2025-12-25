@@ -613,19 +613,21 @@ class LLMRefiner:
             - Mention ONLY entities explicitly seen in posts.
 
             Respond STRICTLY in JSON format:
-            {{
+            {
                 "refined_title": "...",
                 "category": "T1/T2/.../T7",
                 "event_type": "Specific/Generic",
+                "summary": "Short 2-3 sentence summary of the trend/incident.",
+                "overall_sentiment": "Positive/Negative/Neutral",
                 "reasoning": "..."
-            }}
+            }
         """
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
         context_str = "\n---\n".join(context_texts)
         
         # Extract metadata
-        dates = sorted(list(set([str(p.get('time') or p.get('published_at', ''))[:10] for p in posts if p.get('time') or p.get('published_at')])))
+        dates = sorted(list(set([str(p.get('time') or p.get('published_at', '')).split('T')[0] for p in posts if p.get('time') or p.get('published_at')])))
         meta_info = f"Date Range: {dates[0]} to {dates[-1]}" if dates else "Date: Unknown"
         
         # Keywords
@@ -644,21 +646,30 @@ class LLMRefiner:
             {instruction}
 
             Respond STRICTLY in JSON format:
-                {{
+                {
                     "refined_title": "...",
                     "category": "T1/T2/.../T7",
                     "event_type": "Specific/Generic",
+                    "summary": "...",
+                    "overall_sentiment": "Positive/Negative/Neutral",
                     "reasoning": "..."
-                }}
+                }
         """
         try:
             text = self._generate(prompt)
             data = self._extract_json(text, is_list=False)
             if data:
-                return data.get('refined_title', cluster_name), data.get('category', original_category), data.get('reasoning', ""), data.get('event_type', "Specific")
-            return cluster_name, original_category, "", "Specific"
+                return (
+                    data.get('refined_title', cluster_name), 
+                    data.get('category', original_category), 
+                    data.get('reasoning', ""), 
+                    data.get('event_type', "Specific"),
+                    data.get('summary', ""),
+                    data.get('overall_sentiment', 'Neutral')
+                )
+            return cluster_name, original_category, "", "Specific", "", "Neutral"
         except Exception:
-            return cluster_name, original_category, "", "Specific"
+            return cluster_name, original_category, "", "Specific", "", "Neutral"
 
     def refine_batch(self, clusters_to_refine, custom_instruction=None):
         if not self.enabled or not clusters_to_refine:
@@ -701,7 +712,10 @@ class LLMRefiner:
 
                 Output JSON:
                 {
+                    "id": 0,
                     "refined_title": "String",
+                    "summary": "Concise 2-sentence summary of the main event.",
+                    "overall_sentiment": "Positive/Negative/Neutral based on context",
                     "reasoning": "String"
                 }
 
@@ -736,7 +750,7 @@ class LLMRefiner:
                 dates = []
                 for p in c['sample_posts']:
                     d = p.get('published_at') or p.get('time')
-                    if d: dates.append(str(d)[:10]) # YYYY-MM-DD
+                    if d: dates.append(str(d).split('T')[0]) # YYYY-MM-DD
                 
                 date_context = ""
                 if dates:
@@ -765,7 +779,7 @@ class LLMRefiner:
             {batch_str}
 
             Respond with ONLY this JSON (no other text):
-            [[{{"id": 0, "refined_title": "Vietnamese headline", "reasoning": "why"}}]]
+            [ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "reasoning": "..."}} ]
             """
             all_prompts.append(prompt)
 
@@ -781,6 +795,8 @@ class LLMRefiner:
                                 sane_item = {
                                     'id': item['id'],
                                     'refined_title': item.get('refined_title', f"Cluster {item['id']}"),
+                                    'summary': item.get('summary', 'No summary provided'),
+                                    'overall_sentiment': item.get('overall_sentiment', 'Neutral'),
                                     'reasoning': item.get('reasoning', 'No reasoning provided')
                                 }
                                 all_results[item['id']] = sane_item
@@ -875,8 +891,13 @@ class LLMRefiner:
             Output: JSON Object mapping ID -> Classification.
             Example:
             {{
-                "0": {{ "category": "T1", "event_type": "Specific", "reasoning": "Major natural disaster impacting thousands." }},
-                "1": {{ "category": "T7", "event_type": "Generic", "reasoning": "Routine daily report." }}
+                "0": {{ 
+                    "category": "T1", 
+                    "event_type": "Specific", 
+                    "overall_sentiment": "Positive/Negative/Neutral",
+                    "summary": "Short context of the event.",
+                    "reasoning": "..." 
+                }}
             }}
             """
             all_prompts.append(prompt)
@@ -910,10 +931,12 @@ class LLMRefiner:
                     results[item_id] = {
                         "category": info.get("category", "T5"),
                         "event_type": info.get("event_type", "Specific"),
+                        "overall_sentiment": info.get("overall_sentiment", "Neutral"),
+                        "summary": info.get("summary", ""),
                         "reasoning": info.get("reasoning", "")
                     }
                 else:
-                    results[item_id] = {"category": "T5", "event_type": "Specific", "reasoning": "Missing in response"}
+                    results[item_id] = {"category": "T5", "event_type": "Specific", "overall_sentiment": "Neutral", "summary": "", "reasoning": "Missing in response"}
 
         return results
 

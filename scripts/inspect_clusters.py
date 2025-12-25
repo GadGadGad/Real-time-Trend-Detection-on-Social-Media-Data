@@ -63,17 +63,26 @@ def audit_cluster_reasoning(df, n_clusters=3, sample_posts=3):
     
     for topic in selected_topics:
         cluster_posts = df_valid[df_valid['final_topic'] == topic]
-        reasoning = cluster_posts.iloc[0].get('llm_reasoning', 'No reasoning found')
-        category = cluster_posts.iloc[0].get('category', 'N/A')
+        first_row = cluster_posts.iloc[0]
         
-        # Calculate Majority Sentiment
-        s_counts = cluster_posts['sentiment'].value_counts() if 'sentiment' in cluster_posts.columns else {}
-        maj_sentiment = s_counts.index[0] if not s_counts.empty else "Neutral"
-        s_color = "green" if maj_sentiment == "Positive" else "red" if maj_sentiment == "Negative" else "yellow"
+        reasoning = first_row.get('llm_reasoning', 'No reasoning found')
+        category = first_row.get('category', 'N/A')
+        summary = first_row.get('summary', 'No summary provided')
+        
+        # Calculate Topic Sentiment (Prefer LLM field 'topic_sentiment' if matched, 
+        # but keep distribution logic for context)
+        topic_sentiment = first_row.get('topic_sentiment', 'Neutral')
+        s_color = "green" if topic_sentiment == "Positive" else "red" if topic_sentiment == "Negative" else "yellow"
 
         # 1. Header
-        console.print(Panel(f"[bold cyan]Topic:[/bold cyan] {topic}\n[bold magenta]Category:[/bold magenta] {category}\n[bold {s_color}]Sentiment:[/bold {s_color}] {maj_sentiment}\n[bold yellow]Reasoning:[/bold yellow] {reasoning}", 
-                          title="Cluster Audit", expand=False))
+        console.print(Panel(
+            f"[bold cyan]Topic:[/bold cyan] {topic}\n"
+            f"[bold magenta]Category:[/bold magenta] {category}\n"
+            f"[bold {s_color}]Final Sentiment:[/bold {s_color}] {topic_sentiment}\n"
+            f"[bold green]Summary:[/bold green] {summary}\n"
+            f"[bold yellow]Reasoning:[/bold yellow] {reasoning}", 
+            title="Cluster Audit", expand=False
+        ))
         
         # 2. Posts Table
         table = Table(title=f"Sample Posts for: {topic[:50]}...", show_lines=True)

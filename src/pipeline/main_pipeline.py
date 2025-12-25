@@ -725,6 +725,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     if m["topic_type"] == "Discovery":
                         m["final_topic"] = f"New: {res['refined_title']}"
                     m["llm_reasoning"] = res["reasoning"]
+                    m["summary"] = res.get("summary", "")
+                    m["sentiment"] = res.get("overall_sentiment", m.get("sentiment", "Neutral"))
                     # Metadata (Category/Event Type) will be assigned in Phase 5
             
             success_count = len(batch_results)
@@ -787,14 +789,22 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         all_posts = []
         all_categories = []
         all_reasonings = []
+        post_sentiments = []
         
         for l in labels:
             idx = [i for i, val in enumerate(cluster_labels) if val == l]
             all_posts.extend([posts[i] for i in idx])
+            post_sentiments.extend([sentiments[i] for i in idx])
             m_l = cluster_mapping[l]
             all_categories.append(m_l.get("category", "C"))
             if m_l.get("llm_reasoning"):
                 all_reasonings.append(m_l["llm_reasoning"])
+        
+        # Calculate Topic-Level Sentiment
+        from collections import Counter
+        s_counts = Counter(post_sentiments)
+        majority_sentiment = s_counts.most_common(1)[0][0] if post_sentiments else "Neutral"
+        s_dist = {k: round(v / len(post_sentiments), 2) for k, v in s_counts.items()} if post_sentiments else {}
         
         # PRIORITY MERGE: A > B > C
         final_cat = "C"
@@ -812,6 +822,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         consolidated_mapping[topic] = {
             **m, 
             "category": final_cat,
+            "sentiment": majority_sentiment,
+            "sentiment_distribution": s_dist,
             "trend_score": combined_score, 
             "score_components": combined_comp,
             "llm_reasoning": " | ".join(list(set(all_reasonings))) if all_reasonings else m.get("llm_reasoning", ""),
@@ -847,6 +859,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m["event_type"] = res["event_type"]
                     m["llm_reasoning"] += f" | Classification: {res['reasoning']}"
                     m["category_method"] = "LLM-Final"
+                    
+                    # Update summary and sentiment if LLM provided fresher ones
+                    if res.get("summary"): m["summary"] = res["summary"]
+                    if res.get("overall_sentiment"): m["sentiment"] = res["overall_sentiment"]
 
                     # POST-CLASSIFICATION NOISE FILTER
                     # Only demote to Noise if signal is truly low or it's a routine generic topic
@@ -894,7 +910,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 "score": m["match_score"], 
                 "trend_score": m["trend_score"], 
                 "llm_reasoning": m["llm_reasoning"],
+                "summary": m.get("summary", ""),
                 "sentiment": sentiments[i], 
+                "topic_sentiment": m.get("sentiment", "Neutral"),
+                "topic_sentiment_dist": m.get("sentiment_distribution", {}),
                 "is_matched": (m["topic_type"] == "Trending"), 
                 "trend": m["final_topic"]
             })
