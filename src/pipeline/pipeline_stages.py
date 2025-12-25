@@ -172,55 +172,78 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
                 
     return final_labels
 
-def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold, bm25_index=None):
-    """Helper to match a cluster to existing trends. Supports Hybrid Search (Dense + BM25)."""
+def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold, bm25_index=None, cluster_centroid=None):
+    """
+    Helper to match a cluster to existing trends. 
+    Implements TRUE HYBRID SEARCH:
+    1. Dense (Centroid): Semantic similarity search using the average cluster embedding.
+    2. Sparse (BM25): Keyword similarity search using the TF-IDF cluster label.
+    3. Semantic Guard: Rejects matches where the semantic floor is not met.
+    """
     assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
 
     if len(trend_embeddings) > 0:
-        # Dense Score
-        cluster_emb = embedder.encode(cluster_query)
-        dense_sims = cosine_similarity([cluster_emb], trend_embeddings)[0]
+        # --- 1. DENSE MATCHING (Centroid-based) ---
+        # Centroid is much more robust than the lossy cluster_query string
+        if cluster_centroid is not None:
+            # Ensure 2D for cosine_similarity
+            c_vec = cluster_centroid.reshape(1, -1)
+            dense_sims = cosine_similarity(c_vec, trend_embeddings)[0]
+        else:
+            # Fallback to query-string embedding if centroid not provided
+            cluster_emb = embedder.encode(cluster_query).reshape(1, -1)
+            dense_sims = cosine_similarity(cluster_emb, trend_embeddings)[0]
         
-        final_scores = dense_sims
+        final_scores = dense_sims.copy()
         
-        # Sparse Score (BM25) Fusion
+        # --- 2. SPARSE MATCHING (BM25) ---
+        sparse_scores = np.zeros(len(trend_keys))
         if bm25_index:
              try:
                 tokenized_query = cluster_query.lower().split()
-                sparse_scores = np.array(bm25_index.get_scores(tokenized_query))
+                # BM25 scores are raw floats, need normalization
+                raw_sparse = np.array(bm25_index.get_scores(tokenized_query))
+                if raw_sparse.max() > 0:
+                    sparse_scores = raw_sparse / raw_sparse.max()
                 
-                # Normalize BM25 (Min-Max to 0-1 range) to allow fair fusion
-                if sparse_scores.max() > 0:
-                    sparse_scores = sparse_scores / sparse_scores.max()
-                
-                # Fusion: 0.5 Dense + 0.5 Sparse
-                # Adjustable alpha could be passed in future
-                final_scores = 0.5 * dense_sims + 0.5 * sparse_scores
-                
-                # console.print(f"[dim]Hybrid Fusion debug: Dense={dense_sims.max():.3f}, Sparse={sparse_scores.max():.3f}[/dim]")
-             except Exception as e:
-                 # Fallback to dense if BM25 fails
+                # Fusion: 0.6 Dense + 0.4 Sparse (Prioritize Semantic signal)
+                final_scores = 0.6 * dense_sims + 0.4 * sparse_scores
+             except Exception:
                  pass
 
-        # Select Top Candidates based on FINAL (Hybrid) score
-        top_idx = np.argsort(final_scores)[-3:][::-1]
+        # Select Top Candidate
+        top_idx = np.argsort(final_scores)[-1]
+        best_candidate_score = float(final_scores[top_idx])
         
-        if rerank and reranker:
-            # Pair (query, candidate)
-            pairs = [(cluster_query, trend_queries[k]) for k in top_idx]
-            rerank_scores = reranker.predict(pairs)
-            best_s = np.argmax(rerank_scores)
-            # Reranker score is usually logit, -2 is a heuristic threshold (verify this!)
-            if rerank_scores[best_s] > -2: 
-                # Return the hybrid score as "match score" for consistency, or reranker score?
-                # Usually we return similarity 0-1. Let's return the hybrid score of the winner.
-                # But reranker picks the WINNER, so we trust it.
-                best_match_score = float(final_scores[top_idx[best_s]])
-                assigned_trend = trend_keys[top_idx[best_s]]
-                topic_type = "Trending"
-        elif final_scores[top_idx[0]] > threshold:
-            best_match_score = float(final_scores[top_idx[0]])
-            assigned_trend = trend_keys[top_idx[0]]
+        # --- 3. THE SEMANTIC GUARD ---
+        # Even if BM25 is high, the semantic floor must be met to avoid "World Cup" mismatches.
+        # Trend labels like "World Cup 2026" should have AT LEAST some semantic overlap.
+        SEMANTIC_FLOOR = 0.35 
+        semantic_signal = dense_sims[top_idx]
+        
+        is_valid_match = (semantic_signal >= SEMANTIC_FLOOR)
+        
+        if is_valid_match and best_candidate_score > threshold:
+            # High quality match
+            assigned_trend = trend_keys[top_idx]
             topic_type = "Trending"
+            best_match_score = best_candidate_score
+            
+            # Optional Reranking (Double Check)
+            if rerank and reranker:
+                try:
+                    # We only rerank the winner to verify
+                    pair = (cluster_query, trend_queries[top_idx])
+                    rerank_score = reranker.predict([pair])[0]
+                    # Reranker score is usually logit, -2 is safe
+                    if rerank_score < -2.5: 
+                         # Reranker rejected the winner!
+                         assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
+                except: pass
+        else:
+            # Low quality match or under floor: Relegate to Discovery
+            assigned_trend = "Discovery"
+            topic_type = "Discovery"
+            best_match_score = 0.0
             
     return assigned_trend, topic_type, best_match_score

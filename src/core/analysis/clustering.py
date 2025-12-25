@@ -463,7 +463,7 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors
             row = tfidf_matrix[i].toarray().flatten()
             if anchor_set:
                 for idx, feat in enumerate(feature_names):
-                    if feat in anchor_set: row[idx] *= 1.5 # Reduced from 5.0 to 1.5 to prevent bias
+                    if feat in anchor_set: row[idx] *= 1.5 
 
             # Stronger penalty for generic stopwords in labels
             all_stopwords = set(VIETNAMESE_STOPWORDS)
@@ -472,10 +472,10 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors
             
             for idx, feat in enumerate(feature_names):
                 if any(sw == feat.lower() for sw in all_stopwords):
-                    row[idx] *= 0.001 # Even stronger penalty (0.01 -> 0.001)
+                    row[idx] *= 0.01
                 tokens = feat.split()
-                if len(tokens) == 1: row[idx] *= 0.2 # Lower bonus for single words
-                if len(feat) < 4: row[idx] *= 0.05 # Lower bonus for very short words
+                if len(tokens) == 1: row[idx] *= 0.3
+                if len(feat) < 4: row[idx] *= 0.1
 
             top_indices = row.argsort()[-20:][::-1] 
             candidates = [feature_names[idx] for idx in top_indices if row[idx] > 0]
