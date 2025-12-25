@@ -38,7 +38,8 @@ VIETNAMESE_STOPWORDS = [
 
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
-                 selection_method='eom', recluster_garbage=False, min_pairwise_sim=0.35):
+                 selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
+                 min_quality_cohesion=0.5):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
@@ -150,7 +151,7 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
             min_cluster_size=min_cluster_size,
             min_samples=2,
             metric='euclidean', 
-            cluster_selection_method=selection_method,
+            cluster_selection_method=selection_method, # 'leaf' is default for quality
             cluster_selection_epsilon=epsilon 
         )
         labels = clusterer.fit_predict(umap_embeddings)
@@ -172,8 +173,20 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
             mask = (labels == label)
             cluster_size = np.sum(mask)
             
+            # QUALITY-BASED RECURSIVE SPLITTING
+            # Split if too big OR if too "messy" (low cohesion)
+            should_split = False
             if cluster_size > max_cluster_size:
-                console.print(f"[yellow]⚡ Recursive Split: Cluster {label} has {cluster_size} items (>{max_cluster_size}). Re-clustering...[/yellow]")
+                should_split = True
+            elif cluster_size >= min_cluster_size * 2 and min_quality_cohesion > 0:
+                cohesion = get_cluster_cohesion(embeddings[mask])
+                if cohesion < min_quality_cohesion:
+                    should_split = True
+                    console.print(f"[yellow]⚖️ Quality Split: Cluster {label} (size {cluster_size}) has low cohesion ({cohesion:.2f} < {min_quality_cohesion}). Splitting...[/yellow]")
+
+            if should_split:
+                if not recursion_occured:
+                    console.print(f"[yellow]⚡ Running Recursive Quality Split...[/yellow]")
                 
                 # Extract subset
                 sub_embs = embeddings[mask]
@@ -191,8 +204,10 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
                     n_clusters=n_clusters,
                     texts=sub_texts, 
                     embedding_model=embedding_model,
-                    min_cohesion=None, # Don't filter cohesion recursively, wait for final pass
-                    max_cluster_size=max_cluster_size # Keep enforcing limit
+                    min_cohesion=None, 
+                    max_cluster_size=max_cluster_size,
+                    min_quality_cohesion=min_quality_cohesion, # Pass down
+                    selection_method=selection_method
                 )
                 
                 # Remap sub-labels to global space
@@ -227,6 +242,13 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
         )
 
     return labels
+
+def get_cluster_cohesion(cluster_embs):
+    """Calculate average semantic similarity of a cluster to its centroid."""
+    if len(cluster_embs) <= 1: return 1.0
+    centroid = cluster_embs.mean(axis=0).reshape(1, -1)
+    sims = cosine_similarity(cluster_embs, centroid)
+    return float(sims.mean())
 
 def refine_clusters_by_cohesion(embeddings, labels, threshold=0.5):
     """

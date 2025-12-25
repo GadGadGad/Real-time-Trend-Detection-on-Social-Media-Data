@@ -513,13 +513,14 @@ def apply_guidance_enrichment(text, anchors):
 def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5, 
                         use_aliases=True, use_ner=False, 
                         embedding_method="sentence-transformer", save_all=False,
-                        rerank=True, min_cluster_size=5, labeling_method="semantic",
+                        rerank=True, min_cluster_size=3, labeling_method="semantic",
                         reranker_model_name=None, use_llm=False, gemini_api_key=None,
                         llm_provider="gemini", llm_model_path=None,
                         llm_custom_instruction=None, use_cache=True,
                         debug_llm=False, summarize_all=False, no_dedup=False,
-                        use_keywords=False, use_llm_keywords=False,
-                        cluster_epsilon=0.15):
+                        selection_method='eom', n_clusters=15,
+                       cluster_epsilon=0.05, min_quality_cohesion=0.55,
+                       summarize_posts=False, summarization_model='vit5-large'):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level

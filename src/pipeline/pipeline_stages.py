@@ -141,7 +141,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
     
     if len(news_embs) >= min_cluster_size:
         news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, 
-                                   n_clusters=n_clusters, texts=news_texts, epsilon=epsilon)
+                                   n_clusters=n_clusters, texts=news_texts, epsilon=epsilon,
+                                   selection_method='leaf', min_quality_cohesion=0.55)
     else:
         news_labels = np.array([-1] * len(news_indices))
 
