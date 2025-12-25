@@ -43,7 +43,7 @@ class KeywordExtractor:
         # Standardize on 'balanced' level for extraction (Safe + Journalistic)
         # Add technical noise specific to this class
         self.stopwords = get_stopwords(level="balanced", custom_list=[
-            'volume', 'keywords', 'time', 'automatic', 'ssi', w
+            'volume', 'keywords', 'time', 'automatic', 'ssi', 
             'doanh_nghiệp', 'việc_làm'
         ])
 
@@ -346,8 +346,8 @@ class KeywordExtractor:
             from rich.progress import track
             return [self.extract_keywords(t) for t in track(texts, description="[cyan]Extracting keywords (Rule-based)...[/cyan]")]
 
-        # 2. MEGA-BATCH LLM Extraction (200 posts per API call)
-        CHUNK_SIZE = 200  # ~25 API calls for 5000 posts
+        # 2. BATCH LLM Extraction (Reduce from 200 to 30 for stability and speed)
+        CHUNK_SIZE = 30  
         print(f"⚡ Batch extracting keywords for {len(texts)} items using LLM (Mega-Batch: {CHUNK_SIZE}/req)...")
         
         results_map = {}
