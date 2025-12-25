@@ -32,7 +32,9 @@ VIETNAMESE_STOPWORDS = [
     # High-frequency from TF-IDF analysis
     "công", "quốc", "động", "nam", "thống", "như", "khi", "sau", "trước",
     "nước", "nhà", "đầu", "cuối", "giữa", "ngày", "năm", "tháng", "tuần",
-
+    # Common News Outlets (Prevent Source Bias)
+    "vnexpress", "vtv", "nld", "tuổi_trẻ", "thanh_niên", "dân_trí", "kenh14", 
+    "zing", "vietnamnet", "tien_phong", "sggp", "soha", "vtc", "znews", "cafef"
 ]
 
 
