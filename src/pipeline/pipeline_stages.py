@@ -118,7 +118,7 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, m
          
     return post_contents_enriched
 
-def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, post_contents=None, epsilon=0.15, trust_remote_code=False):
+def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, post_contents=None, epsilon=0.15, trust_remote_code=False, custom_stopwords=None):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
@@ -130,6 +130,7 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         n_clusters: number of clusters (K-Means/BERTopic)
         post_contents: list of post text (required for BERTopic)
         epsilon: cluster_selection_epsilon (lower = more clusters)
+        custom_stopwords: optional list of stopwords to merge with defaults
     """
     # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
     news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
@@ -143,7 +144,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, 
                                    n_clusters=n_clusters, texts=news_texts, epsilon=epsilon,
                                    selection_method='leaf', min_quality_cohesion=0.55,
-                                   trust_remote_code=trust_remote_code)
+                                   trust_remote_code=trust_remote_code,
+                                   custom_stopwords=custom_stopwords)
     else:
         news_labels = np.array([-1] * len(news_indices))
 
@@ -191,7 +193,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         leftover_texts = [post_contents[i] for i in unattached_social_indices] if post_contents else None
         social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size, 
                                                method=method, n_clusters=n_clusters, texts=leftover_texts, epsilon=epsilon,
-                                               trust_remote_code=trust_remote_code)
+                                               trust_remote_code=trust_remote_code,
+                                               custom_stopwords=custom_stopwords)
         
         # Shift social labels to avoid collision with news clusters
         max_news_label = max(unique_news_clusters) if unique_news_clusters else -1

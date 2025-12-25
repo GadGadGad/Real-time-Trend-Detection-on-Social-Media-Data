@@ -820,10 +820,10 @@ class LLMRefiner:
                 - reasoning: Reasoning from Phase 3
                 
         Returns:
-            Dict mapping id -> {category, event_type, classification_reasoning}
+            Dict mapping id -> {category, event_type, reasoning}
         """
         if not self.enabled:
-            return {item['id']: {'category': 'B', 'event_type': 'Specific', 'classification_reasoning': 'LLM Disabled'} for item in topic_data_list}
+            return {item['id']: {'category': 'B', 'event_type': 'Specific', 'reasoning': 'LLM Disabled'} for item in topic_data_list}
 
         results = {}
         batch_size = 10  # Process 10 classifications at a time
@@ -895,7 +895,7 @@ class LLMRefiner:
             if not parsed:
                 # Fallback if parsing fails
                 for item in batch_items:
-                    results[item['id']] = {"category": "B", "event_type": "Specific", "classification_reasoning": "Parse Error"}
+                    results[item['id']] = {"category": "B", "event_type": "Specific", "reasoning": "Parse Error"}
                 continue
                 
             for item in batch_items:
@@ -907,10 +907,10 @@ class LLMRefiner:
                     results[item_id] = {
                         "category": info.get("category", "B"),
                         "event_type": info.get("event_type", "Specific"),
-                        "classification_reasoning": info.get("reasoning", "")
+                        "reasoning": info.get("reasoning", "")
                     }
                 else:
-                    results[item_id] = {"category": "B", "event_type": "Specific", "classification_reasoning": "Missing in response"}
+                    results[item_id] = {"category": "B", "event_type": "Specific", "reasoning": "Missing in response"}
 
         return results
 

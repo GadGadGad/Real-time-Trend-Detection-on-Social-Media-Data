@@ -42,7 +42,7 @@ VIETNAMESE_STOPWORDS = [
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
                  selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
-                 min_quality_cohesion=0.5, trust_remote_code=False):
+                 min_quality_cohesion=0.5, trust_remote_code=False, custom_stopwords=None):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
@@ -89,7 +89,10 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
         console.print(f"[bold cyan]🧩 Running BERTopic (min_topic_size={min_cluster_size}, n_clusters={n_clusters})...[/bold cyan]")
         
         # 1. Custom Vectorizer to filter generic words
-        vectorizer_model = CountVectorizer(stop_words=VIETNAMESE_STOPWORDS)
+        all_stopwords = list(VIETNAMESE_STOPWORDS)
+        if custom_stopwords:
+            all_stopwords.extend(custom_stopwords)
+        vectorizer_model = CountVectorizer(stop_words=all_stopwords)
         
         # 2. Stronger UMAP for better separation (default 5 is too small)
         umap_model = umap.UMAP(n_neighbors=15, n_components=10, min_dist=0.0, metric='cosine', random_state=42)
@@ -215,7 +218,8 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
                     min_cohesion=None, 
                     max_cluster_size=max_cluster_size,
                     min_quality_cohesion=min_quality_cohesion, # Pass down
-                    selection_method=selection_method
+                    selection_method=selection_method,
+                    custom_stopwords=custom_stopwords # Pass down
                 )
                 
                 # Remap sub-labels to global space
@@ -378,7 +382,7 @@ def recluster_garbage_clusters(embeddings, labels, min_pairwise_sim=0.35, min_cl
     return new_labels
 
 
-def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors=None):
+def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors=None, custom_stopwords=None):
     """
     Extract labels for clusters with generic word filtering.
     """
@@ -415,8 +419,12 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors
                     if feat in anchor_set: row[idx] *= 5.0 
 
             # Stronger penalty for generic stopwords in labels
+            all_stopwords = set(VIETNAMESE_STOPWORDS)
+            if custom_stopwords:
+                all_stopwords.update(custom_stopwords)
+            
             for idx, feat in enumerate(feature_names):
-                if any(sw == feat.lower() for sw in VIETNAMESE_STOPWORDS):
+                if any(sw == feat.lower() for sw in all_stopwords):
                     row[idx] *= 0.01
                 tokens = feat.split()
                 if len(tokens) == 1: row[idx] *= 0.3

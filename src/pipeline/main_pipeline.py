@@ -551,7 +551,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         selection_method='eom', n_clusters=15,
                        cluster_epsilon=0.05, min_quality_cohesion=0.55,
                        summarize_posts=False, summarization_model='vit5-large',
-                       trust_remote_code=True, use_keywords=True, use_llm_keywords=False):
+                       trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
+                       custom_stopwords=None):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -624,7 +625,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         min_cluster_size=min_cluster_size, 
         epsilon=cluster_epsilon,
         trust_remote_code=trust_remote_code,
-        post_contents=post_contents_enriched
+        post_contents=post_contents_enriched,
+        custom_stopwords=custom_stopwords
     )
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
@@ -656,7 +658,13 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         except Exception as e:
              console.print(f"[dim red]BM25 Build Error: {e}[/dim red]")
 
-    cluster_names = extract_cluster_labels(post_contents, cluster_labels, model=embedder, method=labeling_method, anchors=anchors)
+    # label extraction handles Vietnames and custom words
+    cluster_names = extract_cluster_labels(
+        post_contents, cluster_labels, 
+        model=embedder, method=labeling_method, 
+        anchors=anchors,
+        custom_stopwords=custom_stopwords
+    )
     cluster_mapping = {}
 
     for label in unique_labels:
