@@ -541,7 +541,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     
     # [CACHE STABILITY] Enforce deterministic order
     # Sort posts by time (desc), then source, then content snippet
-    posts.sort(key=lambda x: (x.get('time', ''), x.get('source', ''), x.get('content', '')[:50]))
+    posts.sort(key=lambda x: (str(x.get('time', '')), str(x.get('source', '')), str(x.get('content', ''))[:50]))
     
     # Sort trends by key
     if isinstance(trends, dict):
