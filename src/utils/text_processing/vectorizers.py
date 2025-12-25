@@ -363,7 +363,8 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
         if existing_model:
             model = existing_model
         else:
-            model = SentenceTransformer(model_name, device=device)
+            trust_remote_code = kwargs.get('trust_remote_code', False)
+            model = SentenceTransformer(model_name, device=device, trust_remote_code=trust_remote_code)
         
         # Enforce sequence length limit (default 256, strictly enforced)
         model.max_seq_length = kwargs.get('max_seq_length', 256)
