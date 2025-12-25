@@ -688,7 +688,7 @@ class LLMRefiner:
         except Exception:
             return cluster_name, original_category, "", "Specific", "", "Neutral", {}
 
-    def refine_batch(self, clusters_to_refine, custom_instruction=None):
+    def refine_batch(self, clusters_to_refine, custom_instruction=None, generate_summary=True):
         if not self.enabled or not clusters_to_refine:
             return {}
 
@@ -782,6 +782,10 @@ class LLMRefiner:
 
                 batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples:\n{context}\n\n"
 
+            json_template = '[ {{"id": 0, "refined_title": "Title", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "reasoning": "..."}} ]'
+            if generate_summary:
+                json_template = '[ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "reasoning": "..."}} ]'
+            
             prompt = f"""
             Analyze these {len(chunk)} news/social clusters from Vietnam.
             {instruction}
@@ -796,7 +800,7 @@ class LLMRefiner:
             {batch_str}
 
             Respond with ONLY this JSON (no other text):
-            [ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "reasoning": "..."}} ]
+            {json_template}
             """
             all_prompts.append(prompt)
 

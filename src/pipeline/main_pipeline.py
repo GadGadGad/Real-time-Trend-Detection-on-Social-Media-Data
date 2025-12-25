@@ -534,7 +534,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         custom_stopwords=None, min_member_similarity=0.45,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
-                        embedding_char_limit=500):
+                        embedding_char_limit=500, summarize_refinement=True):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -600,7 +600,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     # --- PHASE 0: SUMMARIZATION ---
     from src.pipeline.pipeline_stages import run_summarization_stage, run_sahc_clustering, calculate_match_scores
     
-    post_contents_enriched = run_summarization_stage(post_contents_enriched, use_llm, summarize_all)
+    if summarize_posts:
+        post_contents_enriched = run_summarization_stage(post_contents_enriched, use_llm, summarize_all, model_name=summarization_model)
+    else:
+        # Pass through without summarization
+        pass
 
     post_embeddings = get_embeddings(
         post_contents_enriched, 
@@ -727,7 +731,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         
         if to_refine:
             console.print(f"   🤖 [cyan]Batch Refining {len(to_refine)} clusters with {llm_provider}...[/cyan]")
-            batch_results = llm_refiner.refine_batch(to_refine, custom_instruction=llm_custom_instruction)
+            batch_results = llm_refiner.refine_batch(to_refine, custom_instruction=llm_custom_instruction, generate_summary=summarize_refinement)
             
             for l, res in batch_results.items():
                 label_key = int(l) if isinstance(l, (str, int)) else l
@@ -767,11 +771,40 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         t2_emb = embedder.encode([matched_trend])
                         sim = cosine_similarity(t1_emb, t2_emb)[0][0]
                         
-                        if sim < 0.4: # HARD SEMANTIC GUARD
-                            console.print(f"      ⚠️ [yellow]Mismatched Trend rejected: '{matched_trend}' -> '{refined_title}' (sim={sim:.2f}). Swapping to Discovery.[/yellow]")
-                            m["final_topic"] = f"New: {refined_title}"
-                            m["topic_type"] = "Discovery"
-                            m["match_score"] = 0.0
+                        # Check 1: Substring Match (Named Entity Overlap)
+                        # If the trend name literally appears in the refined title, it's almost certainly a match.
+                        trend_normalized = matched_trend.lower().replace(".", "").strip()
+                        title_normalized = refined_title.lower().replace(".", "").strip()
+                        
+                        is_exact_match = (trend_normalized in title_normalized) or (title_normalized in trend_normalized)
+                        
+                        # Check for key entity overlap (split by space, check if any 2+ word segments match)
+                        trend_parts = set(trend_normalized.split())
+                        title_parts = set(title_normalized.split())
+                        # Common proper nouns (at least 2 words or 1 long word) suggest entity overlap
+                        common_parts = trend_parts.intersection(title_parts)
+                        is_entity_match = len([p for p in common_parts if len(p) > 4]) >= 2  # e.g., "đoàn", "văn", "sáng"
+                        
+                        if is_exact_match or is_entity_match:
+                            # Trust the match - it's the same entity
+                            pass 
+                        elif sim < 0.25: # [UPDATED] Loosened from 0.40 to 0.25 to prevent valid but poorly phrased matches rejection
+                            # Double Check with Reranker if available (Ground Truth Check)
+                            is_rejected = True
+                            if rerank and reranker:
+                                try:
+                                    pair = (refined_title, matched_trend)
+                                    rr_score = reranker.predict([pair])[0]
+                                    if rr_score > -2.0: # Roughly corresponds to "Relevant"
+                                        is_rejected = False
+                                        console.print(f"      🛡️ [green]Reranker saved match: '{matched_trend}' ~ '{refined_title}' (sim={sim:.2f}, rr={rr_score:.2f})[/green]")
+                                except: pass
+                            
+                            if is_rejected:
+                                console.print(f"      ⚠️ [yellow]Mismatched Trend rejected: '{matched_trend}' -> '{refined_title}' (sim={sim:.2f}). Swapping to Discovery.[/yellow]")
+                                m["final_topic"] = f"New: {refined_title}"
+                                m["topic_type"] = "Discovery"
+                                m["match_score"] = 0.0
                         else:
                              # Keep trending label but we could potentially update the title 
                              # based on user preference. For now, we trust the trend label 
