@@ -528,7 +528,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         cluster_epsilon=0.05, min_quality_cohesion=0.55,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
-                        custom_stopwords=None, min_member_similarity=0.45):
+                        custom_stopwords=None, min_member_similarity=0.45,
+                        use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
+                        match_weights={'dense': 0.6, 'sparse': 0.4}):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -664,7 +666,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         assigned_trend, topic_type, best_match_score = calculate_match_scores(
             cluster_query, label, trend_embeddings, trend_keys, trend_queries, 
             embedder, reranker, rerank, threshold, bm25_index=bm25_index,
-            cluster_centroid=cluster_centroid
+            cluster_centroid=cluster_centroid,
+            use_rrf=use_rrf, rrf_k=rrf_k, use_prf=use_prf, prf_depth=prf_depth,
+            weights=match_weights
         )
 
         trend_data = trends.get(assigned_trend, {'volume': 0})

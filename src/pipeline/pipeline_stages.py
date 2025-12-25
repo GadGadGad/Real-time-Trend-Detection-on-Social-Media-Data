@@ -172,44 +172,71 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
                 
     return final_labels
 
-def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold, bm25_index=None, cluster_centroid=None):
+def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold, 
+                           bm25_index=None, cluster_centroid=None, 
+                           use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
+                           weights={'dense': 0.6, 'sparse': 0.4}):
     """
     Helper to match a cluster to existing trends. 
-    Implements TRUE HYBRID SEARCH:
-    1. Dense (Centroid): Semantic similarity search using the average cluster embedding.
-    2. Sparse (BM25): Keyword similarity search using the TF-IDF cluster label.
-    3. Semantic Guard: Rejects matches where the semantic floor is not met.
+    Implements ADVANCED IR:
+    1. Dense (Centroid): Semantic similarity.
+    2. Pseudo Relevance Feedback (PRF): Expands cluster query based on initial top trends.
+    3. Sparse (BM25): Keyword similarity.
+    4. Fusion (Linear or RRF): Combines signals.
     """
     assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
 
     if len(trend_embeddings) > 0:
         # --- 1. DENSE MATCHING (Centroid-based) ---
-        # Centroid is much more robust than the lossy cluster_query string
         if cluster_centroid is not None:
-            # Ensure 2D for cosine_similarity
             c_vec = cluster_centroid.reshape(1, -1)
             dense_sims = cosine_similarity(c_vec, trend_embeddings)[0]
         else:
-            # Fallback to query-string embedding if centroid not provided
             cluster_emb = embedder.encode(cluster_query).reshape(1, -1)
             dense_sims = cosine_similarity(cluster_emb, trend_embeddings)[0]
         
-        final_scores = dense_sims.copy()
-        
-        # --- 2. SPARSE MATCHING (BM25) ---
+        # --- 2. SPARSE MATCHING ---
         sparse_scores = np.zeros(len(trend_keys))
         if bm25_index:
              try:
-                tokenized_query = cluster_query.lower().split()
-                # BM25 scores are raw floats, need normalization
+                # 2a. Initial Query
+                query_str = cluster_query.lower()
+                
+                # 2b. Optional Pseudo Relevance Feedback (PRF)
+                if use_prf:
+                    # Initial quick dense search to find "relevant" documents (trends)
+                    top_dense_ids = np.argsort(dense_sims)[-prf_depth:]
+                    expansion_keywords = []
+                    for tid in top_dense_ids:
+                        # Extract keywords from the trend query/label to expand our search
+                        expansion_keywords.extend(trend_queries[tid].lower().split())
+                    
+                    # Expand query with unique feedback terms
+                    unique_feedback = list(set(expansion_keywords))[:10] # limit expansion
+                    query_str += " " + " ".join(unique_feedback)
+
+                tokenized_query = query_str.split()
                 raw_sparse = np.array(bm25_index.get_scores(tokenized_query))
                 if raw_sparse.max() > 0:
                     sparse_scores = raw_sparse / raw_sparse.max()
-                
-                # Fusion: 0.6 Dense + 0.4 Sparse (Prioritize Semantic signal)
-                final_scores = 0.6 * dense_sims + 0.4 * sparse_scores
              except Exception:
                  pass
+
+        # --- 3. FUSION ---
+        if use_rrf:
+            # Reciprocal Rank Fusion: 1 / (k + rank)
+            # Ranks: Higher sim = lower rank (1st place = 1)
+            dense_ranks = len(dense_sims) - np.argsort(np.argsort(dense_sims)) 
+            sparse_ranks = len(sparse_scores) - np.argsort(np.argsort(sparse_scores))
+            
+            # Combine ranks
+            rrf_scores = (1.0 / (rrf_k + dense_ranks)) + (1.0 / (rrf_k + sparse_ranks))
+            final_scores = rrf_scores / rrf_scores.max() if rrf_scores.max() > 0 else rrf_scores
+        else:
+            # Linear Fusion (Default)
+            w_dense = weights.get('dense', 0.6)
+            w_sparse = weights.get('sparse', 0.4)
+            final_scores = w_dense * dense_sims + w_sparse * sparse_scores
 
         # Select Top Candidate
         top_idx = np.argsort(final_scores)[-1]
@@ -218,7 +245,7 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
         # --- 3. THE SEMANTIC GUARD ---
         # Even if BM25 is high, the semantic floor must be met to avoid "World Cup" mismatches.
         # Trend labels like "World Cup 2026" should have AT LEAST some semantic overlap.
-        SEMANTIC_FLOOR = 0.35 
+        SEMANTIC_FLOOR = 0.4
         semantic_signal = dense_sims[top_idx]
         
         is_valid_match = (semantic_signal >= SEMANTIC_FLOOR)
