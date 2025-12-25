@@ -539,6 +539,14 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     console.print(f"🚀 [cyan]Phase 1: High-Speed Embeddings & Sentiment on {embedding_device}...[/cyan]")
     embedder = SentenceTransformer(model_name or DEFAULT_MODEL, device=embedding_device, trust_remote_code=trust_remote_code)
     
+    # [CACHE STABILITY] Enforce deterministic order
+    # Sort posts by time (desc), then source, then content snippet
+    posts.sort(key=lambda x: (x.get('time', ''), x.get('source', ''), x.get('content', '')[:50]))
+    
+    # Sort trends by key
+    if isinstance(trends, dict):
+        trends = dict(sorted(trends.items()))
+    
     # --- PHASE 1: EMBEDDINGS ---
     
     taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
