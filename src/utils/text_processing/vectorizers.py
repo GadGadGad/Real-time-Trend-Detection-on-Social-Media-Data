@@ -358,18 +358,23 @@ def get_embeddings(texts: list, method: str = "sentence-transformer",
             # If on Kaggle and we suspect memory pressure, default to CPU
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             
-        console.print(f"[cyan]🧠 Encoding with {model_name or 'existing model'} on {device}...[/cyan]")
-        
-        if existing_model:
+        if existing_model is not None:
             model = existing_model
+            # Logging to confirm it's really an existing model
+            console.print(f"[cyan]🧠 Using already loaded model on {device}...[/cyan]")
         else:
+            if not model_name:
+                raise ValueError("Either existing_model or model_name must be provided for sentence-transformer method.")
+            
+            console.print(f"[cyan]🧠 Loading new model: {model_name} on {device}...[/cyan]")
             trust_remote_code = kwargs.get('trust_remote_code', False)
             model = SentenceTransformer(model_name, device=device, trust_remote_code=trust_remote_code)
         
         # Enforce sequence length limit (default 256, strictly enforced)
-        model.max_seq_length = kwargs.get('max_seq_length', 256)
+        if hasattr(model, 'max_seq_length'):
+            model.max_seq_length = kwargs.get('max_seq_length', 256)
             
-        embeddings = model.encode(texts, show_progress_bar=True, device=device)
+        embeddings = model.encode(texts, show_progress_bar=kwargs.get('show_progress_bar', False), device=device)
         
         # Save to cache if enabled
         if cache_dir:
