@@ -8,36 +8,10 @@ from collections import Counter
 
 console = Console()
 
-# Expanded Vietnamese Stopwords to reduce "garbage bin" clustering
-# Updated based on TF-IDF analysis showing these dominate cluster labels
-VIETNAMESE_STOPWORDS = [
-    # Pronouns & Titles
-    "ông", "bà", "anh", "chị", "em", "tôi", "chúng", "họ", "mình", "ta",
-    # Demonstratives
-    "này", "đó", "kia", "ấy", "nọ", "đây", "kìa",
-    # Copula & Common Verbs
-    "là", "có", "không", "được", "bị", "làm", "đi", "đến", "cho", "lấy",
-    # Conjunctions & Prepositions
-    "và", "với", "để", "của", "từ", "về", "tại", "trong", "ngoài", "trên", "dưới",
-    "vào", "ra", "qua", "lại", "theo", "bởi", "vì", "nên", "mà", "nhưng",
-    # Adverbs & Modifiers
-    "rất", "quá", "lắm", "hơn", "nhất", "đang", "sẽ", "đã", "vừa", "mới",
-    "cũng", "còn", "chỉ", "ngay", "luôn", "thường", "hay",
-    # Quantifiers & Numbers
-    "một", "hai", "ba", "các", "những", "nhiều", "ít", "mọi", "tất_cả", "vài",
-    # Classifiers
-    "cái", "con", "chiếc", "bài", "vụ", "trận", "đấu", "người", "việc", "điều",
-    # Reporter/News phrases
-    "nêu", "cho_biết", "cho_hay", "theo", "nguồn", "tin",
-    # High-frequency from TF-IDF analysis
-    "công", "quốc", "động", "nam", "thống", "như", "khi", "sau", "trước",
-    "nước", "nhà", "đầu", "cuối", "giữa", "ngày", "năm", "tháng", "tuần",
-    # Common News Outlets (Prevent Source Bias)
-    "vnexpress", "vtv", "nld", "tuổi_trẻ", "thanh_niên", "dân_trí", "kenh14", 
-    "zing", "vietnamnet", "tien_phong", "sggp", "soha", "vtc", "znews", "cafef",
-    "theanh28", "tuoitre", "thanhnien", "baomoi", "dantri", "baotuoitre", "baodantri"
-]
+from src.utils.text_processing.stopwords import get_stopwords, SAFE_STOPWORDS, JOURNALISTIC_STOPWORDS, RISKY_STOPWORDS
 
+# Legacy support for variable names if they are imported elsewhere
+VIETNAMESE_STOPWORDS = list(SAFE_STOPWORDS | JOURNALISTIC_STOPWORDS)
 
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 

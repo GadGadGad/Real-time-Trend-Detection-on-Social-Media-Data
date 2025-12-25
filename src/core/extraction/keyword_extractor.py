@@ -38,15 +38,14 @@ class KeywordExtractor:
         self.bert_pipeline = None
         self.bert_repo_path = os.path.join(os.path.expanduser("~"), ".cache", "keyword-extraction-viet")
         
-        # Common Vietnamese stopwords (minimal set for extraction)
-        self.stopwords = {
-            'và', 'của', 'là', 'có', 'trong', 'đã', 'ngày', 'theo', 'với', 
-            'cho', 'người', 'những', 'tại', 'về', 'các', 'được', 'ra', 'khi',
-            'mới', 'này', 'cho', 'nhiều',
-            # Technical artifacts/noise
-            'volume', 'keywords', 'time', 'automatic', 'ssi', 
-            'doanh_nghiệp', 'việc_làm', # Sometimes noise if just list columns
-        }
+        from src.utils.text_processing.stopwords import get_stopwords
+        
+        # Standardize on 'balanced' level for extraction (Safe + Journalistic)
+        # Add technical noise specific to this class
+        self.stopwords = get_stopwords(level="balanced", custom_list=[
+            'volume', 'keywords', 'time', 'automatic', 'ssi', w
+            'doanh_nghiệp', 'việc_làm'
+        ])
 
     def _load_cache(self):
         if os.path.exists(self.cache_path):

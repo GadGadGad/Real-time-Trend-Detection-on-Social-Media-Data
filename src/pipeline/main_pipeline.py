@@ -68,16 +68,22 @@ def strip_news_source_noise(text):
     
     # 1. Start-of-string prefixes (Source - ) or (Source) -
     patterns = [
-        # Face: Theanh28 - or Face: baodantri - 
-        r'^Face:\s*[^:]+[-–—:]\s*',
+        # Face: Theanh28 - or Face: baodantri - (Case-insensitive)
+        r'(?i)^Face:\s*[^:]+[-–—:]\s*',
         # (VTV.vn) - or [VTV.vn] - 
         r'^[\(\[][^\]\)]+[\)\]]\s*[-–—:]\s*',
-        # VNExpress - or NLD - 
-        r'^[A-Z0-9.\s]{2,20}\s*[-–—:]\s*',
-        # Catch just the source name at start followed by colon/dash
-        r'^(VNEXPRESS|NLD|THANHNIEN|TUOITRE|VIETNAMNET|VTV|ZING)\s*[:\-–—]\s*',
+        # headers like: TP HCM: / HÀ NỘI: / Gaza: / Damascus: / Damascus - (Case-insensitive)
+        r'(?i)^([A-ZÀ-Ỹ0-9.\s-]){2,30}\s*[:\-–—]\s*',
+        # Catch just the source name at start followed by colon/dash (Case-insensitive)
+        r'(?i)^(VNEXPRESS|NLD|THANHNIEN|TUOITRE|VIETNAMNET|VTV|ZING|BAOMOI|DANTRI|REUTERS|AFP|TTXVN)\s*[:\-–—]\s*',
         # (Source) without dash
         r'^[\(\[][^\]\)]+[\)\]]\s*',
+        # "Theo tin từ Reuters -" or "Reuters (Damascus) -" (Case-insensitive)
+        r'(?i)^(Theo\s+(tin\s+từ\s+)?)?(Reuters|AFP|TTXVN|VNA|AP|BBC|CNN).+?[:\-–—]\s*',
+        # Suffix like (Reuters) at the start
+        r'(?i)^\(REUTERS\)\s*[-–—:]?\s*',
+        r'(?i)^\(AFP\)\s*[-–—:]?\s*',
+        r'(?i)^\(TTXVN\)\s*[-–—:]?\s*',
     ]
     
     cleaned = text
@@ -91,39 +97,8 @@ def filter_obvious_noise(trends):
     """
     Stage 1: Pre-Filter. Removes lottery, price charts, and generic dates.
     """
-    noise_keywords = [
-        # Lottery & Betting (High noise)
-        'xo so', 'xo so mb', 'xo so mn', 'xo so mt', 'xsmb', 'xsmn', 'xsmt', 'vietlott', 
-        'so mien bac', 'so mien nam', 'so mien dong', 'so mb', 'so mn', 'so mt',
-        'thống kề lô', 'thong ke lo', 'đề hôm nay', 'xspy', 'xshcm', 'xsbd',
-        'bet', '88', 'bong88', 'fun88', 'new88', 's666', 'ee88', '188bet', '8xbet', 'w88',
-        
-        # Finance & Market Indicators (Generic)
-        'gia vang', 'ti gia', 'lãi suất', 'lai suat', 'thuế thu nhập', 'thue thu nhap', 
-        'vnindex', 'chung khoan', 'co phieu', 'giá bạc', 'gia bac', 'giá heo', 'gia heo',
-        'crypto', 'bitcoin', 'eth', 'usdt',
-
-        # Weather & Env Features (Generic)
-        'weather', 'thoi tiet', 'nhiệt độ', 'nhiet do', 'nhiet do tphcm', 'nhiet do hcm', 'nhiet do hcm city', 'nhiet do hcm city'
-        'nhiet do ha noi', 'nhiet do da nang',
-        'mưa không', 'mua khong', 'có mưa không', 'dự báo thời tiết', 'du bao thoi tiet',
-        'áp thấp nhiệt đới', 'ap thap nhiet doi', 'bão mặt trời', 'bao mat troi',
-        'cúp điện', 'cup dien', 'lịch cúp điện',
-
-        # Platforms & Generic Terms
-        'code', 'wiki', 'spotify', 'youtube', 'netflix', 'twitch', 'discord', 'instagram', 'facebook', 'tiktok',
-        'google', 'gemini', 'claude', 'meta', 'twitter', 'x.com', 'reddit', 'thread',
-        'cloudflare', 'disney+', 'k+', 'vtv', 'fpt play', 'tv360', 'my tv', 'vieon',
-        'live', 'online', 'stream', 'xem', 'truc tiep', 'ket qua', 'lich thi dau',
-        'bxh', 'bang xep hang', 'kqbd', 'livescore', 'socolive', 'xoilac',
-        'time', 'date', 'doc', 'prep', 'test', 'demo', 'kq', 'cancel', 'bk8',
-        'tết', 'nghỉ tết', 'lịch nghỉ',
-
-        # News Outlets (Source names often appear as trends)
-        'vnexpress', 'tuoi tre', 'thanh nien', 'dan tri', 'kenh14', 'zing', 'bao moi', 
-        'vietnamnet', 'vtv', 'tien phong', 'sggp', 'nld', 'nguoi lao dong', 'lao dong', 
-        'soha', 'vtc', '24h', 'cafea', 'cafef', 'cafebiz', 'yan', 'znews' 'dan viet'
-    ]
+    from src.utils.text_processing.stopwords import get_noise_keywords
+    noise_keywords = get_noise_keywords()
 
     
     
