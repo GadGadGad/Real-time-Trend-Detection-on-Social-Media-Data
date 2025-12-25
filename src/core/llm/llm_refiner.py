@@ -898,7 +898,7 @@ class LLMRefiner:
             if not parsed:
                 # Fallback if parsing fails
                 for item in batch_items:
-                    results[item['id']] = {"category": "B", "event_type": "Specific", "reasoning": "Parse Error"}
+                    results[item['id']] = {"category": "T5", "event_type": "Specific", "reasoning": "Parse Error"}
                 continue
                 
             for item in batch_items:
@@ -908,12 +908,12 @@ class LLMRefiner:
                 if key in parsed:
                     info = parsed[key]
                     results[item_id] = {
-                        "category": info.get("category", "B"),
+                        "category": info.get("category", "T5"),
                         "event_type": info.get("event_type", "Specific"),
                         "reasoning": info.get("reasoning", "")
                     }
                 else:
-                    results[item_id] = {"category": "B", "event_type": "Specific", "reasoning": "Missing in response"}
+                    results[item_id] = {"category": "T5", "event_type": "Specific", "reasoning": "Missing in response"}
 
         return results
 
