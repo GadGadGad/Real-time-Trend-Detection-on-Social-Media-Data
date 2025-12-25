@@ -1,10 +1,10 @@
 """
 Comprehensive Event Keyword Taxonomy for Vietnamese.
-Categorized into Critical Alerts (Group A), Social Signals (Group B), and Market Trends (Group C).
+Categorized into 7 distinct usage-based groups as per proposal.md.
 """
 
 EVENT_KEYWORDS_VI = {
-    "A_CRITICAL": {
+    "T1_CRISIS": {
         "Accidents": [
             "tai nạn", "va chạm", "đâm", "tông",
             "lật xe", "cháy", "nổ", "phát nổ",
@@ -14,26 +14,23 @@ EVENT_KEYWORDS_VI = {
             "bị thương", "nhập viện",
             "tử vong", "thiệt mạng", "chết người"
         ],
-        "Weather": [
-            "bão", "áp thấp", "lốc xoáy",
+        "Disasters": [
+            "cơn bão", "áp thấp", "lốc xoáy",
             "mưa lớn", "mưa to", "ngập", "ngập lụt",
             "lũ", "lũ quét", "sạt lở", "sạt lở đất",
             "động đất", "dư chấn",
-            "sóng thần", "núi lửa",
-            "nắng nóng", "nắng nóng kéo dài",
-            "rét đậm", "rét hại", "hạn hán"
+            "sóng thần", "núi lửa"
         ],
-        "Health": [
+        "Epidemics": [
             "dịch bệnh", "bùng phát",
             "virus", "vi rút",
             "lây nhiễm", "ca nhiễm",
             "dịch", "ổ dịch",
             "covid", "cúm", "cúm gia cầm",
             "sốt xuất huyết", "tay chân miệng",
-            "cách ly", "phong tỏa",
-            "nhập viện", "chăm sóc đặc biệt"
+            "cách ly", "phong tỏa"
         ],
-        "Crime": [
+        "Crimes": [
             "giết người", "án mạng",
             "bắn", "nổ súng",
             "cướp", "cướp giật",
@@ -44,14 +41,21 @@ EVENT_KEYWORDS_VI = {
         ]
     },
 
-    "B_SOCIAL": {
-        "Viral": [
-            "viral", "lan truyền",
-            "gây bão mạng", "gây sốt",
-            "xu hướng", "trending",
-            "được chia sẻ", "triều lượt xem",
-            "clip nóng", "video gây sốt"
+    "T2_GOVERNANCE": {
+        "Policy": [
+            "nghị định", "thông tư", "luật", "dự thảo",
+            "ban hành", "quy định mới", "điều chỉnh",
+            "thuế", "lệ phí", "thủ tục hành chính",
+            "cải cách", "đề xuất", "kiến nghị"
         ],
+        "Statements": [
+            "phát biểu", "chỉ đạo", "yêu cầu",
+            "thủ tướng", "bộ trưởng", "chính phủ",
+            "quốc hội", "ubnd", "họp báo"
+        ]
+    },
+
+    "T3_REPUTATION": {
         "Controversy": [
             "tranh cãi", "lùm xùm",
             "scandal", "phốt",
@@ -60,20 +64,10 @@ EVENT_KEYWORDS_VI = {
             "làn sóng phản đối",
             "tẩy chay", "xin lỗi công khai",
             "từ chức", "bị đình chỉ"
-        ],
-        "DailyLife": [
-            "ùn tắc", "kẹt xe",
-            "mất điện", "cúp điện",
-            "mất nước",
-            "đình công", "biểu tình",
-            "đóng cửa trường học",
-            "nghỉ học", "làm việc từ xa",
-            "tăng giá", "leo thang giá",
-            "giá xăng", "giá điện"
         ]
     },
 
-    "C_MARKET": {
+    "T4_MARKET": {
         "Economy": [
             "lạm phát", "giảm phát",
             "suy thoái", "tăng trưởng",
@@ -94,6 +88,22 @@ EVENT_KEYWORDS_VI = {
             "ra mắt sản phẩm",
             "bản cập nhật"
         ],
+        "Consumer": [
+            "xu hướng tiêu dùng", "mua sắm",
+            "giảm giá", "khuyến mãi",
+            "shopee", "tiktok shop", "lazada",
+            "lifestyle", "phong cách sống"
+        ]
+    },
+
+    "T5_CULTURE": {
+        "Viral": [
+            "viral", "lan truyền",
+            "gây bão mạng", "bão mạng", "gây sốt",
+            "xu hướng", "trending",
+            "được chia sẻ", "triệu lượt xem",
+            "clip nóng", "video gây sốt"
+        ],
         "Entertainment": [
             "phim mới", "ra rạp",
             "doanh thu phòng vé",
@@ -103,19 +113,49 @@ EVENT_KEYWORDS_VI = {
             "hẹn hò", "kết hôn", "ly hôn",
             "tin đồn tình cảm"
         ],
-        "Sports": [
+        "Celebs": [
+            "người nổi tiếng", "idol", "thần tượng",
+            "showbiz", "ngôi sao", "người mẫu"
+        ]
+    },
+
+    "T6_OPERATIONAL": {
+        "PublicServices": [
+            "ùn tắc", "kẹt xe",
+            "mất điện", "cúp điện",
+            "mất nước",
+            "đình công", "biểu tình",
+            "đóng cửa trường học",
+            "nghỉ học", "làm việc từ xa",
+            "quá tải", "chờ đợi lâu"
+        ],
+        "Prices": [
+            "tăng giá", "leo thang giá",
+            "giá xăng", "giá điện", "giá vé"
+        ]
+    },
+
+    "T7_ROUTINE": {
+        "Weather_Daily": [
+            "dự báo thời tiết", "nắng nóng", "nắng nóng kéo dài",
+            "rét đậm", "rét hại", "hạn hán", "nhiệt độ"
+        ],
+        "Sports_Routine": [
             "trận đấu", "chung kết", "bán kết",
             "giải đấu", "vô địch",
             "chiến thắng", "thất bại",
             "ghi bàn", "bàn thắng",
             "thẻ đỏ", "penalty",
             "chấn thương", "chuyển nhượng"
+        ],
+        "Lottery": [
+            "xổ số", "xsmn", "xsmb", "vietlott", "quay thử"
         ]
     }
 }
 
 def get_flattened_keywords_by_group(group_key: str) -> list:
-    """Returns a flat list of all keywords for a specific group (A, B, or C)."""
+    """Returns a flat list of all keywords for a specific group (T1..T7)."""
     group_data = EVENT_KEYWORDS_VI.get(group_key, {})
     all_kws = []
     for subcat_kws in group_data.values():

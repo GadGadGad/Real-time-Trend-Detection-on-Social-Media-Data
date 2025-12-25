@@ -823,7 +823,7 @@ class LLMRefiner:
             Dict mapping id -> {category, event_type, reasoning}
         """
         if not self.enabled:
-            return {item['id']: {'category': 'B', 'event_type': 'Specific', 'reasoning': 'LLM Disabled'} for item in topic_data_list}
+            return {item['id']: {'category': 'T5', 'event_type': 'Specific', 'reasoning': 'LLM Disabled'} for item in topic_data_list}
 
         results = {}
         batch_size = 10  # Process 10 classifications at a time
@@ -854,17 +854,20 @@ class LLMRefiner:
             batch_str = json.dumps(batch_items, ensure_ascii=False, indent=2)
             
             prompt = f"""
-            Role: Crisis Event Classifier for Vietnam.
+            Role: Crisis & Event Classifier for Vietnam.
             
-            Task: Classify each topic into:
-            1. CATEGORY (A, B, or C):
-               - A (Critical): Disasters (Storms, Floods), Major Accidents, National Policy Changes, Crimes.
-               - B (Social Signal): Viral trends, Public Debates, Celebrity News, Sports Finals.
-               - C (Routine/Noise): Weather reports, Lottery, Daily traffic, Generic ads.
+            Task: Classify each topic into one of the following 7 Usage Groups:
+            - T1 (Crisis & Public Risk): Accidents, fires, natural disasters, epidemics, riots.
+            - T2 (Policy & Governance): New regulations, policy announcements, government statements.
+            - T3 (Reputation & Trust): Scandals, accusations, boycotts, controversies.
+            - T4 (Market Opportunity): Product trends, lifestyle changes, tech adoption.
+            - T5 (Cultural & Attention): Memes, celebrities, entertainment, viral noise.
+            - T6 (Operational Pain): Traffic, power outages, public service failures.
+            - T7 (Routine Signals): Weather updates, lottery, daily sports results.
                
             2. EVENT TYPE:
                - Specific: A concrete event (e.g., "Bão Yagi", "Vụ cháy chung cư A").
-               - Generic: A broad topic (e.g., "Tình hình thời tiết", "Giá vàng hôm nay").
+               - Generic: A broad topic (e.g., "Tình hình thời tiết", "Giá xăng hôm nay").
                
             Input Topics:
             {batch_str}
@@ -872,8 +875,8 @@ class LLMRefiner:
             Output: JSON Object mapping ID -> Classification.
             Example:
             {{
-                "0": {{ "category": "A", "event_type": "Specific", "reasoning": "Major natural disaster impacting thousands." }},
-                "1": {{ "category": "C", "event_type": "Generic", "reasoning": "Routine daily report." }}
+                "0": {{ "category": "T1", "event_type": "Specific", "reasoning": "Major natural disaster impacting thousands." }},
+                "1": {{ "category": "T7", "event_type": "Generic", "reasoning": "Routine daily report." }}
             }}
             """
             all_prompts.append(prompt)

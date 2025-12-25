@@ -16,7 +16,8 @@ VIETNAMESE_STOPWORDS = list(SAFE_STOPWORDS | JOURNALISTIC_STOPWORDS)
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
                  selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
-                 min_quality_cohesion=0.5, trust_remote_code=False, custom_stopwords=None):
+                 min_quality_cohesion=0.5, min_member_similarity=0.45, 
+                 trust_remote_code=False, custom_stopwords=None):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
@@ -163,11 +164,18 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
             should_split = False
             if cluster_size > max_cluster_size:
                 should_split = True
-            elif cluster_size >= min_cluster_size * 2 and min_quality_cohesion > 0:
-                cohesion = get_cluster_cohesion(embeddings[mask])
-                if cohesion < min_quality_cohesion:
+            elif cluster_size >= min_cluster_size * 2:
+                # Check for "similarity outliers" even if size is okay
+                avg_cohesion, member_sims = get_cluster_cohesion(embeddings[mask], return_all=True)
+                
+                # Split if average is too low OR if we have significant outliers
+                # (e.g., if more than 20% of members are below the threshold)
+                outlier_ratio = np.sum(member_sims < min_member_similarity) / cluster_size
+                
+                if avg_cohesion < min_quality_cohesion or outlier_ratio > 0.2:
                     should_split = True
-                    console.print(f"[yellow]⚖️ Quality Split: Cluster {label} (size {cluster_size}) has low cohesion ({cohesion:.2f} < {min_quality_cohesion}). Splitting...[/yellow]")
+                    reason = "low cohesion" if avg_cohesion < min_quality_cohesion else f"high outliers ({outlier_ratio:.1%})"
+                    console.print(f"[yellow]⚖️ Quality Split: Cluster {label} (size {cluster_size}) has {reason}. Splitting...[/yellow]")
 
             if should_split:
                 if not recursion_occured:
@@ -191,9 +199,10 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
                     embedding_model=embedding_model,
                     min_cohesion=None, 
                     max_cluster_size=max_cluster_size,
-                    min_quality_cohesion=min_quality_cohesion, # Pass down
+                    min_quality_cohesion=min_quality_cohesion,
+                    min_member_similarity=min_member_similarity, # Pass down
                     selection_method=selection_method,
-                    custom_stopwords=custom_stopwords # Pass down
+                    custom_stopwords=custom_stopwords
                 )
                 
                 # Remap sub-labels to global space
@@ -215,7 +224,15 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
             final_count = len(set(labels)) - (1 if -1 in labels else 0)
             console.print(f"[bold green]✨ Recursion Complete. Final cluster count: {final_count}[/bold green]")
 
-    # --- POST-PROCESSING: Cohesion Filtering ---
+    # --- POST-PROCESSING: Member Similarity Pruning (Phase 8) ---
+    if labels is not None and min_member_similarity > 0:
+        labels = refine_clusters_by_member_similarity(
+            embeddings, labels, 
+            threshold=min_member_similarity,
+            min_cluster_size=min_cluster_size
+        )
+
+    # --- POST-PROCESSING: Cohesion Filtering (Cluster-level) ---
     if labels is not None and min_cohesion is not None and min_cohesion > 0:
         labels = refine_clusters_by_cohesion(embeddings, labels, threshold=min_cohesion)
 
@@ -229,12 +246,68 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
 
     return labels
 
-def get_cluster_cohesion(cluster_embs):
-    """Calculate average semantic similarity of a cluster to its centroid."""
-    if len(cluster_embs) <= 1: return 1.0
+def get_cluster_cohesion(cluster_embs, return_all=False):
+    """
+    Calculate semantic similarity of cluster members to its centroid.
+    
+    Args:
+        cluster_embs: Embedding matrix for the cluster
+        return_all: If True, return (avg_sim, all_member_sims). If False, return avg_sim.
+    """
+    if len(cluster_embs) <= 1: 
+        return (1.0, np.array([1.0])) if return_all else 1.0
+        
     centroid = cluster_embs.mean(axis=0).reshape(1, -1)
-    sims = cosine_similarity(cluster_embs, centroid)
+    sims = cosine_similarity(cluster_embs, centroid).flatten()
+    
+    if return_all:
+        return float(sims.mean()), sims
     return float(sims.mean())
+
+def refine_clusters_by_member_similarity(embeddings, labels, threshold=0.45, min_cluster_size=3):
+    """
+    Quality Pruning (Phase 8): Remove individual posts from a cluster if they 
+    are below a specific similarity to the centroid.
+    
+    If pruning leaves a cluster with < min_cluster_size members, the whole cluster is dissolved.
+    """
+    new_labels = labels.copy()
+    unique_labels = sorted(list(set(labels)))
+    if -1 in unique_labels: unique_labels.remove(-1)
+    
+    pruned_posts = 0
+    dissolved_clusters = 0
+    
+    for label in unique_labels:
+        mask = (labels == label)
+        indices = np.where(mask)[0]
+        cluster_embs = embeddings[mask]
+        
+        # Calculate per-post similarity to centroid
+        _, member_sims = get_cluster_cohesion(cluster_embs, return_all=True)
+        
+        # Identify outliers
+        outliers_mask = (member_sims < threshold)
+        outlier_count = np.sum(outliers_mask)
+        
+        if outlier_count > 0:
+            # Check remaining size
+            remaining_size = len(member_sims) - outlier_count
+            
+            if remaining_size < min_cluster_size:
+                # Dissolve entire cluster
+                new_labels[mask] = -1
+                dissolved_clusters += 1
+            else:
+                # Prune only outliers
+                outlier_indices = indices[outliers_mask]
+                new_labels[outlier_indices] = -1
+                pruned_posts += outlier_count
+                
+    if pruned_posts > 0 or dissolved_clusters > 0:
+        console.print(f"[yellow]⚖️ Similarity Pruning: Pruned {pruned_posts} outlier posts and dissolved {dissolved_clusters} weak clusters (Threshold: {threshold}).[/yellow]")
+        
+    return new_labels
 
 def refine_clusters_by_cohesion(embeddings, labels, threshold=0.5):
     """

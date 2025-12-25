@@ -1,110 +1,61 @@
-import os
-import json
-import csv
-import datetime
-import hashlib
 import numpy as np
+import json
+import os
+from dateutil import parser
 from rich.console import Console
 from sklearn.metrics.pairwise import cosine_similarity
-from src.core.analysis.summarizer import Summarizer
-from src.core.analysis.clustering import cluster_data
+
+from src.core.analysis.clustering import cluster_data, extract_cluster_labels
+from src.core.llm.llm_refiner import LLMRefiner
+from src.pipeline.main_pipeline import clean_text, strip_news_source_noise
 
 console = Console()
 
-def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, model_name='vit5-large'):
+def run_summarization_stage(post_contents, use_llm, summarize_all, model_name='vit5-large', summary_cache_file="summary_cache.json"):
     """
-    Phase 0: Summarization.
-    Summarizes long posts using the Summarizer model if enabled.
-    Handles caching and logging to CSV.
+    Phase 0: Summarization for long posts (Vietnamese).
+    Reduces noise for embedding model.
+    """
+    long_indices_all = [i for i, text in enumerate(post_contents) if len(text) > 500]
     
-    Args:
-        post_contents: list of strings (post contents)
-        use_llm: enable summarization
-        summarize_all: if True, summarize all posts; else only > 2500 chars
-        model_name: 'vit5-large', 'vit5-base', 'bartpho' or full HuggingFace path
-        
-    Returns: list of strings (summarized contents where applicable)
-    """
-    if not use_llm:
+    if not (summarize_all or long_indices_all):
         return post_contents
-
-    # If summarizing always, threshold is 0. Else, 2500 chars.
-    len_threshold = 0 if summarize_all else 2500
+        
+    post_contents_enriched = post_contents.copy()
     
     # Load Cache
-    summary_cache_file = "summary_cache.json"
     summary_cache = {}
     if os.path.exists(summary_cache_file):
         try:
             with open(summary_cache_file, 'r', encoding='utf-8') as f:
                 summary_cache = json.load(f)
-            console.print(f"[dim]📦 Loaded {len(summary_cache)} cached summaries[/dim]")
         except: pass
 
-    post_contents_enriched = list(post_contents) # Copy
-    def get_hash(t): return hashlib.md5(t.encode()).hexdigest()
-
-    # Identify what actually needs summarization (not in cache)
-    long_indices_all = [i for i, t in enumerate(post_contents_enriched) if len(t) > len_threshold]
+    # Identify what needs processing
+    to_process = []
     long_indices_to_process = []
-    
-    # Apply cache first
-    for idx in long_indices_all:
-        txt = post_contents_enriched[idx]
-        h = get_hash(txt)
-        if h in summary_cache:
-            post_contents_enriched[idx] = f"SUMMARY: {summary_cache[h]}"
+    for i in (range(len(post_contents)) if summarize_all else long_indices_all):
+        text = post_contents[i]
+        if text in summary_cache:
+            post_contents_enriched[i] = summary_cache[text]
         else:
-            long_indices_to_process.append(idx)
-    
-    # Process missing entries
+            to_process.append(text)
+            long_indices_to_process.append(i)
+
     if long_indices_to_process:
-        mode_desc = "ALL" if summarize_all else "LONG"
-        console.print(f"[cyan]📝 Phase 0: Summarizing {len(long_indices_to_process)} articles ({mode_desc}) - {len(long_indices_all)-len(long_indices_to_process)} cached...[/cyan]")
-        
-        summ = Summarizer(model_name=model_name)
-        summ.load_model()
-        
-        long_texts = [post_contents_enriched[i] for i in long_indices_to_process]
-        summaries = summ.summarize_batch(long_texts)
-        summ.unload_model() # Free GPU immediately
-        
-        # Save to CSV log & Update Cache
-        log_file = "summarized_posts_log.csv"
-        file_exists = os.path.isfile(log_file)
+        console.print(f"   ✂️ [cyan]Summarizing {len(long_indices_to_process)} long/target posts...[/cyan]")
+        from src.core.extraction.summarizer import Summarizer
+        summarizer = Summarizer(model_name=model_name)
+        summaries = summarizer.batch_summarize(to_process)
         
         new_cache_entries = 0
-        
-        try:
-            with open(log_file, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(['Timestamp', 'Original Length', 'Summary Length', 'Summary', 'Original Start'])
-                
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                for idx, summary in zip(long_indices_to_process, summaries):
-                    original = post_contents_enriched[idx]
-                    # Cache Key
-                    h = get_hash(original)
-                    summary_cache[h] = summary
-                    new_cache_entries += 1
-                    
-                    # Update content in place
-                    post_contents_enriched[idx] = f"SUMMARY: {summary}"
-                    
-                    # Log
-                    writer.writerow([
-                        now, 
-                        len(original), 
-                        len(summary), 
-                        summary, 
-                        original[:200].replace('\n', ' ') + "..."
-                    ])
-        except Exception as e:
-            console.print(f"[red]Failed to save summary log: {e}[/red]")
-
-        # Save Cache to Disk
+        for i, idx in enumerate(long_indices_to_process):
+            summary = summaries[i]
+            post_contents_enriched[idx] = summary
+            summary_cache[to_process[i]] = summary
+            new_cache_entries += 1
+            
+        # Save Cache
         if new_cache_entries > 0:
             try:
                 with open(summary_cache_file, 'w', encoding='utf-8') as f:
@@ -118,7 +69,9 @@ def run_summarization_stage(post_contents, use_llm=False, summarize_all=False, m
          
     return post_contents_enriched
 
-def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, post_contents=None, epsilon=0.15, trust_remote_code=False, custom_stopwords=None):
+def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, 
+                        post_contents=None, epsilon=0.15, trust_remote_code=False, 
+                        custom_stopwords=None, min_member_similarity=0.45, selection_method='leaf'):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
@@ -131,21 +84,28 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         post_contents: list of post text (required for BERTopic)
         epsilon: cluster_selection_epsilon (lower = more clusters)
         custom_stopwords: optional list of stopwords to merge with defaults
+        min_member_similarity: Minimum cosine similarity for cluster membership
+        selection_method: HDBSCAN selection method ('leaf' or 'eom')
     """
     # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
     news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
     social_indices = [i for i, p in enumerate(posts) if 'Face' in p.get('source', '')]
     
-    console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles ({method}, eps={epsilon})...[/cyan]")
-    news_embs = post_embeddings[news_indices]
-    news_texts = [post_contents[i] for i in news_indices] if post_contents else None
-    
-    if len(news_embs) >= min_cluster_size:
-        news_labels = cluster_data(news_embs, min_cluster_size=min_cluster_size, method=method, 
-                                   n_clusters=n_clusters, texts=news_texts, epsilon=epsilon,
-                                   selection_method='leaf', min_quality_cohesion=0.55,
-                                   trust_remote_code=trust_remote_code,
-                                   custom_stopwords=custom_stopwords)
+    news_labels = np.full(len(news_indices), -1)
+    if len(news_indices) >= min_cluster_size:
+        console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles ({method}, eps={epsilon})...[/cyan]")
+        news_labels = cluster_data(
+            post_embeddings[news_indices], 
+            min_cluster_size=min_cluster_size, 
+            epsilon=epsilon, 
+            method=method, 
+            n_clusters=n_clusters, 
+            texts=[post_contents[i] for i in news_indices] if post_contents else None,
+            trust_remote_code=trust_remote_code,
+            custom_stopwords=custom_stopwords,
+            min_member_similarity=min_member_similarity,
+            selection_method=selection_method
+        )
     else:
         news_labels = np.array([-1] * len(news_indices))
 
@@ -191,10 +151,18 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         console.print(f"🔭 [cyan]SAHC Phase 3: Researching Discovery trends in {len(unattached_social_indices)} social posts (eps={epsilon})...[/cyan]")
         leftover_embs = post_embeddings[unattached_social_indices]
         leftover_texts = [post_contents[i] for i in unattached_social_indices] if post_contents else None
-        social_discovery_labels = cluster_data(leftover_embs, min_cluster_size=min_cluster_size, 
-                                               method=method, n_clusters=n_clusters, texts=leftover_texts, epsilon=epsilon,
-                                               trust_remote_code=trust_remote_code,
-                                               custom_stopwords=custom_stopwords)
+        social_discovery_labels = cluster_data(
+            leftover_embs, 
+            min_cluster_size=min_cluster_size, 
+            method=method, 
+            n_clusters=n_clusters, 
+            texts=leftover_texts, 
+            epsilon=epsilon,
+            min_member_similarity=min_member_similarity, # Pass down
+            trust_remote_code=trust_remote_code,
+            custom_stopwords=custom_stopwords,
+            selection_method=selection_method
+        )
         
         # Shift social labels to avoid collision with news clusters
         max_news_label = max(unique_news_clusters) if unique_news_clusters else -1

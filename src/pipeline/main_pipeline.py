@@ -524,10 +524,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         llm_custom_instruction=None, use_cache=True,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
-                       cluster_epsilon=0.05, min_quality_cohesion=0.55,
-                       summarize_posts=False, summarization_model='vit5-large',
-                       trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
-                       custom_stopwords=None):
+                        cluster_epsilon=0.05, min_quality_cohesion=0.55,
+                        summarize_posts=False, summarization_model='vit5-large',
+                        trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
+                        custom_stopwords=None, min_member_similarity=0.45):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -597,11 +597,13 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     # --- SAHC PHASE 1-3: CLUSTERING ---
     cluster_labels = run_sahc_clustering(
         posts, post_embeddings, 
-        min_cluster_size=min_cluster_size, 
+        min_cluster_size=min_cluster_size,
+        selection_method=selection_method,
         epsilon=cluster_epsilon,
         trust_remote_code=trust_remote_code,
         post_contents=post_contents_enriched,
-        custom_stopwords=custom_stopwords
+        custom_stopwords=custom_stopwords,
+        min_member_similarity=min_member_similarity
     )
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)
@@ -841,14 +843,34 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 noise_count += 1
                 continue
 
-            matches.append({
-                "source": post.get('source'), "time": post.get('time'), "post_content": post.get('content'),
-                "final_topic": m["final_topic"], "topic_type": m["topic_type"], "category": m["category"],
-                "score": m["match_score"], "trend_score": m["trend_score"], "llm_reasoning": m["llm_reasoning"],
-                "sentiment": sentiments[i], "is_matched": (m["topic_type"] == "Trending"), "trend": m["final_topic"]
+            # Build match result preserving all original post metadata (e.g., original_index, url)
+            match_item = post.copy()
+            match_item.update({
+                "post_content": post.get('content'), # Backward compatibility for notebook
+                "final_topic": m["final_topic"], 
+                "topic_type": m["topic_type"], 
+                "category": m["category"],
+                "score": m["match_score"], 
+                "trend_score": m["trend_score"], 
+                "llm_reasoning": m["llm_reasoning"],
+                "sentiment": sentiments[i], 
+                "is_matched": (m["topic_type"] == "Trending"), 
+                "trend": m["final_topic"]
             })
+            matches.append(match_item)
         elif save_all:
-            matches.append({"final_topic": "Unassigned", "topic_type": "Noise", "sentiment": sentiments[i], "is_matched": False})
+            # For unassigned posts, if save_all is true, include them as Noise
+            match_item = post.copy()
+            match_item.update({
+                "post_content": post.get('content'), # Backward compatibility for notebook
+                "final_topic": "Unassigned", 
+                "topic_type": "Noise", 
+                "sentiment": sentiments[i], 
+                "is_matched": False
+            })
+            matches.append(match_item)
+        else:
+            noise_count += 1
 
     if not matches and posts:
         console.print(f"[yellow]⚠️  Warning: Pipeline returned 0 results. {noise_count} posts were filtered as Noise.[/yellow]")
