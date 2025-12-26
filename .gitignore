@@ -53,3 +53,6 @@ slides/final/main.snm
 slides/final/main.synctex.gz
 slides/final/main.toc
 slides/final/main.vrb
+
+stream_test/data/*
+stream_test/crawlers/__pycache__/
