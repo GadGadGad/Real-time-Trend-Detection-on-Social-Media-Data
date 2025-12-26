@@ -536,7 +536,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
                         embedding_char_limit=500, summarize_refinement=True,
-                        return_components=False, semantic_floor=0.35):
+                        return_components=False, semantic_floor=0.35,
+                        cache_dir="embeddings_cache"):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -614,7 +615,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         model_name=model_name,
         existing_model=embedder,
         device=embedding_device,
-        cache_dir="embeddings_cache" if use_cache else None,
+        cache_dir=cache_dir if use_cache else None,
         trust_remote_code=trust_remote_code
     )
 
