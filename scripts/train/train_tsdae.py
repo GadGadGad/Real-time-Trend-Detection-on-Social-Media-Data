@@ -1,15 +1,14 @@
-from sentence_transformers import SentenceTransformer, LoggingHandler, util, losses
-from sentence_transformers.datasets import DenoisingAutoEncoderDataset
-from torch.utils.data import DataLoader
-import logging
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # Configuration
 model_name = 'dangvantuan/vietnamese-document-embedding'
 train_file = 'data/train_tsdae.txt'
-output_path = 'models/tuned-mpnet-vietnamese-v1'
-batch_size = 8
+output_path = 'models/tuned-embeddings-vietnamese-v1'
+batch_size = 4  # reduced to fit GPU memory
 epochs = 1
+# Disable external logging (W&B) – use empty list for report_to
+report_to = []
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
