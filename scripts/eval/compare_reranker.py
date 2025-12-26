@@ -17,16 +17,17 @@ def run_eval(model_name_or_path):
     # If it's a local path (starts with ./ or / or models/) it must exist
     is_local = model_name_or_path.startswith("/") or \
                model_name_or_path.startswith("./") or \
-               model_name_or_path.startswith("models/")
+               model_name_or_path.startswith("models/") or \
+               os.path.exists(model_name_or_path)
                
     if is_local and not os.path.exists(model_name_or_path):
-        console.print(f"[yellow]Skipping: Local model path '{model_name_or_path}' not found.[/yellow]")
-        return None
+        console.print(f"[yellow]Local model path {model_name_or_path} not found. Skipping...[/yellow]")
+        return None  # Path not found
         
     try:
         model = CrossEncoder(model_name_or_path)
     except Exception as e:
-        console.print(f"[red]Failed to load '{model_name_or_path}': {e}[/red]")
+        console.print(f"[red]Error loading {model_name_or_path}: {e}[/red]")
         return None
 
     samples = []

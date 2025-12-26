@@ -564,6 +564,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     if rerank:
         ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
         try: 
+            console.print(f"🚀 [cyan]Phase 2: Reranking on {embedding_device}...[/cyan]")
             reranker = CrossEncoder(ce_model, device=embedding_device, trust_remote_code=trust_remote_code)
         except Exception as e:
             console.print(f"[yellow]⚠️ Failed to load Reranker {ce_model}: {e}[/yellow]")

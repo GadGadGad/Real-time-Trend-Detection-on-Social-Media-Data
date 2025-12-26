@@ -28,8 +28,8 @@ LABEL2ID = {"T1": 0, "T2": 1, "T3": 2, "T4": 3, "T5": 4, "T6": 5, "T7": 6}
 ID2LABEL = {v: k for k, v in LABEL2ID.items()}
 NUM_LABELS = len(LABEL2ID)
 
-BATCH_SIZE = 16
-EPOCHS = 3
+BATCH_SIZE = 64
+EPOCHS = 10
 MAX_LENGTH = 256
 
 class TaxonomyDataset(Dataset):
