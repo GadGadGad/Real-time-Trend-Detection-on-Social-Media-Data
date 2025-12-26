@@ -144,7 +144,25 @@ def load_demo_state(save_dir: str):
     trends_path = os.path.join(save_dir, 'trends.json')
     if os.path.exists(trends_path):
         with open(trends_path, 'r', encoding='utf-8') as f:
-            state['trends'] = json.load(f)
+            loaded_trends = json.load(f)
+            
+        # [FIX] Handle case where trends is a list (backward compatibility / user error)
+        if isinstance(loaded_trends, list):
+            console.print(f"   ⚠️ Trends loaded as list ({len(loaded_trends)} items). Converting to dict...")
+            # Assume list of strings or dicts with 'name'/'query'
+            state['trends'] = {}
+            for item in loaded_trends:
+                if isinstance(item, str):
+                    state['trends'][item] = {'volume': 0}
+                elif isinstance(item, dict):
+                    # Try to find a key
+                    key = item.get('name') or item.get('query') or str(item)
+                    state['trends'][key] = item
+                else:
+                    state['trends'][str(item)] = {'original': item}
+        else:
+            state['trends'] = loaded_trends
+
         console.print(f"   ✅ Trends: {len(state['trends'])} trends")
     
     # 3. Trend Embeddings

@@ -528,11 +528,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         llm_custom_instruction=None, use_cache=True,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
-                        cluster_epsilon=0.05, min_quality_cohesion=0.55,
-                        coherence_threshold=0.70,
+                        cluster_epsilon=0.05, min_quality_cohesion=0.60,
+                        coherence_threshold=0.75,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
-                        custom_stopwords=None, min_member_similarity=0.55,
+                        custom_stopwords=None, min_member_similarity=0.60,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
                         embedding_char_limit=500, summarize_refinement=True,
@@ -791,9 +791,30 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                                             cluster_labels[i] = -1 # Mark as Noise
                                             break
                                     
+                                    # [FIX] Also remove from cluster_mapping posts list
+                                    if target_post in m["posts"]:
+                                        m["posts"].remove(target_post)
+                                    
                                     console.print(f"      🗑️ [yellow]LLM removed outlier post {o_id} from '{m['final_topic']}'[/yellow]")
                             except (ValueError, TypeError, IndexError):
                                 pass
+                        
+                        # [NEW] Recalculate match score after outlier removal
+                        remaining_indices = [i for i, l in enumerate(cluster_labels) if l == label_key]
+                        if remaining_indices and m["posts"]:
+                            new_centroid = np.mean(post_embeddings[remaining_indices], axis=0)
+                            new_trend, new_type, new_score = calculate_match_scores(
+                                m["cluster_name"], label_key, trend_embeddings, trend_keys, trend_queries,
+                                embedder, reranker, rerank, threshold, bm25_index=bm25_index,
+                                cluster_centroid=new_centroid,
+                                use_rrf=use_rrf, rrf_k=rrf_k, use_prf=use_prf, prf_depth=prf_depth,
+                                weights=match_weights
+                            )
+                            if new_type == "Trending":
+                                m["final_topic"] = new_trend
+                                m["topic_type"] = new_type
+                            m["match_score"] = new_score
+                            console.print(f"      🔄 [cyan]Recalculated match: {new_trend} (score={new_score:.2f})[/cyan]")
 
                     # Capture 5W1H Intelligence
                     m["intelligence"] = {

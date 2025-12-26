@@ -709,6 +709,12 @@ class LLMRefiner:
                   - Generate the title for that dominant topic ONLY.
                   - Mention the removed topic in the 'reasoning' field.
 
+                CRITICAL - Incoherent Clusters:
+                - If posts have NO common theme (e.g., a singer + foreign policy + sports result):
+                  - Set refined_title to "[Incoherent] Mixed Topics"
+                  - Add ALL post IDs (2, 3, 4, 5) except Post 1 to outlier_ids
+                  - Explain in reasoning why the cluster is incoherent (list the unrelated topics).
+
                 Anti-Patterns (DO NOT USE):
                 - "Tin tức về..." (News about...)
                 - "Cập nhật mới nhất..." (Latest updates...)

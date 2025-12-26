@@ -268,7 +268,7 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
         raw_dense_sim = float(dense_sims[top_idx])
         
         # --- 3. THE SEMANTIC GUARD ---
-        SEMANTIC_FLOOR = 0.30  # Sligthly lower floor to allow for more discovered matches
+        SEMANTIC_FLOOR = 0.40  # [TUNED] Raised from 0.30 for stricter matching
         semantic_signal = raw_dense_sim
         
         # [MATCH LOGIC] A match is valid if:
@@ -300,5 +300,11 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
             assigned_trend = "Discovery"
             topic_type = "Discovery"
             best_match_score = 0.0
+            
+            # [NEW] Debug logging for Discovery decisions
+            if not is_valid_match:
+                console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (semantic={raw_dense_sim:.2f} < floor={SEMANTIC_FLOOR})[/dim]")
+            elif best_candidate_score < threshold:
+                console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (fused={best_candidate_score:.2f} < threshold={threshold})[/dim]")
             
     return assigned_trend, topic_type, best_match_score
