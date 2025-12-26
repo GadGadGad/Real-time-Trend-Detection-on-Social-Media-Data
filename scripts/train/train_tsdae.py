@@ -19,15 +19,6 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
                     level=logging.INFO,
                     handlers=[LoggingHandler()])
 
-class SimpleLossLogger:
-    def __init__(self, log_every=10):
-        self.log_every = log_every
-        self.step = 0
-    def __call__(self, loss, epoch, steps):
-        self.step += 1
-        if self.step % self.log_every == 0:
-            print(f"[Epoch {epoch}] Step {self.step}: loss = {loss:.4f}")
-
 def train():
     if not os.path.exists(train_file):
         print(f"Error: {train_file} not found. Run extract_train_data.py first.")
@@ -57,8 +48,8 @@ def train():
         epochs=epochs,
         weight_decay=0,
         scheduler='constantlr',
+        logging_steps=10,
         show_progress_bar=True,
-        callbacks=[SimpleLossLogger(log_every=10)],
         checkpoint_path=os.path.join(output_path, 'checkpoints'),
         checkpoint_save_steps=1000,
 
