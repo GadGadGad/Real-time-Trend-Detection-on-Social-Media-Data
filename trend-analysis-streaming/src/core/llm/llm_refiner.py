@@ -408,15 +408,16 @@ class LLMRefiner:
                 Task:
                 From the list below, identify headlines that refer to the EXACT SAME real-world event.
 
-                Two headlines are the SAME EVENT ONLY IF they share:
-                1. The SAME specific location (e.g., "Hanoi", "Nguyen Hue Walking Street")
-                2. The SAME time/date (e.g., "Last night", "Oct 15")
-                3. The SAME main entities (e.g., "Messi", "iPhone 16")
+                Hai tiêu đề là CÙNG MỘT SỰ KIỆN khi có ĐÚNG 3 yếu tố:
+                1. CÙNG ĐỊA ĐIỂM: "Hà Nội" vs "Hà Nội" ✓ | "Hà Nội" vs "TP.HCM" ✗
+                2. CÙNG THỜI GIAN: "hôm nay" vs "hôm nay" ✓ | "hôm nay" vs "tuần trước" ✗
+                3. CÙNG THỰC THỂ CHÍNH: "Bão Yagi" vs "Bão số 3" ✓ | "Bão Yagi" vs "Bão Noru" ✗
 
-                strict matching rules:
-                - "Traffic accident in District 1" != "Traffic accident in District 3" (Different location)
-                - "Gold price increased today" != "Gold price increased yesterday" (Different time)
-                - "Storm Yagi" == "Typhoon Yagi" (Match)
+                Ví dụ khớp/không khớp:
+                - "Tai nạn Quận 1" ≠ "Tai nạn Quận 7" (Khác địa điểm)
+                - "Giá vàng tăng hôm nay" ≠ "Giá vàng tuần trước" (Khác thời gian)
+                - "Man Utd vs Liverpool" ≠ "Arsenal vs Chelsea" (Khác đội bóng)
+                - "Bão Yagi" = "Cơn bão số 3 Yagi" (Cùng thực thể - OK to merge)
 
                 STRICT OUTPUT RULES:
                 - Canonical title MUST be an EXACT COPY of one of the input lines.
@@ -562,7 +563,7 @@ class LLMRefiner:
                 Task: Return a list of keywords that are NOISE or GENERIC.
 
                 DEFINITION OF NOISE (Remove these):
-                1. Weather: "thời tiết", "nhiệt độ", "mưa", "bão" (generic), "aqi"
+                1. Weather (Thời tiết): "thời tiết hôm nay", "dự báo mưa", "aqi hà nội" (TRỪ bão có tên như "Bão Yagi")
                 2. Utilities: "giá vàng", "giá xăng", "lịch âm", "xổ số", "xsmn", "vietlott"
                 3. Betting/Gambling: "bet88", "kubet", "soi cầu", "tỷ lệ cược"
                 4. Generic Tech: "facebook", "gmail", "google", "login", "wifi"
@@ -571,7 +572,7 @@ class LLMRefiner:
 
                 DEFINITION OF EVENTS (KEEP these):
                 - Specific People: "Taylor Swift", "Phạm Minh Chính", "Quang Hải"
-                - Specific Incidents: "Vụ cháy chung cư mini", "Bão Noru" (named storms)
+                - Specific Incidents: "Vụ cháy chung cư mini", "Bão Yagi" (bão có tên riêng)
                 - Matches/Games: "MU vs Chelsea", "CKTG 2024"
                 - Products: "iPhone 15", "VinFast VF3"
 
@@ -632,11 +633,11 @@ class LLMRefiner:
                 "event_type": "Specific/Generic",
                 "summary": "Short 2-3 sentence summary of the trend/incident.",
                 "overall_sentiment": "Positive/Negative/Neutral",
-                "who": "Key entities/people involved (or N/A)",
+                "who": "ONLY mention names/entities EXPLICITLY stated in the posts (or 'Không xác định')",
                 "what": "Core event/action occurred",
-                "where": "Location (City/Country) (or N/A)",
-                "when": "Timeframe mentioned (or N/A)",
-                "why": "Reason/Cause (or N/A)",
+                "where": "ONLY use place names from the posts. If not found, write 'Không rõ địa điểm'",
+                "when": "Timeframe mentioned (or 'Không rõ thời gian')",
+                "why": "Reason/Cause (or 'Không rõ nguyên nhân')",
                 "reasoning": "..."
             }
         """
@@ -722,15 +723,19 @@ class LLMRefiner:
                   - Generate the title for that dominant topic ONLY.
                   - Mention the removed topic in the 'reasoning' field.
 
-                CRITICAL - Incoherent Clusters (MUST CHECK):
-                - Compare Post 1 with Posts 2-5. If a post describes a COMPLETELY DIFFERENT event:
-                  - Add that post's ID to outlier_ids (e.g., [2, 4, 5])
-                  - Do NOT include outlier content in the refined_title
-                  
-                - Examples of DIFFERENT events (all should be outliers):
-                  - Post 1: Traffic accident in District 1 ← Post 2: Celebrity wedding → outlier_ids: [2]
-                  - Post 1: iPhone release ← Post 3: Political scandal → outlier_ids: [3]
-                  - Post 1: Fire in Hanoi ← Post 2: Drug arrest in Saigon ← Post 3: Concert announcement → outlier_ids: [2, 3]
+                CRITICAL - Incoherent Clusters (STEP-BY-STEP CHECK):
+                1. Identify the CORE TOPIC from Post 1 (Anchor Post).
+                   Example Anchor: "Tai nạn giao thông Quận 1"
+                2. For each Post 2-5, ask: "Does this post describe the SAME specific event as Post 1?"
+                   - SAME: Same location AND same incident type AND same time frame.
+                   - DIFFERENT: Different location OR different incident type OR different time.
+                3. If DIFFERENT, add that post number to outlier_ids.
+
+                STEP-BY-STEP Reasoning Example:
+                - Post 1: "Cháy chung cư ở Hà Nội"
+                - Post 2: "Cháy chung cư ở Hà Nội" → SAME (same event)
+                - Post 3: "Chuyện tình yêu sao Việt" → DIFFERENT (unrelated topic) → outlier_ids: [3]
+                - Post 4: "Cháy rừng ở Kon Tum" → DIFFERENT (different location) → outlier_ids: [3, 4]
                   
                 - If ALL posts are unrelated to each other:
                   - Set refined_title to "[Incoherent] Mixed Topics"

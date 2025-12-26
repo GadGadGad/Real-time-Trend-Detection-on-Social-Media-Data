@@ -16,7 +16,7 @@ VIETNAMESE_STOPWORDS = list(SAFE_STOPWORDS | JOURNALISTIC_STOPWORDS)
 def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
                  selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
-                 min_quality_cohesion=0.5, min_member_similarity=0.45, 
+                 min_quality_cohesion=0.5, min_member_similarity=0.60, 
                  trust_remote_code=False, custom_stopwords=None, recluster_large=True, coherence_threshold=0.70):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
@@ -618,9 +618,29 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors
             
             # Semantic Reranking
             full_text = cluster_docs[i]
-            candidate_embeddings = model.encode(candidates)
-            doc_embedding = model.encode([full_text[:800]])
-            similarities = cosine_similarity(doc_embedding, candidate_embeddings)[0]
+            
+            # [FIX] Rank candidates against the CENTROID of the cluster, not just the concatenated blob
+            # 1. Get embeddings for all texts in this cluster
+            max_docs = 50
+            texts_in_cluster = cluster_texts[label][:max_docs]
+            if texts_in_cluster and model:
+                try:
+                    c_embs = model.encode(texts_in_cluster)
+                    centroid = np.mean(c_embs, axis=0).reshape(1, -1)
+                    # 2. Get embeddings for candidates
+                    candidate_embeddings = model.encode(candidates)
+                    
+                    # 3. Calculate similarity to CENTROID
+                    similarities = cosine_similarity(centroid, candidate_embeddings)[0]
+                except:
+                    # Fallback to old method if encoding fails
+                    candidate_embeddings = model.encode(candidates)
+                    doc_embedding = model.encode([full_text[:800]])
+                    similarities = cosine_similarity(doc_embedding, candidate_embeddings)[0]
+            else:
+                candidate_embeddings = model.encode(candidates)
+                doc_embedding = model.encode([full_text[:800]])
+                similarities = cosine_similarity(doc_embedding, candidate_embeddings)[0]
             
             final_scores = []
             for idx, cand in enumerate(candidates):
