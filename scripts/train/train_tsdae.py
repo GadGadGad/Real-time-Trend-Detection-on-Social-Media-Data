@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 model_name = 'dangvantuan/vietnamese-document-embedding'
 train_file = 'data/train_tsdae.txt'
 output_path = 'models/tuned-embeddings-vietnamese-v1'
-batch_size = 4  # reduced to fit GPU memory
+batch_size = 1  # reduced to fit GPU memory
 epochs = 1
 # Disable external logging (W&B) – use empty list for report_to
 report_to = []
@@ -52,7 +52,7 @@ def train():
         show_progress_bar=True,
         checkpoint_path=os.path.join(output_path, 'checkpoints'),
         checkpoint_save_steps=1000,
-        amp=True
+
     )
 
     # 6. Save the model
