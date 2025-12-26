@@ -113,6 +113,7 @@ def main():
     parser.add_argument('--sample-size', type=int, default=10, help='Number of clusters to evaluate')
     parser.add_argument('--eval-assignments', action='store_true', help='Also evaluate topic assignments')
     parser.add_argument('--api-key', type=str, help='Gemini API key (or set GEMINI_API_KEY env)')
+    parser.add_argument('--model', type=str, default='gemini-1.5-flash', help='Gemini model name')
     args = parser.parse_args()
     
     # Setup Gemini
@@ -123,7 +124,7 @@ def main():
     
     import google.generativeai as genai
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel(args.model)
     
     console.print(f"[bold cyan]🧠 LLM Evaluation of Pipeline Results[/bold cyan]")
     console.print(f"   State: {args.state}")
@@ -138,23 +139,37 @@ def main():
     df = state['df_results']
     cluster_mapping = state.get('cluster_mapping', {})
     
-    # Get unique clusters (exclude noise)
-    clusters = df[df['cluster_id'] != -1]['cluster_id'].unique()
+    # Find column for grouping - could be cluster_id or final_topic
+    group_col = 'cluster_id' if 'cluster_id' in df.columns else 'final_topic'
+    
+    # Get unique topics (exclude noise/unassigned)
+    if group_col == 'cluster_id':
+        valid_mask = df[group_col] != -1
+    else:
+        valid_mask = ~df[group_col].isin(['Unassigned', 'Noise', '[Noise]', 'Discovery'])
+    
+    clusters = df[valid_mask][group_col].unique()
     sample_clusters = random.sample(list(clusters), min(args.sample_size, len(clusters)))
     
-    console.print(f"[dim]Evaluating {len(sample_clusters)} clusters...[/dim]\n")
+    console.print(f"[dim]Evaluating {len(sample_clusters)} clusters/topics...[/dim]\n")
     
     # Evaluate clusters
     results = []
     for cid in track(sample_clusters, description="Evaluating clusters"):
-        cluster_name = df[df['cluster_id'] == cid]['final_topic'].iloc[0] if len(df[df['cluster_id'] == cid]) > 0 else f"Cluster {cid}"
-        posts = get_cluster_samples(df, cid, n=5)
+        if group_col == 'cluster_id':
+            cluster_name = df[df[group_col] == cid]['final_topic'].iloc[0] if len(df[df[group_col] == cid]) > 0 else f"Cluster {cid}"
+            posts = get_cluster_samples(df, cid, n=5)
+        else:
+            cluster_name = cid
+            cluster_df = df[df[group_col] == cid]
+            posts = cluster_df['post_content'].head(5).tolist() if 'post_content' in cluster_df.columns else cluster_df['content'].head(5).tolist()
+
         
         if posts:
             eval_result = evaluate_cluster_with_llm(cluster_name, posts, model)
             eval_result['cluster_id'] = cid
             eval_result['cluster_name'] = cluster_name
-            eval_result['num_posts'] = len(df[df['cluster_id'] == cid])
+            eval_result['num_posts'] = len(df[df[group_col] == cid])
             results.append(eval_result)
     
     # Display results
