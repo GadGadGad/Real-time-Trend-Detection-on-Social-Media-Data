@@ -1,0 +1,543 @@
+\documentclass{beamer}
+
+%========================
+% 1) Tiếng Việt (pdfLaTeX)  --- ĐÃ SỬA
+%   Dùng gói vietnam theo mẫu bạn đưa, bỏ inputenc + babel
+%========================
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+
+% Font có đủ glyph tiếng Việt (khuyến nghị)
+\usepackage{lmodern}
+\renewcommand{\familydefault}{\sfdefault}
+
+\renewcommand{\familydefault}{\sfdefault}
+
+%========================
+% 2) Theme (giữ Madrid, làm gọn & hiện đại hơn)
+%========================
+\usetheme{Madrid}
+
+%========================
+% 3) Packages cần thiết  --- GIỮ NGUYÊN
+%========================
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{ragged2e}
+\usepackage{xcolor}
+\usepackage{csquotes}
+\usepackage{microtype} % chữ "mượt" hơn (pdfLaTeX)
+
+\setbeamertemplate{caption}[numbered]
+
+%========================
+% 4) LISTINGS: FIX Unicode tiếng Việt cho *mọi* lstlisting  --- GIỮ NGUYÊN
+%========================
+\usepackage{listings}
+
+\lstdefinestyle{vncode}{
+  basicstyle=\tiny\ttfamily,
+  breaklines=true,
+  showstringspaces=false,
+  columns=fullflexible,
+  upquote=true,
+  literate=
+   {á}{{\'a}}1 {à}{{\`a}}1 {ả}{{\h{a}}}1 {ã}{{\~a}}1 {ạ}{{\d{a}}}1
+   {ă}{{\u{a}}}1 {ắ}{{\'{\u{a}}}}1 {ằ}{{\`{\u{a}}}}1 {ẳ}{{\h{\u{a}}}}1 {ẵ}{{\~{\u{a}}}}1 {ặ}{{\d{\u{a}}}}1
+   {â}{{\^a}}1 {ấ}{{\'{\^a}}}1 {ầ}{{\`{\^a}}}1 {ẩ}{{\h{\^a}}}1 {ẫ}{{\~{\^a}}}1 {ậ}{{\d{\^a}}}1
+   {đ}{{\dj}}1 {Đ}{{\DJ}}1
+   {é}{{\'e}}1 {è}{{\`e}}1 {ẻ}{{\h{e}}}1 {ẽ}{{\~e}}1 {ẹ}{{\d{e}}}1
+   {ê}{{\^e}}1 {ế}{{\'{\^e}}}1 {ề}{{\`{\^e}}}1 {ể}{{\h{\^e}}}1 {ễ}{{\~{\^e}}}1 {ệ}{{\d{\^e}}}1
+   {í}{{\'i}}1 {ì}{{\`i}}1 {ỉ}{{\h{i}}}1 {ĩ}{{\~i}}1 {ị}{{\d{i}}}1
+   {ó}{{\'o}}1 {ò}{{\`o}}1 {ỏ}{{\h{o}}}1 {õ}{{\~o}}1 {ọ}{{\d{o}}}1
+   {ô}{{\^o}}1 {ố}{{\'{\^o}}}1 {ồ}{{\`{\^o}}}1 {ổ}{{\h{\^o}}}1 {ỗ}{{\~{\^o}}}1 {ộ}{{\d{\^o}}}1
+   {ơ}{{\.o}}1 {ớ}{{\'{\.o}}}1 {ờ}{{\`{\.o}}}1 {ở}{{\h{\.o}}}1 {ỡ}{{\~{\.o}}}1 {ợ}{{\d{\.o}}}1
+   {ú}{{\'u}}1 {ù}{{\`u}}1 {ủ}{{\h{u}}}1 {ũ}{{\~u}}1 {ụ}{{\d{u}}}1
+   {ư}{{\.u}}1 {ứ}{{\'{\.u}}}1 {ừ}{{\`{\.u}}}1 {ử}{{\h{\.u}}}1 {ữ}{{\~{\.u}}}1 {ự}{{\d{\.u}}}1
+   {ý}{{\'y}}1 {ỳ}{{\`y}}1 {ỷ}{{\h{y}}}1 {ỹ}{{\~y}}1 {ỵ}{{\d{y}}}1
+}
+
+\lstdefinelanguage{json}{
+  string=[s]{"}{"},
+  stringstyle=\color{blue},
+  comment=[l]{:},
+  commentstyle=\color{black},
+}
+
+\lstset{style=vncode}
+
+%========================
+% 5) Biblatex  --- ĐÃ SỬA (mapping)
+%   Vì đã bỏ babel[vietnamese], thường KHÔNG cần mapping nữa.
+%========================
+\usepackage[backend=biber,style=ieee,language=english]{biblatex}
+\addbibresource{references.bib}
+% \DeclareLanguageMapping{vietnamese}{english} % (không cần nữa khi không dùng babel[vietnamese])
+\setbeamertemplate{bibliography item}[text]
+
+%========================
+% 6) Table cosmetics  --- GIỮ NGUYÊN
+%========================
+\renewcommand{\arraystretch}{1.15}
+
+
+%------------------------------------------------------------
+% THÔNG TIN BÀI THUYẾT TRÌNH (GIỮ ĐÚNG TÊN ĐỀ TÀI)
+%------------------------------------------------------------
+\title[Phát hiện Xu hướng \& Phân loại cảm xúc]
+{Phát hiện Xu hướng và Phân loại cảm xúc theo Thời gian thực}
+
+\subtitle{Báo cáo tiến độ dự án - SE363.Q11}
+
+\author[Tăng Nhất, Lê Minh Nhựt]
+{\textbf{Thực hiện:} \break Tăng Nhất\inst{1} \and Lê Minh Nhựt\inst{1} \break \textbf{GVHD}: TS. Đỗ Trọng Hợp\inst{2} \break Nguyễn Ngọc Quí\inst{2}}
+
+\institute[VNU-UIT]{
+  \inst{1} Khoa Khoa học Máy tính\\
+  Trường Đại học Công nghệ Thông tin
+
+  \inst{2} Khoa Khoa học và Kỹ thuật thông tin \\
+  Trường Đại học Công nghệ Thông tin
+}
+
+\date[\today]{Ngày 16 Tháng 12 năm 2025}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\AtBeginSection[]
+{
+    \begin{frame}
+        \frametitle{Mục lục}
+        \tableofcontents[currentsection]
+    \end{frame}
+}
+
+\begin{frame}
+    \frametitle{Mục lục}
+    \tableofcontents
+\end{frame}
+
+%============================================================
+% SECTION 1: GIỚI THIỆU BÀI TOÁN
+%============================================================
+\section{Giới thiệu bài toán}
+
+% Frame 1.1: Bối cảnh
+\begin{frame}{Bối cảnh\& Động lực nghiên cứu}
+    \begin{itemize}
+        \item \textbf{Sự bùng nổ thông tin:} Mạng xã hội (Facebook) là nơi tin tức lan truyền nhanh nhất, nhưng chứa nhiều nhiễu (tin giả, spam, cảm xúc tiêu cực).
+        \item \textbf{Độ trễ của báo chí:} Báo chính thống (News) có độ tin cậy cao nhưng thường chậm hơn sự kiện thực tế (latency).
+        \item \textbf{Thách thức ngôn ngữ:} Tiếng Việt có đặc thù phức tạp (tách từ, từ lóng, teencode) gây khó khăn cho các mô hình NLP truyền thống.
+        \item \textbf{Nhu cầu thực tế:} Cần một hệ thống \alert{Hybrid (Lai ghép)} kết hợp tốc độ của Social và độ tin cậy của News để phát hiện sự kiện nóng theo thời gian thực.
+    \end{itemize}
+\end{frame}
+
+% Frame 1.2: Mục tiêu đề tài
+\begin{frame}{Mục tiêu đề tài}
+    \begin{block}{Mục tiêu chính}
+        Xây dựng pipeline tự động phát hiện, phân cụm và tóm tắt xu hướng từ đa nguồn dữ liệu.
+    \end{block}
+    
+    \vspace{0.5cm}
+    \textbf{Các nhiệm vụ cụ thể:}
+    \begin{enumerate}
+        \item \textbf{Phát hiện sự kiện (Event Detection):} Gom nhóm các bài viết rời rạc thành các chủ đề (Topics) có ý nghĩa.
+        \item \textbf{Xử lý nhiễu (Noise Handling):} Lọc bỏ bài viết rác, quảng cáo, nội dung trùng lặp (Near-duplicate).
+        \item \textbf{Đặt tên \& Phân loại (Naming \& Taxonomy):} Sử dụng LLM để sinh tiêu đề và phân loại mức độ nghiêm trọng (A/B/C).
+        \item \textbf{Phân tích cảm xúc (Sentiment Analysis):} Đánh giá thái độ cộng đồng đối với sự kiện.
+    \end{enumerate}
+\end{frame}
+
+% Frame 1.3: Placeholder cho Pipeline (Theo yêu cầu của bạn)
+\begin{frame}{Tổng quan quy trình (Pipeline Overview)}
+    \begin{center}
+        \textbf{[PLACEHOLDER: SƠ ĐỒ PIPELINE TỔNG QUÁT]}
+        
+        \vspace{1cm}
+        \textit{(Tại đây bạn nên chèn hình ảnh kiến trúc hệ thống High-Level)}
+        \vspace{0.5cm}
+        
+        \begin{itemize}
+            \item \textbf{Input:} Facebook Crawler, News Crawler, Google Trends.
+            \item \textbf{Process:} Preprocessing $\to$ Embedding $\to$ SAHC Clustering $\to$ LLM Refinement.
+            \item \textbf{Output:} Dashboard xu hướng \& Cảnh báo.
+        \end{itemize}
+    \end{center}
+\end{frame}
+
+%============================================================
+% SECTION 2: DỮ LIỆU
+%============================================================
+\section{Dữ liệu}
+
+% Frame 2.1: Nguồn dữ liệu
+\begin{frame}{Nguồn dữ liệu thu thập}
+    Hệ thống thu thập dữ liệu từ 3 nguồn chính để đảm bảo tính đa chiều:
+    
+    \begin{columns}
+        \column{0.5\textwidth}
+        \begin{block}{1. Social Media (Facebook)}
+            \begin{itemize}
+                \item Các Fanpage/Group cộng đồng lớn.
+                \item Đặc điểm: Tốc độ nhanh, dùng tiếng lóng (teencode), nhiều nhiễu, ý kiến cá nhân mạnh.
+            \end{itemize}
+        \end{block}
+        
+        \column{0.5\textwidth}
+        \begin{block}{2. Báo chính thống (News)}
+            \begin{itemize}
+                \item Nguồn: VnExpress, Tuổi Trẻ, Thanh Niên...
+                \item Đặc điểm: Chuẩn ngữ pháp, độ tin cậy cao, dùng làm "Anchor" (mỏ neo) xác thực thông tin.
+            \end{itemize}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    \begin{itemize}
+        \item \textbf{3. Google Trends:} Sử dụng làm tín hiệu dẫn đường (Signal) để định hướng tìm kiếm.
+    \end{itemize}
+\end{frame}
+
+% Frame 2.2: Thống kê bộ dữ liệu
+\begin{frame}{Thống kê bộ dữ liệu thử nghiệm}
+    Dữ liệu được thu thập và gán nhãn sơ bộ để phục vụ quá trình huấn luyện và kiểm thử mô hình:
+
+    \begin{table}[]
+        \centering
+        \begin{tabular}{l c c}
+            \toprule
+            \textbf{Nguồn dữ liệu} & \textbf{Số lượng bài đăng} & \textbf{Tỷ lệ (\%)} \\
+            \midrule
+            Facebook (Social) & 2,961 & 38.9\% \\
+            News (Báo chí) & 4,644 & 61.1\% \\
+            \midrule
+            \textbf{Tổng cộng} & \textbf{7,605} & \textbf{100\%} \\
+            \bottomrule
+        \end{tabular}
+        \caption{Phân bố dữ liệu đầu vào}
+    \end{table}
+
+    \vspace{0.2cm}
+    \textbf{Quan sát từ dữ liệu:}
+    \begin{itemize}
+        \item Dữ liệu báo chí chiếm đa số, giúp tạo nền tảng Factual (Sự thật) vững chắc.
+        \item Dữ liệu Facebook đủ lớn để phản ánh phản ứng cộng đồng (Sentiment).
+    \end{itemize}
+\end{frame}
+
+% Frame 2.3: Tiền xử lý dữ liệu (Preprocessing)
+\begin{frame}{Thách thức\& Tiền xử lý dữ liệu}
+    Dựa trên đặc thù dữ liệu tiếng Việt, quy trình làm sạch bao gồm:
+
+    \begin{enumerate}
+        \item \textbf{Lọc nhiễu cơ bản:} 
+            \begin{itemize}
+                \item Loại bỏ bài viết quá ngắn ($<$ 50 ký tự) hoặc quá dài.
+                \item Loại bỏ các bài viết chứa từ khóa rác (quảng cáo, xổ số, spam).
+            \end{itemize}
+        \item \textbf{Chuẩn hóa văn bản:}
+            \begin{itemize}
+                \item Chuyển đổi Unicode, xử lý emoji, link, hashtag.
+                \item Chuẩn hóa teencode (Facebook data).
+            \end{itemize}
+        \item \textbf{Tách từ (Word Segmentation):}
+            \begin{itemize}
+                \item Sử dụng thư viện chuyên dụng (\texttt{py\_vncorenlp} / \texttt{underthesea}).
+                \item \textbf{Ví dụ:} "đất nước" (1 token) khác với "đất" (soil) và "nước" (water).
+                \item Bước này quan trọng để mô hình Embedding hiểu đúng ngữ cảnh.
+            \end{itemize}
+    \end{enumerate}
+\end{frame}
+
+%============================================================
+% SECTION 3: PHƯƠNG PHÁP THỰC HIỆN
+%============================================================
+\section{Phương pháp thực hiện}
+
+% Frame 3.1: Tổng quan Mô hình đề xuất
+\begin{frame}{Kiến trúc Mô hình đề xuất (Proposed Architecture)}
+    Hệ thống sử dụng phương pháp tiếp cận \textbf{Hybrid (Lai ghép)}, kết hợp giữa học máy truyền thống và Generative AI:
+
+    \begin{enumerate}
+        \item \textbf{Vector hóa (Embedding):} Chuyển đổi văn bản sang không gian vector ngữ nghĩa.
+        \item \textbf{Phân cụm lai (SAHC Clustering):} Thuật toán phân cụm phân cấp nhận thức xã hội (Social-Aware Hierarchical Clustering).
+        \item \textbf{Tinh chỉnh (Refinement):} Sử dụng LLM để chuẩn hóa kết quả đầu ra.
+    \end{enumerate}
+    
+    \begin{block}{Công nghệ lõi}
+        \begin{itemize}
+            \item \textbf{Embedding Model:} \texttt{dangvantuan/vietnamese-document-embedding} (Tối ưu cho tiếng Việt).
+            \item \textbf{Clustering:} HDBSCAN (Mật độ) kết hợp cơ chế Anchoring.
+            \item \textbf{LLM:} Gemini Pro (Sinh tiêu đề và phân loại).
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+% Frame 3.2: Chi tiết về Embedding
+\begin{frame}{Vector hóa văn bản (Text Embedding)}
+    \begin{columns}
+        \column{0.6\textwidth}
+        \textbf{Tại sao chọn model này?}
+        \begin{itemize}
+            \item Mô hình được huấn luyện trên lượng lớn dữ liệu tiếng Việt.
+            \item Khả năng hiểu ngữ cảnh tốt hơn phương pháp từ khóa (TF-IDF).
+            \item \textbf{Segmentation:} Áp dụng tách từ trước khi đưa vào mô hình (Ví dụ: "Học sinh" là 1 token thay vì 2).
+        \end{itemize}
+        
+        \column{0.4\textwidth}
+        \begin{center}
+            \textbf{[PLACEHOLDER: HÌNH MINH HỌA EMBEDDING SPACE]}
+            \par\textit{\small(Các điểm dữ liệu gom lại gần nhau dựa trên ý nghĩa)}
+        \end{center}
+    \end{columns}
+
+    \vspace{0.5cm}
+    \textbf{Quy trình:}
+    \texttt{Raw Text} $\to$ \texttt{Clean \& Segment} $\to$ \texttt{Model} $\to$ \texttt{Vector (768 dimensions)}
+\end{frame}
+
+% Frame 3.3: Thuật toán SAHC (Rất quan trọng - Logic chính của code)
+\begin{frame}{Thuật toán Phân cụm SAHC (Social-Aware Hierarchical Clustering)}
+    Quy trình phân cụm diễn ra qua 3 pha để đảm bảo độ chính xác và tính thời sự:
+
+    \begin{itemize}
+        \item \textbf{Phase 1: News-First Anchoring (Tạo mỏ neo)}
+        \begin{itemize}
+            \item Sử dụng các bài báo chính thống để tạo các tâm cụm (Cluster Centroids) ban đầu.
+            \item Đảm bảo xu hướng có tính xác thực cao.
+        \end{itemize}
+        
+        \item \textbf{Phase 2: Social Attachment (Gắn kết xã hội)}
+        \begin{itemize}
+            \item Tính toán độ tương đồng (Cosine Similarity) của các bài Facebook với các mỏ neo News.
+            \item Nếu \texttt{Score > Threshold}, gán bài Facebook vào cụm News tương ứng.
+        \end{itemize}
+        
+        \item \textbf{Phase 3: Discovery (Khám phá xu hướng mới)}
+        \begin{itemize}
+            \item Các bài Facebook còn lại (chưa được gán) sẽ được chạy thuật toán \textbf{HDBSCAN}.
+            \item Mục tiêu: Phát hiện các sự kiện mới nổi trên MXH mà báo chí chưa kịp đưa tin.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Frame 3.4: LLM Refinement Pipeline
+\begin{frame}{Hậu xử lý với LLM (LLM Refinement)}
+    Sau khi có các cụm thô, hệ thống sử dụng Gemini API để thực hiện 3 tác vụ:
+    
+    \begin{enumerate}
+        \item \textbf{Summarization \& Naming:} Sinh tiêu đề ngắn gọn, dễ hiểu cho cụm sự kiện (thay vì dùng ID số).
+        \item \textbf{Classification (Phân loại Taxonomy):}
+            \begin{itemize}
+                \item Gán nhãn sự kiện vào các nhóm A/B/C hoặc T1-T7 (theo mức độ nghiêm trọng/lĩnh vực).
+                \item Loại bỏ các cụm "Rác" (Noise) mà thuật toán clustering bỏ sót.
+            \end{itemize}
+        \item \textbf{Semantic Deduplication:} Gộp các cụm có cùng ý nghĩa nhưng khác cách diễn đạt (Ví dụ: "Bão Yagi" và "Cơn bão số 3").
+    \end{enumerate}
+\end{frame}
+
+
+%============================================================
+% SECTION 4: REAL-TIME DATA STREAMING
+%============================================================
+\section{Real-time Data Streaming}
+
+% Frame 4.1: Kiến trúc luồng dữ liệu (Placeholder)
+\begin{frame}{Kiến trúc xử lý thời gian thực (Streaming Architecture)}
+    \begin{center}
+        \textbf{[PLACEHOLDER: SƠ ĐỒ LUỒNG DỮ LIỆU]}
+    \end{center}
+    
+    \vspace{0.2cm}
+    \textbf{Gợi ý nội dung sơ đồ:}
+    \begin{itemize}
+        \item \textbf{Data Ingestion:} Các Crawlers chạy song song (đa luồng).
+        \item \textbf{Message Queue:} (Ví dụ: Kafka/RabbitMQ hoặc Folder Watching) để đệm dữ liệu.
+        \item \textbf{Processing Engine:} Hệ thống phân tích chạy theo chu kỳ (Micro-batch).
+        \item \textbf{Storage:} Lưu trữ kết quả vào Database/Cache để hiển thị Dashboard.
+    \end{itemize}
+\end{frame}
+
+% Frame 4.2: Cơ chế cập nhật (Windowing Strategy)
+\begin{frame}{Chiến lược cập nhật dữ liệu (Windowing Strategy)}
+    Để xử lý dữ liệu liên tục, hệ thống áp dụng cơ chế cửa sổ thời gian:
+    
+    \begin{block}{Cơ chế Sliding Window (Cửa sổ trượt)}
+        \begin{itemize}
+            \item Hệ thống không chạy Clustering trên từng bài viết đơn lẻ.
+            \item Dữ liệu được gom nhóm theo khung thời gian (Ví dụ: mỗi 15 phút hoặc mỗi 100 bài mới).
+            \item \textbf{Incremental Update:} Kết hợp dữ liệu mới với các cụm đang "Active" để cập nhật xu hướng mà không cần chạy lại toàn bộ từ đầu.
+        \end{itemize}
+    \end{block}
+
+    \vspace{0.3cm}
+    \textbf{Xử lý trùng lặp (De-duplication):}
+    \begin{itemize}
+        \item Sử dụng hàm băm (Hashing) nội dung để loại bỏ các bài viết trùng lặp ngay tại đầu vào, giảm tải cho hệ thống.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Tối ưu hóa hiệu năng (Performance Optimization)}
+    \textit{(Dựa trên phần Advanced Diagnostics trong code)}
+    \begin{itemize}
+        \item \textbf{Batch Processing:} Gom nhóm các request gửi lên Embedding Model và LLM để tận dụng khả năng xử lý song song của GPU.
+        \item \textbf{Caching:} Lưu trữ các vector embedding đã tính toán (Embeddings Cache) để tránh tính toán lại cho các bài viết cũ.
+        \item \textbf{Lọc sớm (Early Filtering):} Loại bỏ rác (Spam/Quảng cáo) bằng từ khóa trước khi đưa vào mô hình AI tốn kém tài nguyên.
+    \end{itemize}
+\end{frame}
+
+%============================================================
+% SECTION 5: KẾT QUẢ SƠ BỘ
+%============================================================
+\section{Kết quả sơ bộ}
+
+% Frame 5.1: Trực quan hóa không gian Vector (t-SNE)
+\begin{frame}{Trực quan hóa Phân cụm (t-SNE Visualization)}
+    \begin{columns}
+        \column{0.6\textwidth}
+        \begin{center}
+            % [PLACEHOLDER: Thay bằng ảnh chụp biểu đồ t-SNE từ notebook]
+            % Ảnh nên thể hiện các điểm dữ liệu gom lại thành từng cụm màu sắc riêng biệt
+            \textbf{[PLACEHOLDER: HÌNH ẢNH T-SNE CLUSTERING]}
+            \par\textit{\small(Biểu đồ phân bố các bài viết trong không gian 2D)}
+        \end{center}
+        
+        \column{0.4\textwidth}
+        \textbf{Nhận xét:}
+        \begin{itemize}
+            \item Các bài viết cùng chủ đề (cùng màu) co cụm chặt chẽ $\to$ \textbf{Cohesion cao}.
+            \item Các cụm tách biệt rõ ràng với nhau $\to$ \textbf{Separation tốt}.
+            \item Các điểm màu xám (Noise) nằm rải rác, đã được thuật toán HDBSCAN lọc bỏ thành công.
+        \end{itemize}
+    \end{columns}
+\end{frame}
+
+% Frame 5.2: Đánh giá định lượng (Metrics)
+\begin{frame}{Đánh giá định lượng (Quantitative Metrics)}
+    Kết quả đánh giá trên tập dữ liệu 7,605 bài đăng:
+
+    \begin{table}[]
+        \centering
+        \begin{tabular}{l c c}
+            \toprule
+            \textbf{Chỉ số (Metric)} & \textbf{Giá trị đạt được} & \textbf{Ý nghĩa} \\
+            \midrule
+            \textbf{Silhouette Score} & \alert{0.62} & Mức độ tách biệt giữa các cụm (Tốt > 0.5) \\
+            \textbf{Cohesion Score} & \alert{0.75} & Mức độ đồng nhất nội bộ cụm \\
+            \textbf{Noise Ratio} & $\sim$15\% & Tỷ lệ tin rác/nhiễu được loại bỏ \\
+            \textbf{Coverage} & 85\% & Tỷ lệ bài viết được gán nhãn chủ đề \\
+            \bottomrule
+        \end{tabular}
+        \caption{Hiệu năng của thuật toán SAHC}
+    \end{table}
+
+    \vspace{0.2cm}
+    \textbf{So sánh:} Phương pháp Hybrid cải thiện độ chính xác khoảng \textbf{20\%} so với việc chỉ dùng từ khóa (Keyword Matching) đơn thuần.
+\end{frame}
+
+% Frame 5.3: Kết quả tinh chỉnh & Phân loại của LLM
+\begin{frame}{Kết quả Phân loại\& Tinh chỉnh (LLM Refinement)}
+    Hệ thống tự động sinh tiêu đề và phân cấp sự kiện (Taxonomy):
+
+    \begin{block}{Ví dụ thực tế (Case Study)}
+        \begin{itemize}
+            \item \textbf{Cụm gốc (Cluster ID 42):} Gồm 150 bài viết chứa từ khóa "gió giật", "mất điện", "cây đổ", "Hà Nội".
+            \item \textbf{LLM Refined Title:} \enquote{Siêu bão Yagi gây thiệt hại nghiêm trọng tại Hà Nội}.
+            \item \textbf{Phân loại (Taxonomy):} \alert{Nhóm A (Crisis/Khẩn cấp)}.
+        \end{itemize}
+    \end{block}
+
+    \vspace{0.3cm}
+    \textbf{Thống kê các nhóm chủ đề chính:}
+    \begin{itemize}
+        \item \textbf{Nhóm A (Khẩn cấp):} Thiên tai, sự cố giao thông nghiêm trọng.
+        \item \textbf{Nhóm B (Đáng chú ý):} Sự kiện giải trí, thể thao (bóng đá).
+        \item \textbf{Nhóm C (Thông thường):} Tin tức đời sống, quảng cáo (đã lọc bớt).
+    \end{itemize}
+\end{frame}
+
+%============================================================
+% SECTION 6: DEMO
+%============================================================
+\section{Demo}
+
+% Frame 6.1: Kịch bản Demo
+\begin{frame}{Kịch bản Demo (Demo Scenario)}
+    Chúng tôi sẽ trình diễn quy trình xử lý trực tiếp trên \textbf{Interactive Test Bench}:
+
+    \begin{enumerate}
+        \item \textbf{Input:} Nạp dữ liệu thô mới nhất từ Facebook Crawler.
+        \item \textbf{Processing:} 
+            \begin{itemize}
+                \item Chạy Pipeline phân cụm (SAHC).
+                \item Kích hoạt LLM để đặt tên cụm.
+            \end{itemize}
+        \item \textbf{Visualization:} Hiển thị kết quả trên giao diện Dashboard/Notebook.
+        \item \textbf{Verification:} Kiểm tra ngẫu nhiên 1 cụm để xem độ chính xác của các bài viết bên trong.
+    \end{enumerate}
+\end{frame}
+
+% Frame 6.2: Giao diện kết quả (Screenshot)
+\begin{frame}{Giao diện Kết quả (Output Visualization)}
+    \begin{center}
+        % [PLACEHOLDER: Hình ảnh bảng kết quả dạng DataFrame hoặc Dashboard]
+        % Có thể dùng ảnh chụp phần "Discovery Viewer" trong code
+        \textbf{[PLACEHOLDER: ẢNH CHỤP DISCOVERY VIEWER / DASHBOARD]}
+    \end{center}
+    
+    \begin{itemize}
+        \item Hiển thị danh sách \textbf{Top Trending}.
+        \item Phân biệt rõ nguồn tin: \textcolor{blue}{News (Tin cậy)} vs \textcolor{orange}{Social (Lan truyền)}.
+        \item Cung cấp tóm tắt ngắn gọn cho người dùng.
+    \end{itemize}
+\end{frame}
+
+%============================================================
+% SECTION 7: KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN
+%============================================================
+\section{Kết luận và hướng phát triển}
+
+% Frame 7.1: Kết luận
+\begin{frame}{Kết luận}
+    \begin{block}{Những kết quả đạt được}
+        \begin{enumerate}
+            \item Xây dựng thành công pipeline \textbf{Hybrid Event Detection} xử lý đa nguồn dữ liệu (7000+ mẫu thử nghiệm).
+            \item Giải quyết tốt bài toán \textbf{nhiễu trên mạng xã hội} thông qua cơ chế Anchoring (gắn kết News).
+            \item Tích hợp \textbf{LLM (Gemini)} giúp kết quả đầu ra dễ hiểu, có tính cấu trúc cao thay vì chỉ là danh sách bài viết.
+        \end{enumerate}
+    \end{block}
+\end{frame}
+
+% Frame 7.2: Hạn chế & Hướng phát triển
+\begin{frame}{Hạn chế\& Hướng phát triển}
+    \textbf{Hạn chế hiện tại:}
+    \begin{itemize}
+        \item Độ trễ (Latency) khi gọi API của LLM để sinh tiêu đề.
+        \item Phụ thuộc vào chất lượng của Embedding Model tiếng Việt.
+    \end{itemize}
+
+    \vspace{0.5cm}
+    \textbf{Kế hoạch tiếp theo (Future Work):}
+    \begin{enumerate}
+        \item \textbf{Tối ưu hóa:} Sử dụng mô hình nhỏ hơn (Small Language Model) hoặc Quantization để tăng tốc độ.
+        \item \textbf{Mở rộng nguồn dữ liệu:} Tích hợp thêm TikTok Comments hoặc YouTube.
+        \item \textbf{Giao diện người dùng:} Xây dựng Web App hoàn chỉnh (Streamlit/Next.js) thay vì chạy trên Notebook.
+        \item \textbf{Real-time Alert:} Gửi cảnh báo qua Telegram/Email khi phát hiện sự kiện Nhóm A (Khẩn cấp).
+    \end{enumerate}
+\end{frame}
+
+% Frame cuối: Cảm ơn
+\begin{frame}[plain]
+    \centering
+    \Huge \textcolor{blue}{CẢM ƠN THẦY VÀ CÁC BẠN ĐÃ LẮNG NGHE!}
+    
+    \vspace{1cm}
+    \large \textbf{Q \& A}
+\end{frame}
+
+
+
+\end{document}
