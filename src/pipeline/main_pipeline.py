@@ -529,7 +529,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
                         cluster_epsilon=0.05, min_quality_cohesion=0.55,
-                        coherence_threshold=0.65,
+                        coherence_threshold=0.70,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
                         custom_stopwords=None, min_member_similarity=0.55,
@@ -650,6 +650,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         return " ".join(unique_signals)
 
     trend_queries = [create_smart_trend_query(t, trends[t]['keywords']) for t in trend_keys]
+
+    # [DEBUG] Print samples
+    console.print(f"[dim]Sample Smart Queries: {trend_queries[:3]}[/dim]")
     trend_embeddings = get_embeddings(
         trend_queries, 
         method=embedding_method, 

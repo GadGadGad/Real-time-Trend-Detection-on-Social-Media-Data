@@ -17,7 +17,7 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
                  selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
                  min_quality_cohesion=0.5, min_member_similarity=0.45, 
-                 trust_remote_code=False, custom_stopwords=None, recluster_large=True, coherence_threshold=0.65):
+                 trust_remote_code=False, custom_stopwords=None, recluster_large=True, coherence_threshold=0.70):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
