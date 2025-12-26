@@ -9,7 +9,7 @@ import math
 model_name = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
 train_file = 'data/reranker_train.jsonl'
 output_path = 'models/reranker-vietnamese-v1'
-batch_size = 8
+batch_size = 64
 epochs = 3
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -50,6 +50,9 @@ def train():
         show_progress_bar=True
     )
 
+    # 6. Explicitly save final model
+    os.makedirs(output_path, exist_ok=True)
+    model.save(output_path)
     print(f"Training complete. Model saved to {output_path}")
 
 if __name__ == "__main__":
