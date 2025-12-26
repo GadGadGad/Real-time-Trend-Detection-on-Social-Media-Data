@@ -52,6 +52,28 @@ def investigate_trend(df, trend_name):
             cluster_posts = matches[matches[cluster_col] == cluster]
             print(f"   • Cluster {cluster}: {len(cluster_posts)} posts")
     
+    # KEYWORD PRESENCE CHECK - Do posts actually contain the trend keyword?
+    keywords = trend_name.lower().split()
+    print(f"\n🔑 KEYWORD PRESENCE CHECK ('{trend_name}'):")
+    
+    content_col = 'content' if 'content' in matches.columns else 'post_content'
+    
+    for kw in keywords:
+        if len(kw) < 3:  # Skip short words
+            continue
+        contains_kw = matches[content_col].str.lower().str.contains(kw, na=False)
+        pct = contains_kw.sum() / len(matches) * 100
+        print(f"   '{kw}': {contains_kw.sum()}/{len(matches)} posts ({pct:.1f}%)")
+    
+    # Show posts that DON'T contain any keyword
+    main_kw = max(keywords, key=len)  # Use longest keyword
+    missing = matches[~matches[content_col].str.lower().str.contains(main_kw, na=False)]
+    if len(missing) > 0:
+        print(f"\n❌ POSTS WITHOUT '{main_kw}' ({len(missing)} posts):")
+        for _, row in missing.head(5).iterrows():
+            content = row.get(content_col, '')[:100]
+            print(f"      • {content}...")
+    
     return matches
 
 def list_multi_reasoning_trends(df):
