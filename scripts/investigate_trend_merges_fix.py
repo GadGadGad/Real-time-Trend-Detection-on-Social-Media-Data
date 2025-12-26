@@ -19,12 +19,20 @@ def investigate_trend(df, trend_name):
     matches = df[df['final_topic'].str.contains(trend_name, case=False, na=False)]
     
     print(f"\n📊 Total posts matched: {len(matches)}")
-    print(f"📊 Unique reasonings: {matches['llm_reasoning'].nunique()}")
     
-    # Show unique reasonings
-    print(f"\n📝 UNIQUE REASONINGS:")
-    for i, reasoning in enumerate(matches['llm_reasoning'].unique(), 1):
-        print(f"\n   [{i}] {reasoning[:200]}...")
+    # Check for concatenated reasonings (split by " | ")
+    all_reasonings = []
+    for r in matches['llm_reasoning'].dropna().unique():
+        if ' | ' in str(r):
+            parts = str(r).split(' | ')
+            all_reasonings.extend(parts)
+            print(f"\n⚠️  MERGED REASONING DETECTED ({len(parts)} parts):")
+            for i, part in enumerate(parts, 1):
+                print(f"   [{i}] {part[:150]}...")
+        else:
+            all_reasonings.append(str(r))
+    
+    print(f"\n📊 Unique reasoning components: {len(set(all_reasonings))}")
     
     # Group by reasoning to see which posts belong to which
     print(f"\n📰 SAMPLE POSTS PER REASONING:")
