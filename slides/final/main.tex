@@ -28,6 +28,8 @@
 \usepackage{xcolor}
 \usepackage{csquotes}
 \usepackage{microtype} % chữ "mượt" hơn (pdfLaTeX)
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, positioning, fit, calc}
 
 \setbeamertemplate{caption}[numbered]
 
@@ -140,7 +142,7 @@
     \begin{block}{Mục tiêu chính}
         Xây dựng pipeline tự động phát hiện, phân cụm và tóm tắt xu hướng từ đa nguồn dữ liệu.
     \end{block}
-    
+
     \vspace{0.5cm}
     \textbf{Các nhiệm vụ cụ thể:}
     \begin{enumerate}
@@ -152,20 +154,51 @@
 \end{frame}
 
 % Frame 1.3: Placeholder cho Pipeline (Theo yêu cầu của bạn)
-\begin{frame}{Tổng quan quy trình (Pipeline Overview)}
+\begin{frame}
+    \frametitle{Tổng quan quy trình (Pipeline Overview)}
     \begin{center}
-        \textbf{[PLACEHOLDER: SƠ ĐỒ PIPELINE TỔNG QUÁT]}
-        
-        \vspace{1cm}
-        \textit{(Tại đây bạn nên chèn hình ảnh kiến trúc hệ thống High-Level)}
-        \vspace{0.5cm}
-        
-        \begin{itemize}
-            \item \textbf{Input:} Facebook Crawler, News Crawler, Google Trends.
-            \item \textbf{Process:} Preprocessing $\to$ Embedding $\to$ SAHC Clustering $\to$ LLM Refinement.
-            \item \textbf{Output:} Dashboard xu hướng \& Cảnh báo.
-        \end{itemize}
+    \resizebox{0.75\textwidth}{!}{%
+    \begin{tikzpicture}[
+        node distance=0.8cm and 0.5cm,
+        process/.style={rectangle, draw=blue!60, fill=blue!5, very thick, minimum size=6mm, rounded corners=3mm, font=\small\bfseries, align=center},
+        io/.style={trapezium, trapezium left angle=70, trapezium right angle=110, draw=orange!60, fill=orange!10, thick, minimum width=2cm, font=\footnotesize, align=center},
+        decision/.style={diamond, draw=red!60, fill=red!10, thick, aspect=2, font=\footnotesize, align=center},
+        arrow/.style={thick, ->, >=stealth, color=gray!80},
+        label/.style={font=\tiny\itshape, color=gray}
+    ]
+
+    % Nodes
+    \node (input) [io] {Facebook \& News\\Data Ingestion};
+    \node (pre) [process, below=of input] {Preprocessing\\\& Cleaning};
+    \node (embed) [process, below=of pre] {Embedding\\(Vietnamese Model)};
+    
+    \node (sahc) [process, below=of embed, fill=green!10, draw=green!60] {SAHC Clustering\\(Hybrid)};
+    
+    \node (llm) [process, right=of sahc, xshift=1cm, fill=purple!10, draw=purple!60] {LLM Refinement\\(Gemini)};
+    
+    \node (vis) [process, above=of llm, yshift=0.5cm] {Dashboard\\\& Visualization};
+
+    % Arrows
+    \draw [arrow] (input) -- (pre);
+    \draw [arrow] (pre) -- (embed);
+    \draw [arrow] (embed) -- (sahc);
+    
+    \draw [arrow] (sahc) -- node[above, font=\tiny] {Clusters} (llm);
+    \draw [arrow] (llm) -- node[right, font=\tiny] {Taxonomy \& Titles} (vis);
+    
+    % Feedback loop or detail
+    \draw [dashed, ->, color=gray] (vis) to[bend right=45] node[left, font=\tiny] {Feedback} (sahc);
+
+    \end{tikzpicture}
+    }
     \end{center}
+    
+    \vspace{0.2cm}
+    \begin{itemize} \small
+        \item \textbf{1. Ingestion:} Thu thập từ Facebook API \& báo chí.
+        \item \textbf{2. Core AI:} Embedding (Vector) + SAHC (Phân cụm lai).
+        \item \textbf{3. GenAI:} Gemini sinh tiêu đề và phân loại T1-T7.
+    \end{itemize}
 \end{frame}
 
 %============================================================
@@ -176,7 +209,7 @@
 % Frame 2.1: Nguồn dữ liệu
 \begin{frame}{Nguồn dữ liệu thu thập}
     Hệ thống thu thập dữ liệu từ 3 nguồn chính để đảm bảo tính đa chiều:
-    
+
     \begin{columns}
         \column{0.5\textwidth}
         \begin{block}{1. Social Media (Facebook)}
@@ -185,7 +218,7 @@
                 \item Đặc điểm: Tốc độ nhanh, dùng tiếng lóng (teencode), nhiều nhiễu, ý kiến cá nhân mạnh.
             \end{itemize}
         \end{block}
-        
+
         \column{0.5\textwidth}
         \begin{block}{2. Báo chính thống (News)}
             \begin{itemize}
@@ -194,7 +227,7 @@
             \end{itemize}
         \end{block}
     \end{columns}
-    
+
     \vspace{0.3cm}
     \begin{itemize}
         \item \textbf{3. Google Trends:} Sử dụng làm tín hiệu dẫn đường (Signal) để định hướng tìm kiếm.
@@ -211,10 +244,10 @@
             \toprule
             \textbf{Nguồn dữ liệu} & \textbf{Số lượng bài đăng} & \textbf{Tỷ lệ (\%)} \\
             \midrule
-            Facebook (Social) & 2,961 & 38.9\% \\
-            News (Báo chí) & 4,644 & 61.1\% \\
+            Facebook (Social)      & 2,961                      & 38.9\%              \\
+            News (Báo chí)         & 4,644                      & 61.1\%              \\
             \midrule
-            \textbf{Tổng cộng} & \textbf{7,605} & \textbf{100\%} \\
+            \textbf{Tổng cộng}     & \textbf{7,605}             & \textbf{100\%}      \\
             \bottomrule
         \end{tabular}
         \caption{Phân bố dữ liệu đầu vào}
@@ -233,22 +266,22 @@
     Dựa trên đặc thù dữ liệu tiếng Việt, quy trình làm sạch bao gồm:
 
     \begin{enumerate}
-        \item \textbf{Lọc nhiễu cơ bản:} 
-            \begin{itemize}
-                \item Loại bỏ bài viết quá ngắn ($<$ 50 ký tự) hoặc quá dài.
-                \item Loại bỏ các bài viết chứa từ khóa rác (quảng cáo, xổ số, spam).
-            \end{itemize}
+        \item \textbf{Lọc nhiễu cơ bản:}
+              \begin{itemize}
+                  \item Loại bỏ bài viết quá ngắn ($<$ 50 ký tự) hoặc quá dài.
+                  \item Loại bỏ các bài viết chứa từ khóa rác (quảng cáo, xổ số, spam).
+              \end{itemize}
         \item \textbf{Chuẩn hóa văn bản:}
-            \begin{itemize}
-                \item Chuyển đổi Unicode, xử lý emoji, link, hashtag.
-                \item Chuẩn hóa teencode (Facebook data).
-            \end{itemize}
+              \begin{itemize}
+                  \item Chuyển đổi Unicode, xử lý emoji, link, hashtag.
+                  \item Chuẩn hóa teencode (Facebook data).
+              \end{itemize}
         \item \textbf{Tách từ (Word Segmentation):}
-            \begin{itemize}
-                \item Sử dụng thư viện chuyên dụng (\texttt{py\_vncorenlp} / \texttt{underthesea}).
-                \item \textbf{Ví dụ:} "đất nước" (1 token) khác với "đất" (soil) và "nước" (water).
-                \item Bước này quan trọng để mô hình Embedding hiểu đúng ngữ cảnh.
-            \end{itemize}
+              \begin{itemize}
+                  \item Sử dụng thư viện chuyên dụng (\texttt{py\_vncorenlp} / \texttt{underthesea}).
+                  \item \textbf{Ví dụ:} "đất nước" (1 token) khác với "đất" (soil) và "nước" (water).
+                  \item Bước này quan trọng để mô hình Embedding hiểu đúng ngữ cảnh.
+              \end{itemize}
     \end{enumerate}
 \end{frame}
 
@@ -266,7 +299,7 @@
         \item \textbf{Phân cụm lai (SAHC Clustering):} Thuật toán phân cụm phân cấp nhận thức xã hội (Social-Aware Hierarchical Clustering).
         \item \textbf{Tinh chỉnh (Refinement):} Sử dụng LLM để chuẩn hóa kết quả đầu ra.
     \end{enumerate}
-    
+
     \begin{block}{Công nghệ lõi}
         \begin{itemize}
             \item \textbf{Embedding Model:} \texttt{dangvantuan/vietnamese-document-embedding} (Tối ưu cho tiếng Việt).
@@ -286,7 +319,7 @@
             \item Khả năng hiểu ngữ cảnh tốt hơn phương pháp từ khóa (TF-IDF).
             \item \textbf{Segmentation:} Áp dụng tách từ trước khi đưa vào mô hình (Ví dụ: "Học sinh" là 1 token thay vì 2).
         \end{itemize}
-        
+
         \column{0.4\textwidth}
         \begin{center}
             \textbf{[PLACEHOLDER: HÌNH MINH HỌA EMBEDDING SPACE]}
@@ -305,36 +338,36 @@
 
     \begin{itemize}
         \item \textbf{Phase 1: News-First Anchoring (Tạo mỏ neo)}
-        \begin{itemize}
-            \item Sử dụng các bài báo chính thống để tạo các tâm cụm (Cluster Centroids) ban đầu.
-            \item Đảm bảo xu hướng có tính xác thực cao.
-        \end{itemize}
-        
+              \begin{itemize}
+                  \item Sử dụng các bài báo chính thống để tạo các tâm cụm (Cluster Centroids) ban đầu.
+                  \item Đảm bảo xu hướng có tính xác thực cao.
+              \end{itemize}
+
         \item \textbf{Phase 2: Social Attachment (Gắn kết xã hội)}
-        \begin{itemize}
-            \item Tính toán độ tương đồng (Cosine Similarity) của các bài Facebook với các mỏ neo News.
-            \item Nếu \texttt{Score > Threshold}, gán bài Facebook vào cụm News tương ứng.
-        \end{itemize}
-        
+              \begin{itemize}
+                  \item Tính toán độ tương đồng (Cosine Similarity) của các bài Facebook với các mỏ neo News.
+                  \item Nếu \texttt{Score > Threshold}, gán bài Facebook vào cụm News tương ứng.
+              \end{itemize}
+
         \item \textbf{Phase 3: Discovery (Khám phá xu hướng mới)}
-        \begin{itemize}
-            \item Các bài Facebook còn lại (chưa được gán) sẽ được chạy thuật toán \textbf{HDBSCAN}.
-            \item Mục tiêu: Phát hiện các sự kiện mới nổi trên MXH mà báo chí chưa kịp đưa tin.
-        \end{itemize}
+              \begin{itemize}
+                  \item Các bài Facebook còn lại (chưa được gán) sẽ được chạy thuật toán \textbf{HDBSCAN}.
+                  \item Mục tiêu: Phát hiện các sự kiện mới nổi trên MXH mà báo chí chưa kịp đưa tin.
+              \end{itemize}
     \end{itemize}
 \end{frame}
 
 % Frame 3.4: LLM Refinement Pipeline
 \begin{frame}{Hậu xử lý với LLM (LLM Refinement)}
     Sau khi có các cụm thô, hệ thống sử dụng Gemini API để thực hiện 3 tác vụ:
-    
+
     \begin{enumerate}
         \item \textbf{Summarization \& Naming:} Sinh tiêu đề ngắn gọn, dễ hiểu cho cụm sự kiện (thay vì dùng ID số).
         \item \textbf{Classification (Phân loại Taxonomy):}
-            \begin{itemize}
-                \item Gán nhãn sự kiện vào các nhóm A/B/C hoặc T1-T7 (theo mức độ nghiêm trọng/lĩnh vực).
-                \item Loại bỏ các cụm "Rác" (Noise) mà thuật toán clustering bỏ sót.
-            \end{itemize}
+              \begin{itemize}
+                  \item Gán nhãn sự kiện vào các nhóm A/B/C hoặc T1-T7 (theo mức độ nghiêm trọng/lĩnh vực).
+                  \item Loại bỏ các cụm "Rác" (Noise) mà thuật toán clustering bỏ sót.
+              \end{itemize}
         \item \textbf{Semantic Deduplication:} Gộp các cụm có cùng ý nghĩa nhưng khác cách diễn đạt (Ví dụ: "Bão Yagi" và "Cơn bão số 3").
     \end{enumerate}
 \end{frame}
@@ -350,7 +383,7 @@
     \begin{center}
         \textbf{[PLACEHOLDER: SƠ ĐỒ LUỒNG DỮ LIỆU]}
     \end{center}
-    
+
     \vspace{0.2cm}
     \textbf{Gợi ý nội dung sơ đồ:}
     \begin{itemize}
@@ -364,7 +397,7 @@
 % Frame 4.2: Cơ chế cập nhật (Windowing Strategy)
 \begin{frame}{Chiến lược cập nhật dữ liệu (Windowing Strategy)}
     Để xử lý dữ liệu liên tục, hệ thống áp dụng cơ chế cửa sổ thời gian:
-    
+
     \begin{block}{Cơ chế Sliding Window (Cửa sổ trượt)}
         \begin{itemize}
             \item Hệ thống không chạy Clustering trên từng bài viết đơn lẻ.
@@ -390,30 +423,88 @@
 \end{frame}
 
 %============================================================
-% SECTION 5: KẾT QUẢ SƠ BỘ
+% SECTION 5: HUẤN LUYỆN & TINH CHỈNH (New)
 %============================================================
-\section{Kết quả sơ bộ}
+\section{Huấn luyện \& Tinh chỉnh Mô hình}
 
-% Frame 5.1: Trực quan hóa không gian Vector (t-SNE)
-\begin{frame}{Trực quan hóa Phân cụm (t-SNE Visualization)}
-    \begin{columns}
-        \column{0.6\textwidth}
-        \begin{center}
-            % [PLACEHOLDER: Thay bằng ảnh chụp biểu đồ t-SNE từ notebook]
-            % Ảnh nên thể hiện các điểm dữ liệu gom lại thành từng cụm màu sắc riêng biệt
-            \textbf{[PLACEHOLDER: HÌNH ẢNH T-SNE CLUSTERING]}
-            \par\textit{\small(Biểu đồ phân bố các bài viết trong không gian 2D)}
-        \end{center}
-        
-        \column{0.4\textwidth}
-        \textbf{Nhận xét:}
+% Frame 5.1: Xây dựng dữ liệu huấn luyện
+\begin{frame}{Chiến lược xây dựng dữ liệu (Data Construction)}
+    Hệ thống sử dụng kỹ thuật \textbf{Self-Supervised Learning} và \textbf{Knowledge Distillation} để tạo dữ liệu huấn luyện chất lượng cao mà không tốn nhiều chi phí gán nhãn thủ công:
+
+    \begin{itemize}
+        \item \textbf{1. Reranker Data (Contrastive Learning):}
         \begin{itemize}
-            \item Các bài viết cùng chủ đề (cùng màu) co cụm chặt chẽ $\to$ \textbf{Cohesion cao}.
-            \item Các cụm tách biệt rõ ràng với nhau $\to$ \textbf{Separation tốt}.
-            \item Các điểm màu xám (Noise) nằm rải rác, đã được thuật toán HDBSCAN lọc bỏ thành công.
+            \item \textbf{Positive Pairs:} Các bài viết thuộc cùng một cụm (Cluster) được coi là cặp tích cực.
+            \item \textbf{Hard Negatives:} Ghép bài viết của cụm A với bài viết của cụm B (khác chủ đề nhưng có thể cùng từ khóa nhiễu) theo tỷ lệ 1:3.
+            \item \textit{Tổng mẫu:} ~15,000 cặp huấn luyện.
         \end{itemize}
-    \end{columns}
+        
+        \item \textbf{2. Taxonomy Data (Distillation):}
+        \begin{itemize}
+            \item \textbf{Teacher:} Gemini Pro (LLM) gán nhãn T1-T7 cho 1,000 mẫu ngẫu nhiên.
+            \item \textbf{Student:} Finetune model \texttt{visobert} trên dữ liệu này để học cách phân loại nhanh (tốc độ gấp 50 lần LLM).
+        \end{itemize}
+    \end{itemize}
 \end{frame}
+
+% Frame 5.2: LLM-as-a-Judge Protocol
+\begin{frame}{Phương pháp đánh giá: LLM-as-a-Judge}
+    Do thiếu bộ dữ liệu chuẩn (Ground Truth) cho các sự kiện real-time, nhóm áp dụng giao thức đánh giá bằng LLM (Gemini 2.7B) để chấm điểm chất lượng cụm:
+
+    \begin{block}{Giao thức chấm điểm (Scoring Protocol)}
+        \begin{enumerate}
+            \item \textbf{Input:} Tên cụm + 5 bài viết tiêu biểu (Sample Posts).
+            \item \textbf{Criteria (Thang 1-5):}
+            \begin{itemize}
+                \item \textbf{Coherence (Độ nhất quán):} Các bài viết có cùng nội dung không?
+                \item \textbf{Relevance (Độ liên quan):} Tên cụm có phản ánh đúng nội dung không?
+                \item \textbf{Distinctiveness (Độ tách biệt):} Cụm này có bị trùng với cụm khác không?
+            \end{itemize}
+            \item \textbf{Output:} JSON Score + Lý do giải thích (Reasoning).
+        \end{enumerate}
+    \end{block}
+
+    \vspace{0.2cm}
+    \textbf{Ưu điểm:} Đánh giá được ngữ nghĩa sâu (Semantic) mà metrics toán học (Silhouette) không thấy được.
+\end{frame}
+
+%============================================================
+% SECTION 6: KẾT QUẢ THỰC NGHIỆM
+%============================================================
+\section{Kết quả thực nghiệm}
+
+
+% Frame 6.1: So sánh các phiên bản (Experimental Results)
+\begin{frame}{So sánh Hiệu năng các mô hình (Model Comparison)}
+    Kết quả thực nghiệm trên 3 cấu hình khác nhau (Batch Evaluation):
+
+    \begin{table}[]
+        \centering
+        \resizebox{0.95\textwidth}{!}{%
+        \begin{tabular}{l c c c}
+            \toprule
+            \textbf{Metrics} & \textbf{Baseline (Hybrid)} & \textbf{Generic Reranker (BGE)} & \textbf{Ours (Finetuned Reranker)} \\
+            \midrule
+            \textbf{NMI} ($\uparrow$)          & \textbf{0.54} & 0.23 (Poor) & \underline{0.52} (Comparable) \\
+            \textbf{BCubed F1} ($\uparrow$)    & \textbf{0.35} & 0.14 & 0.31 \\
+            \textbf{Purity} ($\uparrow$)       & \textbf{0.24} & 0.11 & 0.22 \\
+            \textbf{Noise Rate} (Filter \%)    & 59\%          & \alert{84\%} (Too Strict) & 57\% (Balanced) \\
+            \textbf{Entrooy} ($\downarrow$)    & 4.85          & 6.81 & 5.02 \\
+            \bottomrule
+        \end{tabular}%
+        }
+        \caption{So sánh giữa Baseline, Reranker phổ biến (BGE-M3) và Reranker tinh chỉnh}
+    \end{table}
+
+    \vspace{0.2cm}
+    \textbf{Nhận xét (Insights):}
+    \begin{itemize}
+        \item \textbf{Generic Reranker (BGE)} hoạt động kém trên dữ liệu tiếng Việt đặc thù (Social Slang), lọc bỏ quá nhiều bài viết hợp lệ (\textbf{84\% Noise}).
+        \item \textbf{Finetuned Reranker} phục hồi được hiệu năng gần tương đương Baseline nhưng có khả năng mở rộng tốt hơn cho các tác vụ Ranking sâu hơn.
+        \item \textbf{Entropy \& PMI:} Các chỉ số này cho thấy độ gắn kết chủ đề ổn định mặc dù dữ liệu rất nhiễu.
+    \end{itemize}
+\end{frame}
+
 
 % Frame 5.2: Đánh giá định lượng (Metrics)
 \begin{frame}{Đánh giá định lượng (Quantitative Metrics)}
@@ -421,21 +512,24 @@
 
     \begin{table}[]
         \centering
+        \resizebox{0.8\textwidth}{!}{%
         \begin{tabular}{l c c}
             \toprule
-            \textbf{Chỉ số (Metric)} & \textbf{Giá trị đạt được} & \textbf{Ý nghĩa} \\
+            \textbf{Chỉ số (Metric)} & \textbf{Giá trị đạt được} & \textbf{Ý nghĩa}                               \\
             \midrule
-            \textbf{Silhouette Score} & \alert{0.62} & Mức độ tách biệt giữa các cụm (Tốt > 0.5) \\
-            \textbf{Cohesion Score} & \alert{0.75} & Mức độ đồng nhất nội bộ cụm \\
-            \textbf{Noise Ratio} & $\sim$15\% & Tỷ lệ tin rác/nhiễu được loại bỏ \\
-            \textbf{Coverage} & 85\% & Tỷ lệ bài viết được gán nhãn chủ đề \\
+            \textbf{NMI}             & \alert{0.54}              & Thông tin tương hỗ so với nhãn gốc (Tốt > 0.5) \\
+            \textbf{BCubed F1}       & \alert{0.35}              & Trung bình điều hòa giữa Precision và Recall   \\
+            \textbf{Purity}          & \alert{0.25}              & Độ tinh khiết của cụm (tỷ lệ đúng nhãn)        \\
+            \textbf{Entropy}         & \alert{4.85}              & Độ hỗn loạn trong cụm (Thấp là tốt)            \\
+            \textbf{PMI Coherence}   & -0.61                     & Độ gắn kết ngữ nghĩa giữa các từ trong topic   \\
             \bottomrule
-        \end{tabular}
-        \caption{Hiệu năng của thuật toán SAHC}
+        \end{tabular}%
+        }
+        \caption{Hiệu năng phân cụm trên tập Mini-Ground Truth (300 mẫu)}
     \end{table}
 
     \vspace{0.2cm}
-    \textbf{So sánh:} Phương pháp Hybrid cải thiện độ chính xác khoảng \textbf{20\%} so với việc chỉ dùng từ khóa (Keyword Matching) đơn thuần.
+    \textbf{So sánh:} Phương pháp Hybrid cải thiện độ chính xác đáng kể so với việc chỉ dùng từ khóa (Keyword Matching) đơn thuần.
 \end{frame}
 
 % Frame 5.3: Kết quả tinh chỉnh & Phân loại của LLM
@@ -446,16 +540,17 @@
         \begin{itemize}
             \item \textbf{Cụm gốc (Cluster ID 42):} Gồm 150 bài viết chứa từ khóa "gió giật", "mất điện", "cây đổ", "Hà Nội".
             \item \textbf{LLM Refined Title:} \enquote{Siêu bão Yagi gây thiệt hại nghiêm trọng tại Hà Nội}.
-            \item \textbf{Phân loại (Taxonomy):} \alert{Nhóm A (Crisis/Khẩn cấp)}.
+            \item \textbf{Phân loại (Taxonomy):} \alert{T1 - Crisis \& Public Risk}.
         \end{itemize}
     \end{block}
 
     \vspace{0.3cm}
-    \textbf{Thống kê các nhóm chủ đề chính:}
+    \textbf{Thống kê các nhóm chủ đề chính (Taxonomy T1-T7):}
     \begin{itemize}
-        \item \textbf{Nhóm A (Khẩn cấp):} Thiên tai, sự cố giao thông nghiêm trọng.
-        \item \textbf{Nhóm B (Đáng chú ý):} Sự kiện giải trí, thể thao (bóng đá).
-        \item \textbf{Nhóm C (Thông thường):} Tin tức đời sống, quảng cáo (đã lọc bớt).
+        \item \textbf{T1 - Crisis \& Public Risk:} Thiên tai, sự cố, dịch bệnh (Khẩn cấp).
+        \item \textbf{T2 - Policy \& Governance:} Chính sách, pháp luật.
+        \item \textbf{T3 - Reputation Risk:} Scandal, khủng hoảng truyền thông.
+        \item \textbf{T4/T5 - Market \& Culture:} Xu hướng thị trường, giải trí viral.
     \end{itemize}
 \end{frame}
 
@@ -470,11 +565,11 @@
 
     \begin{enumerate}
         \item \textbf{Input:} Nạp dữ liệu thô mới nhất từ Facebook Crawler.
-        \item \textbf{Processing:} 
-            \begin{itemize}
-                \item Chạy Pipeline phân cụm (SAHC).
-                \item Kích hoạt LLM để đặt tên cụm.
-            \end{itemize}
+        \item \textbf{Processing:}
+              \begin{itemize}
+                  \item Chạy Pipeline phân cụm (SAHC).
+                  \item Kích hoạt LLM để đặt tên cụm.
+              \end{itemize}
         \item \textbf{Visualization:} Hiển thị kết quả trên giao diện Dashboard/Notebook.
         \item \textbf{Verification:} Kiểm tra ngẫu nhiên 1 cụm để xem độ chính xác của các bài viết bên trong.
     \end{enumerate}
@@ -487,7 +582,7 @@
         % Có thể dùng ảnh chụp phần "Discovery Viewer" trong code
         \textbf{[PLACEHOLDER: ẢNH CHỤP DISCOVERY VIEWER / DASHBOARD]}
     \end{center}
-    
+
     \begin{itemize}
         \item Hiển thị danh sách \textbf{Top Trending}.
         \item Phân biệt rõ nguồn tin: \textcolor{blue}{News (Tin cậy)} vs \textcolor{orange}{Social (Lan truyền)}.
@@ -512,20 +607,36 @@
 \end{frame}
 
 % Frame 7.2: Hạn chế & Hướng phát triển
-\begin{frame}{Hạn chế\& Hướng phát triển}
-    \textbf{Hạn chế hiện tại:}
+% Frame 7.2: Thách thức & Bài học kinh nghiệm (Thêm thực tế)
+\begin{frame}{Thách thức Kỹ thuật \& Bài học (Challenges)}
     \begin{itemize}
-        \item Độ trễ (Latency) khi gọi API của LLM để sinh tiêu đề.
-        \item Phụ thuộc vào chất lượng của Embedding Model tiếng Việt.
-    \end{itemize}
+        \item \textbf{1. Semantic Ambiguity (Nhập nhằng ngữ nghĩa):}
+              \begin{itemize}
+                  \item \textit{Vấn đề:} Cùng một sự kiện nhưng News gọi là "Bão Yagi", Social gọi là "Cơn bão số 3" hoặc "Gió giật Hà Nội".
+                  \item \textit{Giải pháp:} Đã áp dụng \textbf{LLM-based Deduplication} kết hợp Reranker để gộp các cụm trùng ý nghĩa.
+              \end{itemize}
 
-    \vspace{0.5cm}
-    \textbf{Kế hoạch tiếp theo (Future Work):}
+        \item \textbf{2. Evaluation Gap (Thiếu Ground Truth):}
+              \begin{itemize}
+                  \item \textit{Vấn đề:} Khó đánh giá chính xác chất lượng phân cụm trên dữ liệu streaming không nhãn.
+                  \item \textit{Giải pháp:} Xây dựng quy trình \textbf{"Mini-Ground Truth"} (gán nhãn thủ công 300 mẫu) để chuẩn hoá metrics (BCubed F1, NMI).
+              \end{itemize}
+
+        \item \textbf{3. Latency vs. Accuracy Trade-off:}
+              \begin{itemize}
+                  \item \textit{Vấn đề:} Gọi LLM (Gemini) cho mỗi cụm tốn 2-3s, gây trễ cho pipeline real-time.
+                  \item \textit{Giải pháp:} Chiến lược \textbf{Micro-batching} và Caching Embedding; chỉ gọi lại LLM khi cụm thay đổi đáng kể (>20\% posts mới).
+              \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Frame 7.3: Hướng phát triển
+\begin{frame}{Kế hoạch phát triển (Roadmap)}
     \begin{enumerate}
-        \item \textbf{Tối ưu hóa:} Sử dụng mô hình nhỏ hơn (Small Language Model) hoặc Quantization để tăng tốc độ.
-        \item \textbf{Mở rộng nguồn dữ liệu:} Tích hợp thêm TikTok Comments hoặc YouTube.
-        \item \textbf{Giao diện người dùng:} Xây dựng Web App hoàn chỉnh (Streamlit/Next.js) thay vì chạy trên Notebook.
-        \item \textbf{Real-time Alert:} Gửi cảnh báo qua Telegram/Email khi phát hiện sự kiện Nhóm A (Khẩn cấp).
+        \item \textbf{Model Quantization:} Chuyển đổi Embedding Model sang ONNX/Int8 để tăng tốc độ inference trên CPU.
+        \item \textbf{Advanced Filtering:} Tích hợp bộ lọc "Soft-Noise" để giữ lại các trend giải trí (Meme, Slang) thay vì lọc bỏ hoàn toàn.
+        \item \textbf{User Feedback Loop:} Cho phép người dùng gán nhãn lại các cụm sai để Active Learning mô hình phân loại.
+        \item \textbf{Scaling:} Triển khai kiến trúc Kafka + Spark Streaming để xử lý >10,000 requests/giây.
     \end{enumerate}
 \end{frame}
 
@@ -533,7 +644,7 @@
 \begin{frame}[plain]
     \centering
     \Huge \textcolor{blue}{CẢM ƠN THẦY VÀ CÁC BẠN ĐÃ LẮNG NGHE!}
-    
+
     \vspace{1cm}
     \large \textbf{Q \& A}
 \end{frame}

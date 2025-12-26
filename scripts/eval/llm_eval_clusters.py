@@ -113,7 +113,7 @@ def main():
     parser.add_argument('--sample-size', type=int, default=10, help='Number of clusters to evaluate')
     parser.add_argument('--eval-assignments', action='store_true', help='Also evaluate topic assignments')
     parser.add_argument('--api-key', type=str, help='Gemini API key (or set GEMINI_API_KEY env)')
-    parser.add_argument('--model', type=str, default='gemini-1.5-flash', help='Gemini model name')
+    parser.add_argument('--model', type=str, default='gemma-3-27b-it', help='Gemini model name')
     args = parser.parse_args()
     
     # Setup Gemini

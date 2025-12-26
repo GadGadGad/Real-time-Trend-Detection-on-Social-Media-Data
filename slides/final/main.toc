@@ -1,8 +1,0 @@
-\babel@toc {vietnamese}{}\relax 
-\beamer@sectionintoc {1}{Giới thiệu bài toán}{3}{0}{1}
-\beamer@sectionintoc {2}{Dữ liệu}{7}{0}{2}
-\beamer@sectionintoc {3}{Phương pháp thực hiện}{11}{0}{3}
-\beamer@sectionintoc {4}{Real-time Data Streaming}{16}{0}{4}
-\beamer@sectionintoc {5}{Kết quả sơ bộ}{20}{0}{5}
-\beamer@sectionintoc {6}{Demo}{24}{0}{6}
-\beamer@sectionintoc {7}{Kết luận và hướng phát triển}{27}{0}{7}
