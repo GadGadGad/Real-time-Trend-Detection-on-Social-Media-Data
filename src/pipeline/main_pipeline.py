@@ -686,6 +686,30 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         anchors=anchors,
         custom_stopwords=custom_stopwords
     )
+
+    # --- PHASE 1.5: CLUSTER CONSOLIDATION ---
+    # Merge clusters that share the exact same name (e.g., multiple "Ukraine" clusters)
+    name_to_labels = {}
+    for l, name in cluster_names.items():
+        if name not in name_to_labels:
+            name_to_labels[name] = []
+        name_to_labels[name].append(l)
+    
+    merged_count = 0
+    for name, labels_to_merge in name_to_labels.items():
+        if len(labels_to_merge) > 1:
+            canonical_label = labels_to_merge[0]
+            for other_label in labels_to_merge[1:]:
+                # Map all posts from other_label to canonical_label
+                cluster_labels[cluster_labels == other_label] = canonical_label
+                if other_label in cluster_names:
+                    del cluster_names[other_label]
+                merged_count += 1
+    
+    if merged_count > 0:
+        unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
+        console.print(f"   🔗 [green]Consolidated {merged_count} redundant clusters into {len(unique_labels)} unique topics.[/green]")
+
     cluster_mapping = {}
 
     for label in unique_labels:

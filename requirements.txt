@@ -39,3 +39,7 @@ google-generativeai
 torch
 accelerate
 bitsandbytes
+
+# Demo
+streamlit
+plotly

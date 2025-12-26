@@ -591,12 +591,21 @@ def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors
             
             for idx, feat in enumerate(feature_names):
                 if any(sw == feat.lower() for sw in all_stopwords):
-                    row[idx] *= 0.01
+                    row[idx] *= 0.001 # Aggressive stopword filtering
+                
                 tokens = feat.split()
-                if len(tokens) == 1: row[idx] *= 0.3
-                if len(feat) < 4: row[idx] *= 0.1
+                # Heavy penalty for generic single words
+                if len(tokens) == 1: 
+                    row[idx] *= 0.05
+                elif len(tokens) == 2:
+                    row[idx] *= 1.2 # Bonus for 2-word phrases
+                elif len(tokens) == 3:
+                    row[idx] *= 1.5 # Higher bonus for 3-word phrases
+                
+                if len(feat) < 4: 
+                    row[idx] *= 0.05
 
-            top_indices = row.argsort()[-20:][::-1] 
+            top_indices = row.argsort()[-30:][::-1] 
             candidates = [feature_names[idx] for idx in top_indices if row[idx] > 0]
             
             if not candidates:
