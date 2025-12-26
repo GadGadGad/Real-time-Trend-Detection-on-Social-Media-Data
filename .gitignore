@@ -43,3 +43,6 @@ latex/main.snm
 latex/main.synctex.gz
 latex/main.toc
 latex/main.vrb
+
+stream_test/data/*
+stream_test/crawlers/__pycache__/
