@@ -48,7 +48,6 @@ def train():
         epochs=epochs,
         weight_decay=0,
         scheduler='constantlr',
-        logging_steps=10,
         show_progress_bar=True,
         checkpoint_path=os.path.join(output_path, 'checkpoints'),
         checkpoint_save_steps=1000,
