@@ -529,7 +529,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
                         cluster_epsilon=0.05, min_quality_cohesion=0.60,
-                        coherence_threshold=0.75,
+                        coherence_threshold=0.85,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
                         custom_stopwords=None, min_member_similarity=0.60,
@@ -733,8 +733,58 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         gc.collect()
         torch.cuda.empty_cache()
 
+    # --- PHASE 2.5: POST-LEVEL KEYWORD VERIFICATION ---
+    # Remove posts that don't actually contain the matched trend keywords
+    console.print("[cyan]🔍 Phase 2.5: Post-level keyword verification...[/cyan]")
+    verification_stats = {"verified": 0, "removed": 0}
+    
+    for label, m in cluster_mapping.items():
+        if m["topic_type"] != "Trending":
+            continue  # Only verify Trending matches
+            
+        trend_name = m["final_topic"]
+        if trend_name not in trends:
+            continue
+            
+        trend_keywords = trends[trend_name].get("keywords", [trend_name])
+        # Extract significant keywords (>= 3 chars, ignore common words)
+        sig_keywords = [kw.lower() for kw in trend_keywords if len(kw) >= 3]
+        
+        if not sig_keywords:
+            continue
+            
+        posts_to_remove = []
+        for post in m["posts"]:
+            content = post.get("content", "").lower()
+            # Check if ANY significant keyword appears in the post
+            has_keyword = any(kw in content for kw in sig_keywords)
+            
+            if not has_keyword:
+                posts_to_remove.append(post)
+        
+        # Remove unverified posts (mark as noise)
+        for post in posts_to_remove:
+            for i, p in enumerate(posts):
+                if p is post:
+                    cluster_labels[i] = -1  # Mark as Noise
+                    break
+            if post in m["posts"]:
+                m["posts"].remove(post)
+            verification_stats["removed"] += 1
+        
+        verification_stats["verified"] += len(m["posts"])
+        
+        # If cluster is now empty or too small, demote to Discovery
+        if len(m["posts"]) < min_cluster_size:
+            m["topic_type"] = "Discovery"
+            m["final_topic"] = f"New: {m['cluster_name']}"
+            console.print(f"   ⚠️ [yellow]Cluster '{m['cluster_name']}' demoted to Discovery (too few verified posts)[/yellow]")
+    
+    if verification_stats["removed"] > 0:
+        console.print(f"   ✅ [green]Verified {verification_stats['verified']} posts, removed {verification_stats['removed']} unrelated posts[/green]")
+
     # --- PHASE 3: BATCH LLM REFINEMENT ---
-    console.print(f"🚀 [cyan]Phase 3: LLM Refinementpass using {llm_provider}...[/cyan]")
+    console.print(f"🚀 [cyan]Phase 3: LLM Refinement using {llm_provider}...[/cyan]")
     llm_refiner = LLMRefiner(provider=llm_provider, api_key=gemini_api_key, model_path=llm_model_path, debug=debug_llm) if use_llm else None
     if llm_refiner:
         to_refine = []

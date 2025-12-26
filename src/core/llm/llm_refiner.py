@@ -14,6 +14,7 @@ class LLMRefiner:
         self.provider = provider
         self.enabled = False
         self.debug = debug
+        self.model_name = (model_path or "").lower()  # Track model name for batch size decisions
         
         if provider == "gemini":
             try:
@@ -66,6 +67,19 @@ class LLMRefiner:
                 self.enabled = True
             except Exception as e:
                 console.print(f"[red]❌ Failed to load local model: {e}[/red]")
+
+    @property
+    def is_high_capacity_model(self):
+        """Check if using a high-capacity model (gemini API) vs local model (gemma).
+        Gemini API can handle much larger batch sizes than local gemma models.
+        """
+        # If provider is gemini and model_name contains 'gemini' (not 'gemma'), it's high capacity
+        if self.provider == "gemini":
+            # Check if model_name explicitly mentions gemma (local-like model)
+            if "gemma" in self.model_name:
+                return False
+            return True  # gemini-1.5-pro, gemini-2.0-flash, etc.
+        return False  # kaggle/local providers
 
     def _generate(self, prompt):
         return self._generate_batch([prompt])[0]
@@ -378,9 +392,8 @@ class LLMRefiner:
 
         mapping = {t: t for t in topic_list}
         
-        # Reduced from 50 to 20 to prevent hallucinations/over-merging for local models
-        # But Gemini can handle 100+ easily
-        chunk_size = 100 if self.provider == "gemini" else 20
+        # Gemini API handles 100+ items easily, gemma/local models need smaller batches
+        chunk_size = 100 if self.is_high_capacity_model else 20
         all_prompts = []
         chunks = []
         total_chunks = (len(unique_topics) + chunk_size - 1) // chunk_size
@@ -474,7 +487,7 @@ class LLMRefiner:
         console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends with Categorical Grouping (Provider: {self.provider})...[/cyan]")
         
         all_prompts = []
-        chunk_size = 300 if self.provider == "gemini" else 100 # Gemini handles massive lists
+        chunk_size = 300 if self.is_high_capacity_model else 100  # Gemini API handles massive lists
         
         for cat, items in buckets.items():
             if not items: continue
@@ -538,7 +551,7 @@ class LLMRefiner:
         
         console.print(f"[cyan]🧹 Intelligent Noise Filtering via {self.provider} for {len(trend_list)} trends...[/cyan]")
         all_bad = []
-        chunk_size = 500 if self.provider == "gemini" else 50 # Gemini handles 500+ items easily
+        chunk_size = 500 if self.is_high_capacity_model else 50  # Gemini API handles 500+ items easily
         all_prompts = []
         total_chunks = (len(trend_list) + chunk_size - 1) // chunk_size
         
@@ -709,11 +722,19 @@ class LLMRefiner:
                   - Generate the title for that dominant topic ONLY.
                   - Mention the removed topic in the 'reasoning' field.
 
-                CRITICAL - Incoherent Clusters:
-                - If posts have NO common theme (e.g., a singer + foreign policy + sports result):
+                CRITICAL - Incoherent Clusters (MUST CHECK):
+                - Compare Post 1 with Posts 2-5. If a post describes a COMPLETELY DIFFERENT event:
+                  - Add that post's ID to outlier_ids (e.g., [2, 4, 5])
+                  - Do NOT include outlier content in the refined_title
+                  
+                - Examples of DIFFERENT events (all should be outliers):
+                  - Post 1: Traffic accident in District 1 ← Post 2: Celebrity wedding → outlier_ids: [2]
+                  - Post 1: iPhone release ← Post 3: Political scandal → outlier_ids: [3]
+                  - Post 1: Fire in Hanoi ← Post 2: Drug arrest in Saigon ← Post 3: Concert announcement → outlier_ids: [2, 3]
+                  
+                - If ALL posts are unrelated to each other:
                   - Set refined_title to "[Incoherent] Mixed Topics"
-                  - Add ALL post IDs (2, 3, 4, 5) except Post 1 to outlier_ids
-                  - Explain in reasoning why the cluster is incoherent (list the unrelated topics).
+                  - Add ALL post IDs (2, 3, 4, 5) to outlier_ids
 
                 Anti-Patterns (DO NOT USE):
                 - "Tin tức về..." (News about...)
@@ -748,7 +769,7 @@ class LLMRefiner:
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
         # [QUOTA OPTIMIZATION] For Gemini Free Tier, reduce chunk size to stay under token limits (e.g. 15k tokens/min)
-        chunk_size = 3 if self.provider != "gemini" else 10
+        chunk_size = 10 if self.is_high_capacity_model else 3  # Gemini API can handle more clusters
         all_results = {}
         
         # Build prompts
