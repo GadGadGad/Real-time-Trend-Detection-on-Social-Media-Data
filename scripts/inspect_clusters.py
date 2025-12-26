@@ -161,8 +161,9 @@ def audit_cluster_reasoning(df, n_clusters=3, sample_posts=3):
             avg_sim = np.mean(sims_to_centroid)
             min_sim = np.min(sims_to_centroid)
             max_sim = np.max(sims_to_centroid)
-            coh_color = "green" if avg_sim >= 0.65 else "yellow" if avg_sim >= 0.5 else "red"
-            console.print(f"[bold]📊 Cluster Cohesion:[/bold] Avg={avg_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f} [{coh_color}]{'✅ Good' if avg_sim >= 0.6 else '⚠️ Mixed' if avg_sim >= 0.45 else '❌ Messy'}[/{coh_color}]")
+            coh_color = "green" if avg_sim >= 0.65 else "yellow" if avg_sim >= 0.55 else "red"
+            status = '✅ Good' if avg_sim >= 0.65 else '🆗 Acceptable' if avg_sim >= 0.55 else '⚠️ Mixed'
+            console.print(f"[bold]📊 Cluster Cohesion:[/bold] Avg={avg_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f} [{coh_color}]{status}[/{coh_color}]")
         
         console.print("\n" + "="*80 + "\n")
 

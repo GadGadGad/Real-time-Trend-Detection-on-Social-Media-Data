@@ -532,7 +532,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         coherence_threshold=0.65,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
-                        custom_stopwords=None, min_member_similarity=0.45,
+                        custom_stopwords=None, min_member_similarity=0.55,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
                         embedding_char_limit=500, summarize_refinement=True,
@@ -634,7 +634,22 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     sentiments = batch_analyze_sentiment(post_contents)
 
     trend_keys = list(trends.keys())
-    trend_queries = [" ".join(trends[t]['keywords']) for t in trend_keys]
+
+    # [SMART QUERY] Use user's logic to create cleaner trend queries
+    def create_smart_trend_query(trend_name, keyword_list, max_keywords=5):
+        # 1. Use trend name as anchor
+        unique_signals = [trend_name]
+        # 2. Add distinctive entities/keywords
+        for kw in keyword_list:
+             if len(unique_signals) >= max_keywords + 1: break # +1 for anchor
+             # Avoid redundancy (e.g. dont add "bóng đá" if "bóng đá nam" is already there)
+             # Check if kw is already covered by existing signals
+             is_redundant = any(s in kw or kw in s for s in unique_signals)
+             if not is_redundant:
+                 unique_signals.append(kw)
+        return " ".join(unique_signals)
+
+    trend_queries = [create_smart_trend_query(t, trends[t]['keywords']) for t in trend_keys]
     trend_embeddings = get_embeddings(
         trend_queries, 
         method=embedding_method, 
