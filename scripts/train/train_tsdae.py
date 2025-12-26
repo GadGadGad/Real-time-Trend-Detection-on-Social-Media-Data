@@ -23,7 +23,7 @@ def train():
 
     # 1. Load the model
     # We use a base transformer model for TSDAE
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, trust_remote_code=True)
 
     # 2. Load the training sentences
     with open(train_file, 'r', encoding='utf-8') as f:
