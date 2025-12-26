@@ -51,7 +51,8 @@ def train():
         optimizer_params={'lr': 3e-5},
         show_progress_bar=True,
         checkpoint_path=os.path.join(output_path, 'checkpoints'),
-        checkpoint_save_steps=1000
+        checkpoint_save_steps=1000,
+        amp=True
     )
 
     # 6. Save the model
