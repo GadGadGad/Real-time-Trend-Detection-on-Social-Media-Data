@@ -1,6 +1,10 @@
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import logging
+from sentence_transformers import SentenceTransformer, LoggingHandler, util, losses
+from sentence_transformers.datasets import DenoisingAutoEncoderDataset
+from torch.utils.data import DataLoader
+
 # Configuration
 model_name = 'dangvantuan/vietnamese-document-embedding'
 train_file = 'data/train_tsdae.txt'
