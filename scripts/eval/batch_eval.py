@@ -105,6 +105,13 @@ def compute_all_metrics(state, gt_df=None):
             metrics['ARI'] = adjusted_rand_score(true_labels, pred_labels)
             metrics['NMI'] = normalized_mutual_info_score(true_labels, pred_labels)
             metrics['Purity'] = cluster_purity(true_labels, pred_labels)
+            
+            # Entropy (lower is better)
+            metrics['Entropy'] = compute_entropy(true_labels, pred_labels)
+    
+    # Topic Coherence (no ground truth needed)
+    metrics['PMI'] = compute_topic_coherence_pmi(df)
+    metrics['NPMI'] = compute_topic_coherence_npmi(df)
     
     return metrics
 
@@ -145,6 +152,189 @@ def cluster_purity(true_labels, pred_labels):
         clusters[p].append(t)
     total = sum(max(set(items), key=items.count) and items.count(max(set(items), key=items.count)) for items in clusters.values())
     return total / len(true_labels) if true_labels else 0
+
+def compute_entropy(true_labels, pred_labels):
+    """
+    Compute cluster entropy - lower is better (more homogeneous clusters).
+    Measures how mixed the ground truth labels are within predicted clusters.
+    """
+    from math import log2
+    
+    clusters = defaultdict(list)
+    for t, p in zip(true_labels, pred_labels):
+        clusters[p].append(t)
+    
+    total_entropy = 0
+    n = len(true_labels)
+    
+    for cluster_items in clusters.values():
+        cluster_size = len(cluster_items)
+        if cluster_size == 0:
+            continue
+        
+        # Count label frequencies
+        label_counts = defaultdict(int)
+        for label in cluster_items:
+            label_counts[label] += 1
+        
+        # Compute entropy for this cluster
+        cluster_entropy = 0
+        for count in label_counts.values():
+            if count > 0:
+                p = count / cluster_size
+                cluster_entropy -= p * log2(p) if p > 0 else 0
+        
+        # Weight by cluster size
+        total_entropy += (cluster_size / n) * cluster_entropy
+    
+    return total_entropy
+
+def compute_topic_coherence_pmi(df, top_n_words=10):
+    """
+    Compute Topic Coherence using PMI (Pointwise Mutual Information).
+    Higher is better - words in topics co-occur together.
+    """
+    import re
+    from collections import Counter
+    
+    group_col = 'final_topic' if 'final_topic' in df.columns else 'cluster_id'
+    content_col = 'post_content' if 'post_content' in df.columns else 'content'
+    
+    if content_col not in df.columns:
+        return 0.0
+    
+    valid_topics = df[~df[group_col].isin(['Unassigned', 'Noise', '[Noise]', 'Discovery', -1])]
+    
+    # Build document-term matrix (simplified)
+    all_docs = valid_topics[content_col].dropna().tolist()
+    if not all_docs:
+        return 0.0
+    
+    # Tokenize
+    def tokenize(text):
+        return re.findall(r'\b\w{2,}\b', str(text).lower())
+    
+    # Count word occurrences
+    word_doc_count = Counter()
+    total_docs = len(all_docs)
+    
+    for doc in all_docs:
+        words = set(tokenize(doc))
+        for w in words:
+            word_doc_count[w] += 1
+    
+    # Get topic-word distributions
+    topic_pmi_scores = []
+    
+    for topic, group in valid_topics.groupby(group_col):
+        topic_docs = group[content_col].dropna().tolist()
+        if len(topic_docs) < 2:
+            continue
+        
+        # Get top words for this topic
+        topic_word_count = Counter()
+        for doc in topic_docs:
+            for w in tokenize(doc):
+                topic_word_count[w] += 1
+        
+        top_words = [w for w, _ in topic_word_count.most_common(top_n_words)]
+        
+        # Compute pairwise PMI
+        pmi_sum = 0
+        pair_count = 0
+        
+        for i, w1 in enumerate(top_words):
+            for w2 in top_words[i+1:]:
+                # P(w1, w2) - co-occurrence
+                co_occur = sum(1 for doc in topic_docs if w1 in tokenize(doc) and w2 in tokenize(doc))
+                if co_occur == 0:
+                    continue
+                
+                p_w1_w2 = co_occur / total_docs
+                p_w1 = word_doc_count[w1] / total_docs
+                p_w2 = word_doc_count[w2] / total_docs
+                
+                if p_w1 > 0 and p_w2 > 0:
+                    from math import log2
+                    pmi = log2(p_w1_w2 / (p_w1 * p_w2))
+                    pmi_sum += pmi
+                    pair_count += 1
+        
+        if pair_count > 0:
+            topic_pmi_scores.append(pmi_sum / pair_count)
+    
+    return np.mean(topic_pmi_scores) if topic_pmi_scores else 0.0
+
+def compute_topic_coherence_npmi(df, top_n_words=10):
+    """
+    Compute Normalized PMI (NPMI) Topic Coherence.
+    Range [-1, 1], higher is better.
+    """
+    import re
+    from collections import Counter
+    from math import log2
+    
+    group_col = 'final_topic' if 'final_topic' in df.columns else 'cluster_id'
+    content_col = 'post_content' if 'post_content' in df.columns else 'content'
+    
+    if content_col not in df.columns:
+        return 0.0
+    
+    valid_topics = df[~df[group_col].isin(['Unassigned', 'Noise', '[Noise]', 'Discovery', -1])]
+    
+    all_docs = valid_topics[content_col].dropna().tolist()
+    if not all_docs:
+        return 0.0
+    
+    def tokenize(text):
+        return re.findall(r'\b\w{2,}\b', str(text).lower())
+    
+    word_doc_count = Counter()
+    total_docs = len(all_docs)
+    
+    for doc in all_docs:
+        words = set(tokenize(doc))
+        for w in words:
+            word_doc_count[w] += 1
+    
+    topic_npmi_scores = []
+    
+    for topic, group in valid_topics.groupby(group_col):
+        topic_docs = group[content_col].dropna().tolist()
+        if len(topic_docs) < 2:
+            continue
+        
+        topic_word_count = Counter()
+        for doc in topic_docs:
+            for w in tokenize(doc):
+                topic_word_count[w] += 1
+        
+        top_words = [w for w, _ in topic_word_count.most_common(top_n_words)]
+        
+        npmi_sum = 0
+        pair_count = 0
+        
+        for i, w1 in enumerate(top_words):
+            for w2 in top_words[i+1:]:
+                co_occur = sum(1 for doc in topic_docs if w1 in tokenize(doc) and w2 in tokenize(doc))
+                if co_occur == 0:
+                    continue
+                
+                p_w1_w2 = co_occur / total_docs
+                p_w1 = word_doc_count[w1] / total_docs
+                p_w2 = word_doc_count[w2] / total_docs
+                
+                if p_w1 > 0 and p_w2 > 0 and p_w1_w2 > 0:
+                    pmi = log2(p_w1_w2 / (p_w1 * p_w2))
+                    npmi = pmi / (-log2(p_w1_w2))  # Normalize
+                    npmi_sum += npmi
+                    pair_count += 1
+        
+        if pair_count > 0:
+            topic_npmi_scores.append(npmi_sum / pair_count)
+    
+    return np.mean(topic_npmi_scores) if topic_npmi_scores else 0.0
+
 
 # ==================== MAIN ====================
 
@@ -202,8 +392,8 @@ def main():
         # Highlight best value (green)
         numeric_vals = [(i, v) for i, v in enumerate(values) if isinstance(v, (int, float))]
         if numeric_vals:
-            # For Noise%, lower is better; for others, higher is better
-            if 'Noise' in metric:
+            # For Noise% and Entropy, lower is better; for others, higher is better
+            if 'Noise' in metric or 'Entropy' in metric:
                 best_idx = min(numeric_vals, key=lambda x: x[1])[0]
             else:
                 best_idx = max(numeric_vals, key=lambda x: x[1])[0]
