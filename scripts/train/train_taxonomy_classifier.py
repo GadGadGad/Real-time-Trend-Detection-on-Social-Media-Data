@@ -21,7 +21,7 @@ import numpy as np
 # Configuration
 TRAIN_FILE = 'data/taxonomy_train.jsonl'
 OUTPUT_DIR = 'models/taxonomy-classifier-vietnamese-v1'
-MODEL_NAME = 'distilbert-base-multilingual-cased'  # Fast & multilingual
+MODEL_NAME = 'lamhieu/distilbert-base-multilingual-cased-vietnamese-topicifier'  # Fast & multilingual
 # Alternative: 'vinai/phobert-base' for Vietnamese-specific
 
 LABEL2ID = {"T1": 0, "T2": 1, "T3": 2, "T4": 3, "T5": 4, "T6": 5, "T7": 6}
