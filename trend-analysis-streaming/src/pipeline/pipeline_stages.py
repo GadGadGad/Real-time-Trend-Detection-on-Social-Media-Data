@@ -7,31 +7,22 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from src.core.analysis.clustering import cluster_data, extract_cluster_labels
 from src.core.llm.llm_refiner import LLMRefiner
-from src.pipeline.main_pipeline import clean_text, strip_news_source_noise
+from src.utils.text_processing.cleaning import clean_text, strip_news_source_noise
 
 console = Console()
 
 def run_summarization_stage(post_contents, use_llm, summarize_all, model_name='vit5-large', summary_cache_file="summary_cache.json"):
-    """
-    Phase 0: Summarization for long posts (Vietnamese).
-    Reduces noise for embedding model.
-    """
     long_indices_all = [i for i, text in enumerate(post_contents) if len(text) > 500]
     
     if not (summarize_all or long_indices_all):
         return post_contents
         
     post_contents_enriched = post_contents.copy()
-    
-    # Load Cache
     summary_cache = {}
     if os.path.exists(summary_cache_file):
-        try:
-            with open(summary_cache_file, 'r', encoding='utf-8') as f:
-                summary_cache = json.load(f)
-        except: pass
+        with open(summary_cache_file, 'r', encoding='utf-8') as f:
+            summary_cache = json.load(f)
 
-    # Identify what needs processing
     to_process = []
     long_indices_to_process = []
     for i in (range(len(post_contents)) if summarize_all else long_indices_all):
@@ -43,59 +34,30 @@ def run_summarization_stage(post_contents, use_llm, summarize_all, model_name='v
             long_indices_to_process.append(i)
 
     if long_indices_to_process:
-        console.print(f"   ✂️ [cyan]Summarizing {len(long_indices_to_process)} long/target posts...[/cyan]")
+        console.print(f"   ✂️ Summarizing {len(long_indices_to_process)} posts...")
         from src.core.analysis.summarizer import Summarizer
         summarizer = Summarizer(model_name=model_name)
         summaries = summarizer.summarize_batch(to_process)
         
-        new_cache_entries = 0
         for i, idx in enumerate(long_indices_to_process):
             summary = summaries[i]
             post_contents_enriched[idx] = summary
             summary_cache[to_process[i]] = summary
-            new_cache_entries += 1
             
-        # Save Cache
-        if new_cache_entries > 0:
-            try:
-                with open(summary_cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(summary_cache, f, ensure_ascii=False)
-                console.print(f"   💾 [green]Cached {new_cache_entries} new summaries to {summary_cache_file}[/green]")
-            except: pass
-
-        console.print(f"   ✅ [green]Summarized {len(long_indices_to_process)} posts with {model_name}.[/green]")
-    elif long_indices_all:
-         console.print(f"   ✅ [green]All {len(long_indices_all)} target posts were found in cache![/green]")
-         
+        with open(summary_cache_file, 'w', encoding='utf-8') as f:
+            json.dump(summary_cache, f, ensure_ascii=False)
+            
     return post_contents_enriched
 
 def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, 
                         post_contents=None, epsilon=0.15, trust_remote_code=False, 
                         custom_stopwords=None, min_member_similarity=0.60, selection_method='leaf',
                         recluster_large=True, coherence_threshold=0.60):
-    """
-    Phase 1-3: SAHC Clustering
-    1. Cluster News (High Quality)
-    2. Attach Social to News
-    3. Cluster Remaining Social
-    
-    Args:
-        method: 'hdbscan', 'kmeans', or 'bertopic'
-        n_clusters: number of clusters (K-Means/BERTopic)
-        post_contents: list of post text (required for BERTopic)
-        epsilon: cluster_selection_epsilon (lower = more clusters)
-        custom_stopwords: optional list of stopwords to merge with defaults
-        min_member_similarity: Minimum cosine similarity for cluster membership
-        selection_method: HDBSCAN selection method ('leaf' or 'eom')
-        recluster_large: If True, re-cluster large mixed clusters to split distinct sub-topics
-    """
-    # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
     news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
     social_indices = [i for i, p in enumerate(posts) if 'Face' in p.get('source', '')]
     
     news_labels = np.full(len(news_indices), -1)
     if len(news_indices) >= min_cluster_size:
-        console.print(f"🧩 [cyan]SAHC Phase 1: Clustering {len(news_indices)} News articles ({method}, eps={epsilon})...[/cyan]")
         news_labels = cluster_data(
             post_embeddings[news_indices], 
             min_cluster_size=min_cluster_size, 
@@ -110,21 +72,15 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             recluster_large=recluster_large,
             coherence_threshold=coherence_threshold
         )
-    else:
-        news_labels = np.array([-1] * len(news_indices))
 
-    # Initialize final labels
     final_labels = np.array([-1] * len(posts))
     for idx, nl in zip(news_indices, news_labels):
         final_labels[idx] = nl
 
-    # --- SAHC PHASE 2: SOCIAL ATTACHMENT ---
     unique_news_clusters = sorted([l for l in set(news_labels) if l != -1])
     unattached_social_indices = []
     
     if unique_news_clusters and social_indices:
-        console.print(f"🔗 [cyan]SAHC Phase 2: Attaching Social posts to News clusters...[/cyan]")
-        # Calculate centroids for News clusters
         centroids = {}
         for l in unique_news_clusters:
             cluster_news_indices = [ni for i, ni in enumerate(news_indices) if news_labels[i] == l]
@@ -132,13 +88,9 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         
         centroid_matrix = np.array([centroids[l] for l in unique_news_clusters])
         social_embs = post_embeddings[social_indices]
-        
-        # Calculate similarity to centroids
         sims = cosine_similarity(social_embs, centroid_matrix)
         
-        # Attachment threshold (strict)
         ATTACH_THRESHOLD = 0.65 
-        
         for i, s_idx in enumerate(social_indices):
             best_c_idx = np.argmax(sims[i])
             if sims[i][best_c_idx] >= ATTACH_THRESHOLD:
@@ -148,11 +100,7 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
     else:
         unattached_social_indices = social_indices
 
-    # --- SAHC PHASE 3: SOCIAL DISCOVERY (Clustering the leftovers) ---
     if len(unattached_social_indices) >= min_cluster_size:
-        # Phase 3: Use TIGHTER epsilon for discovery (heuristic: epsilon / 2 or just passed epsilon?)
-        # Let's use passed epsilon for now to give control.
-        console.print(f"🔭 [cyan]SAHC Phase 3: Researching Discovery trends in {len(unattached_social_indices)} social posts (eps={epsilon})...[/cyan]")
         leftover_embs = post_embeddings[unattached_social_indices]
         leftover_texts = [post_contents[i] for i in unattached_social_indices] if post_contents else None
         social_discovery_labels = cluster_data(
@@ -162,7 +110,7 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             n_clusters=n_clusters, 
             texts=leftover_texts, 
             epsilon=epsilon,
-            min_member_similarity=min_member_similarity, # Pass down
+            min_member_similarity=min_member_similarity,
             trust_remote_code=trust_remote_code,
             custom_stopwords=custom_stopwords,
             selection_method=selection_method,
@@ -170,7 +118,6 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             coherence_threshold=coherence_threshold
         )
         
-        # Shift social labels to avoid collision with news clusters
         max_news_label = max(unique_news_clusters) if unique_news_clusters else -1
         for i, s_idx in enumerate(unattached_social_indices):
             if social_discovery_labels[i] != -1:
@@ -183,18 +130,9 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
                            use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                            weights={'dense': 0.6, 'sparse': 0.4},
                            semantic_floor=0.35):
-    """
-    Helper to match a cluster to existing trends. 
-    Implements ADVANCED IR:
-    1. Dense (Centroid): Semantic similarity.
-    2. Pseudo Relevance Feedback (PRF): Expands cluster query based on initial top trends.
-    3. Sparse (BM25): Keyword similarity.
-    4. Fusion (Linear or RRF): Combines signals.
-    """
     assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
 
     if len(trend_embeddings) > 0:
-        # --- 1. DENSE MATCHING (Centroid-based) ---
         if cluster_centroid is not None:
             c_vec = cluster_centroid.reshape(1, -1)
             dense_sims = cosine_similarity(c_vec, trend_embeddings)[0]
@@ -202,111 +140,47 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
             cluster_emb = embedder.encode(cluster_query).reshape(1, -1)
             dense_sims = cosine_similarity(cluster_emb, trend_embeddings)[0]
         
-        # --- 2. SPARSE MATCHING ---
         sparse_scores = np.zeros(len(trend_keys))
         if bm25_index:
-            try:
-                # 2a. Initial Query
-                query_str = cluster_query.lower()
-                
-                # 2b. Optional Pseudo Relevance Feedback (PRF)
-                if use_prf:
-                    # Initial quick dense search to find "relevant" documents (trends)
-                    top_dense_ids = np.argsort(dense_sims)[-prf_depth:]
-                    expansion_keywords = []
-                    for tid in top_dense_ids:
-                        # Extract keywords from the trend query/label to expand our search
-                        expansion_keywords.extend(trend_queries[tid].lower().split())
-                    
-                    # Expand query with unique feedback terms
-                    unique_feedback = list(set(expansion_keywords))[:10] # limit expansion
-                    query_str += " " + " ".join(unique_feedback)
+            query_str = cluster_query.lower()
+            if use_prf:
+                top_dense_ids = np.argsort(dense_sims)[-prf_depth:]
+                expansion_keywords = []
+                for tid in top_dense_ids:
+                    expansion_keywords.extend(trend_queries[tid].lower().split())
+                query_str += " " + " ".join(list(set(expansion_keywords))[:10])
 
-                tokenized_query = query_str.split()
-                raw_sparse = np.array(bm25_index.get_scores(tokenized_query))
-                
-                # [FIX] Normalize to 0-1 scale but DON'T force max to 1.0
-                # Use a fixed denominator based on typical BM25 scores
-                # BM25 scores can vary widely, so we use sigmoid-like normalization
-                if raw_sparse.max() > 0:
-                    # Soft normalization: scale to roughly 0-1 without forcing max=1
-                    sparse_scores = raw_sparse / (raw_sparse.max() + 5.0)  # +5 prevents max=1
-            except Exception:
-                pass
+            tokenized_query = query_str.split()
+            raw_sparse = np.array(bm25_index.get_scores(tokenized_query))
+            if raw_sparse.max() > 0:
+                sparse_scores = raw_sparse / (raw_sparse.max() + 5.0)
 
-        # --- 3. FUSION ---
         if use_rrf:
-            # Reciprocal Rank Fusion: 1 / (k + rank)
             dense_ranks = len(dense_sims) - np.argsort(np.argsort(dense_sims)) 
             sparse_ranks = len(sparse_scores) - np.argsort(np.argsort(sparse_scores))
-            
-            # Combine ranks
             rrf_scores = (1.0 / (rrf_k + dense_ranks)) + (1.0 / (rrf_k + sparse_ranks))
-            
-            # [FIX] Normalize RRF to 0-1 scale relative to the THEORETICAL MAX (2.0 / (rrf_k + 1))
-            # This makes RRF scores comparable to cosine similarity (0-1).
-            max_rrf = 2.0 / (rrf_k + 1)
-            final_scores = rrf_scores / max_rrf
+            final_scores = rrf_scores / (2.0 / (rrf_k + 1))
         else:
-            # Linear Fusion (Default)
-            w_dense = weights.get('dense', 0.6)
-            w_sparse = weights.get('sparse', 0.4)
-            
-            # Normalize sparse scores so they contribute fairly to the fusion
             scaled_sparse = sparse_scores
             if sparse_scores.max() > 0:
-                # We normalize to max=1.0 for the fusion step, but we weighted it with w_sparse
-                # This ensures sparse signal REALLY helps if it's there.
                 scaled_sparse = sparse_scores / sparse_scores.max()
-                
-            final_scores = w_dense * dense_sims + w_sparse * scaled_sparse
+            final_scores = weights.get('dense', 0.6) * dense_sims + weights.get('sparse', 0.4) * scaled_sparse
 
-        # Select Top Candidate
         top_idx = np.argsort(final_scores)[-1]
         best_candidate_score = float(final_scores[top_idx])
-        
-        # [FIX] Also capture the RAW dense similarity for the Semantic Guard
         raw_dense_sim = float(dense_sims[top_idx])
         
-        # --- 3. THE SEMANTIC GUARD ---
-        # semantic_floor is now a parameter (default 0.35)
-        semantic_signal = raw_dense_sim
-        
-        # [MATCH LOGIC] A match is valid if:
-        # 1. Semantic Guard passes (we are at least somewhat talking about the same thing)
-        # 2. Fused score exceeds threshold (overall signal is strong)
-        is_valid_match = (semantic_signal >= semantic_floor)
-        
-        if is_valid_match and best_candidate_score >= threshold:
-            # High quality match
+        if raw_dense_sim >= semantic_floor and best_candidate_score >= threshold:
             assigned_trend = trend_keys[top_idx]
             topic_type = "Trending"
-            
-            # [FIX] Return the FUSED score as the match score, but cap it at 1.0
             best_match_score = min(best_candidate_score, 1.0)
             
-            # Optional Reranking (Double Check)
             if rerank and reranker:
-                try:
-                    # We only rerank the winner to verify
-                    pair = (cluster_query, trend_queries[top_idx])
-                    rerank_score = reranker.predict([pair])[0]
-                    # Reranker score is usually logit, -2 is safe
-                    if rerank_score < -2.5: 
-                         # Reranker rejected the winner!
-                         assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
-                except: pass
+                pair = (cluster_query, trend_queries[top_idx])
+                rerank_score = reranker.predict([pair])[0]
+                if rerank_score < -2.5: 
+                     assigned_trend, topic_type, best_match_score = "Discovery", "Discovery", 0.0
         else:
-            # Low quality match or under floor: Relegate to Discovery
-            assigned_trend = "Discovery"
-            topic_type = "Discovery"
-            # [FIX] Show actual similarity for debugging (was 0.0)
             best_match_score = raw_dense_sim
-            
-            # [NEW] Debug logging for Discovery decisions
-            if not is_valid_match:
-                console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (semantic={raw_dense_sim:.2f} < floor={semantic_floor})[/dim]")
-            elif best_candidate_score < threshold:
-                console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (fused={best_candidate_score:.2f} < threshold={threshold})[/dim]")
             
     return assigned_trend, topic_type, best_match_score
