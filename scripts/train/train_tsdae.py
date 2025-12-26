@@ -37,7 +37,7 @@ def train():
 
     # 4. Define the loss
     # TSDAE loss function
-    train_loss = losses.TSDAELoss(model)
+    train_loss = losses.MultipleNegativesRankingLoss(model)
 
     # 5. Fine-tune the model
     model.fit(
