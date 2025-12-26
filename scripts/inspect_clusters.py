@@ -100,37 +100,66 @@ def audit_cluster_reasoning(df, n_clusters=3, sample_posts=3):
             title="Cluster Audit", expand=False
         ))
         
-        # 2. Posts Table
+        # 2. Posts Table with Similarity
         table = Table(title=f"Sample Posts for: {topic[:50]}...", show_lines=True)
         table.add_column("Rank", justify="center", style="dim")
-        table.add_column("Source", style="green")
-        table.add_column("Content (Snippet)", style="white")
+        table.add_column("Source", style="green", max_width=20)
+        table.add_column("Content (Snippet)", style="white", max_width=55)
         table.add_column("Sentiment", justify="center")
-        table.add_column("LLM Input?", justify="center")
+        table.add_column("Sim", justify="center", style="cyan")  # NEW: Similarity to centroid
+        table.add_column("LLM?", justify="center")
 
         # Sort posts by original index to replicate pipeline order (LLM usually sees first 3)
         posts_sorted = cluster_posts.sort_index()
+        
+        # Calculate similarity to cluster centroid (need embeddings)
+        try:
+            from src.utils.text_processing.vectorizers import get_embeddings
+            post_contents = [str(row.get('content', ''))[:500] for _, row in posts_sorted.head(10).iterrows()]
+            if post_contents:
+                post_embs = get_embeddings(post_contents, trust_remote_code=True)
+                centroid = np.mean(post_embs, axis=0).reshape(1, -1)
+                sims_to_centroid = cosine_similarity(post_embs, centroid).flatten()
+            else:
+                sims_to_centroid = [0.0] * 10
+        except Exception as e:
+            console.print(f"[dim]⚠️ Could not compute similarities: {e}[/dim]")
+            sims_to_centroid = [0.0] * 10
         
         for i, (idx, row) in enumerate(posts_sorted.iterrows()):
             if i >= 10: break # Don't show too many
             
             # Label if it was likely an LLM input (Phase 3 refinement usually takes first 3)
-            is_llm_input = "✅ YES" if i < 3 else "No (Control)"
-            content_snippet = str(row['content'])[:200].replace('\n', ' ') + "..."
+            is_llm_input = "✅" if i < 3 else "No"
+            content_snippet = str(row['content'])[:150].replace('\n', ' ') + "..."
             
             # Sentiment color mapping
             s = str(row.get('sentiment', 'Neutral'))
             s_style = "green" if s == "Positive" else "red" if s == "Negative" else "yellow"
             
+            # Similarity score
+            sim_score = sims_to_centroid[i] if i < len(sims_to_centroid) else 0.0
+            sim_color = "green" if sim_score >= 0.7 else "yellow" if sim_score >= 0.5 else "red"
+            
             table.add_row(
                 str(i+1), 
-                str(row.get('source', 'Unknown')), 
+                str(row.get('source', 'Unknown'))[:18], 
                 content_snippet, 
                 f"[{s_style}]{s}[/{s_style}]", 
+                f"[{sim_color}]{sim_score:.2f}[/{sim_color}]",
                 is_llm_input
             )
             
         console.print(table)
+        
+        # 3. Cluster Cohesion Summary
+        if len(sims_to_centroid) > 1:
+            avg_sim = np.mean(sims_to_centroid)
+            min_sim = np.min(sims_to_centroid)
+            max_sim = np.max(sims_to_centroid)
+            coh_color = "green" if avg_sim >= 0.65 else "yellow" if avg_sim >= 0.5 else "red"
+            console.print(f"[bold]📊 Cluster Cohesion:[/bold] Avg={avg_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f} [{coh_color}]{'✅ Good' if avg_sim >= 0.6 else '⚠️ Mixed' if avg_sim >= 0.45 else '❌ Messy'}[/{coh_color}]")
+        
         console.print("\n" + "="*80 + "\n")
 
 if __name__ == "__main__":
