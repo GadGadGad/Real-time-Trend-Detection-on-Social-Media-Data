@@ -37,7 +37,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from utils import Cache, sha1, normalize_url
+from src.utils.text_processing.utils import Cache, sha1, normalize_url
 
 console = Console()
 logging.basicConfig(
@@ -356,6 +356,16 @@ class TuoiTreCrawler:
             with open(self.seen_file, "a", encoding="utf-8") as f:
                 f.write(f"{article['url']}\n")
             self.stats["articles_saved"] += 1
+            if hasattr(self, 'stream_callback'):
+                # Chuyển đổi sang format mà Spark job mong đợi
+                stream_data = {
+                    "title": article["title"],
+                    "content": article["content"],
+                    "source": "TUOITRE", # Nhãn nguồn cho Dashboard
+                    "url": article["url"],
+                    "published_at": str(article["published_at"])
+                }
+                self.stream_callback(stream_data)
         except Exception as e:
             log.error(f"Failed to save article {article.get('url')}: {e}")
 

@@ -24,7 +24,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
-from utils import Cache, sha1, normalize_url
+from src.utils.text_processing.utils import Cache, sha1, normalize_url
 
 console = Console()
 logging.basicConfig(
@@ -187,6 +187,16 @@ class VietnamNetCrawler:
                 ])
             with open(self.seen_file, "a", encoding="utf-8") as f: f.write(f"{article['url']}\n")
             self.stats["saved"] += 1
+            if hasattr(self, 'stream_callback'):
+                # Chuyển đổi sang format mà Spark job mong đợi
+                stream_data = {
+                    "title": article["title"],
+                    "content": article["content"],
+                    "source": "VIETNAMNET", # Nhãn nguồn cho Dashboard
+                    "url": article["url"],
+                    "published_at": str(article["published_at"])
+                }
+                self.stream_callback(stream_data)
         except Exception: pass
 
     def crawl(self, categories: list[str], pages: int = 2, workers: int = MAX_WORKERS):
