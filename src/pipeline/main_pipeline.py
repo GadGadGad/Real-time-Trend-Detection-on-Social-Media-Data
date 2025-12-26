@@ -893,15 +893,45 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         all_topics = [m["final_topic"] for m in cluster_mapping.values()]
         if all_topics:
             canonical_map = llm_refiner.deduplicate_topics(all_topics)
+            
+            # [FIX] Semantic guard: Only accept merges if topics are actually similar
+            DEDUP_SIM_THRESHOLD = 0.70
+            verified_map = {}
+            rejected_count = 0
+            
+            # Get unique topic pairs to verify
+            unique_topics = list(set(all_topics))
+            topic_embeddings = {t: embedder.encode(t) for t in unique_topics}
+            
+            for orig, canon in canonical_map.items():
+                if orig == canon:
+                    verified_map[orig] = orig
+                else:
+                    # Check semantic similarity before accepting merge
+                    sim = cosine_similarity(
+                        topic_embeddings[orig].reshape(1, -1),
+                        topic_embeddings[canon].reshape(1, -1)
+                    )[0][0]
+                    
+                    if sim >= DEDUP_SIM_THRESHOLD:
+                        verified_map[orig] = canon
+                        console.print(f"   ✅ [green]Merge: '{orig[:40]}...' -> '{canon[:40]}...' (sim={sim:.2f})[/green]")
+                    else:
+                        verified_map[orig] = orig  # Reject merge
+                        rejected_count += 1
+                        console.print(f"   ❌ [yellow]Rejected merge: '{orig[:40]}...' -> '{canon[:40]}...' (sim={sim:.2f} < {DEDUP_SIM_THRESHOLD})[/yellow]")
+            
             dedup_count = 0
             for label, m in cluster_mapping.items():
                 orig = m["final_topic"]
-                if orig in canonical_map and canonical_map[orig] != orig:
-                    m["final_topic"] = canonical_map[orig]
+                if orig in verified_map and verified_map[orig] != orig:
+                    m["final_topic"] = verified_map[orig]
                     dedup_count += 1
             
             if dedup_count > 0:
                 console.print(f"   ✨ [green]Merged {dedup_count} clusters into canonical topics.[/green]")
+            if rejected_count > 0:
+                console.print(f"   🛡️ [yellow]Rejected {rejected_count} bad merges (low similarity).[/yellow]")
 
     # Consolidated Mapping
     consolidated_mapping = {}
