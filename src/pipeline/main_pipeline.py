@@ -898,13 +898,15 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                             m["match_score"] = new_score
                             console.print(f"      🔄 [cyan]Recalculated match: {new_trend} (score={new_score:.2f})[/cyan]")
 
-                    # Capture 5W1H Intelligence
+                    # Capture 5W1H & Advice Intelligence
                     m["intelligence"] = {
                         "who": res.get("who"),
                         "what": res.get("what"),
                         "where": res.get("where"),
                         "when": res.get("when"),
-                        "why": res.get("why")
+                        "why": res.get("why"),
+                        "advice_state": res.get("advice_state"),
+                        "advice_business": res.get("advice_business")
                     }
                     # Metadata (Category/Event Type) will be assigned in Phase 5
             
@@ -1164,6 +1166,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 "llm_reasoning": m["llm_reasoning"],
                 "summary": m.get("summary", ""),
                 "intelligence": m.get("intelligence", {}),
+                "advice_state": m.get("intelligence", {}).get("advice_state", ""),
+                "advice_business": m.get("intelligence", {}).get("advice_business", ""),
                 "sentiment": sentiments[i], 
                 "topic_sentiment": m.get("sentiment", "Neutral"),
                 "topic_sentiment_dist": m.get("sentiment_distribution", {}),

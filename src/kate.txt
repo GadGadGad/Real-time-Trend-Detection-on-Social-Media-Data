@@ -1,0 +1,21 @@
+# [UPDATED] Thêm Summary vào visualization
+plot_df = df_results[~df_results['topic_type'].isin(['Noise', 'Unassigned'])].copy()
+texts = plot_df['post_content'].tolist()
+summaries = plot_df['summary'].tolist()  # <--- Lấy thêm summary
+
+# [...] Phần chạy t-SNE giữ nguyên
+
+df_vis = pd.DataFrame({
+    'x': coords[:, 0],
+    'y': coords[:, 1],
+    'Topic': labels,
+    'Type': types,
+    'Score': np.round(scores, 2),
+    'Snippet': [t[:100] + '...' for t in texts],
+    'Summary': [s[:200] + '...' for s in summaries] # <--- Thêm vào df_vis
+})
+
+fig = px.scatter(df_vis, x='x', y='y', color='Topic', 
+                 hover_data=['Snippet', 'Summary', 'Score', 'Type'], # <--- Thêm Summary vào hover
+                 title='Final Clustered Visualization')
+fig.show()

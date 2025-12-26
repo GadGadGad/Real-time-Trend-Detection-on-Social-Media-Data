@@ -265,4 +265,65 @@ elif "Hybrid" in view_mode and 'topic_type' in filtered_df.columns:
      filtered_df = filtered_df[filtered_df['topic_type'] != "Noise"]
 
 cols_to_show = [c for c in cols_to_show if c in filtered_df.columns]
-st.dataframe(filtered_df[cols_to_show], width="stretch")
+st.dataframe(filtered_df[cols_to_show])
+
+# --- NEW: Topic Intelligence Explorer ---
+if 'final_topic' in df.columns:
+    st.markdown("---")
+    st.header("🧠 Topic Intelligence Explorer")
+    
+    unique_topics = df[df['topic_type'].isin(['Trending', 'Discovery'])]['final_topic'].unique()
+    selected_topic = st.selectbox("Select a topic to view detailed intelligence:", unique_topics)
+    
+    if selected_topic:
+        topic_df = df[df['final_topic'] == selected_topic]
+        
+        # Topic Metadata Card
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.info(f"**Category:** {topic_df['category'].iloc[0] if 'category' in topic_df.columns else 'N/A'}")
+        with c2:
+            st.success(f"**Sentiment:** {topic_df['topic_sentiment'].iloc[0] if 'topic_sentiment' in topic_df.columns else 'N/A'}")
+        with c3:
+            st.warning(f"**Match Score:** {topic_df['score'].iloc[0]:.2f}")
+
+        # Summary Section
+        st.subheader("📝 Detailed Summary")
+        summary_text = topic_df['summary'].iloc[0] if 'summary' in topic_df.columns else "No summary available."
+        st.write(summary_text)
+
+        # 5W1H Section
+        st.subheader("🔍 5W1H Extraction")
+        intel = topic_df['intelligence'].iloc[0] if 'intelligence' in topic_df.columns else {}
+        if isinstance(intel, str): # Handle potential stringified JSON
+             try: intel = json.loads(intel)
+             except: intel = {}
+        
+        if intel:
+            i1, i2 = st.columns(2)
+            with i1:
+                st.markdown(f"**WHO:** {intel.get('who', 'N/A')}")
+                st.markdown(f"**WHAT:** {intel.get('what', 'N/A')}")
+                st.markdown(f"**WHERE:** {intel.get('where', 'N/A')}")
+            with i2:
+                st.markdown(f"**WHEN:** {intel.get('when', 'N/A')}")
+                st.markdown(f"**WHY:** {intel.get('why', 'N/A')}")
+        else:
+            st.info("No detailed intelligence extracted for this topic.")
+
+        # advice Section
+        st.subheader("💡 Strategic Advice")
+        a1, a2 = st.columns(2)
+        with a1:
+             st.markdown("### 🏛️ For State / Authorities")
+             advice_state = topic_df.get('advice_state', pd.Series(["N/A"])).iloc[0] or intel.get('advice_state', 'N/A')
+             st.info(advice_state)
+        with a2:
+             st.markdown("### 🏢 For Business / Enterprise")
+             advice_business = topic_df.get('advice_business', pd.Series(["N/A"])).iloc[0] or intel.get('advice_business', 'N/A')
+             st.success(advice_business)
+        
+        # Reasoning (Expander)
+        with st.expander("Show LLM Reasoning"):
+            st.write(topic_df['llm_reasoning'].iloc[0] if 'llm_reasoning' in topic_df.columns else "N/A")
+

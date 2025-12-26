@@ -215,7 +215,8 @@ def attach_new_post(
     trend_keys: list,
     embedder,
     threshold: float = 0.5,
-    attach_threshold: float = 0.6
+    attach_threshold: float = 0.6,
+    cluster_mapping: dict = None
 ):
     """
     Process a single new post for pseudo-streaming demo.
@@ -228,9 +229,10 @@ def attach_new_post(
         embedder: SentenceTransformer model
         threshold: Minimum similarity for trend matching
         attach_threshold: Minimum similarity for cluster attachment
+        cluster_mapping: Optional dict with cluster metadata (for intelligence retrieval)
         
     Returns:
-        dict with: cluster_id, final_topic, score, topic_type
+        dict with: cluster_id, final_topic, score, topic_type, summary, advice...
     """
     from sklearn.metrics.pairwise import cosine_similarity
     
@@ -263,7 +265,7 @@ def attach_new_post(
         final_topic = "Discovery"
         topic_type = "Discovery"
     
-    return {
+    res = {
         'cluster_id': assigned_cluster,
         'cluster_similarity': float(best_cluster_sim),
         'final_topic': final_topic,
@@ -273,3 +275,18 @@ def attach_new_post(
         'source': new_post.get('source', 'Unknown'),
         'time': new_post.get('time', None)
     }
+
+    # Enrich with cluster intelligence if mapping is provided
+    if cluster_mapping and str(assigned_cluster) in cluster_mapping:
+        m = cluster_mapping[str(assigned_cluster)]
+        res.update({
+            'summary': m.get('summary', ''),
+            'category': m.get('category', 'Unclassified'),
+            'topic_sentiment': m.get('sentiment', 'Neutral'),
+            'intelligence': m.get('intelligence', {}),
+            'advice_state': m.get('advice_state') or m.get('intelligence', {}).get('advice_state', ''),
+            'advice_business': m.get('advice_business') or m.get('intelligence', {}).get('advice_business', '')
+        })
+    
+    return res
+
