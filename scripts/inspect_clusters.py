@@ -117,7 +117,11 @@ def audit_cluster_reasoning(df, n_clusters=3, sample_posts=3):
             from src.utils.text_processing.vectorizers import get_embeddings
             post_contents = [str(row.get('content', ''))[:500] for _, row in posts_sorted.head(10).iterrows()]
             if post_contents:
-                post_embs = get_embeddings(post_contents, trust_remote_code=True)
+                post_embs = get_embeddings(
+                    post_contents, 
+                    model_name="dangvantuan/vietnamese-document-embedding",
+                    trust_remote_code=True
+                )
                 centroid = np.mean(post_embs, axis=0).reshape(1, -1)
                 sims_to_centroid = cosine_similarity(post_embs, centroid).flatten()
             else:
