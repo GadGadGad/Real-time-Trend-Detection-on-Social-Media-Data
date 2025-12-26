@@ -16,7 +16,7 @@ from src.streaming.spark_utils import get_spark_session
 from src.utils.text_processing.utils import normalize_url
 from src.utils.text_processing.vectorizers import get_embeddings
 from src.core.analysis.clustering import cluster_data, extract_cluster_labels
-from src.pipeline.trend_scoring import calculate_unified_score
+from src.core.scoring.trend_scoring import calculate_unified_score
 
 # --- CẤU HÌNH ---
 KAFKA_BOOTSTRAP = "localhost:9092"
