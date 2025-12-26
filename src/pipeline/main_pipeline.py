@@ -719,6 +719,13 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         # Calculate cluster centroid (Robust Semantic Signal)
         cluster_centroid = np.mean(post_embeddings[indices], axis=0)
         
+        # [FIX] Sort indices by similarity to centroid (Representative First)
+        # This prevents outliers (Sim < 0.5) from being chosen by LLM just because they are first in time
+        sims_to_centroid = cosine_similarity(post_embeddings[indices], cluster_centroid.reshape(1, -1)).flatten()
+        sorted_local_indices = np.argsort(sims_to_centroid)[::-1] # Descending
+        indices = [indices[i] for i in sorted_local_indices]
+        cluster_posts = [posts[i] for i in indices]
+        
         cluster_query = cluster_names.get(label, f"Cluster {label}")
         assigned_trend, topic_type, best_match_score = calculate_match_scores(
             cluster_query, label, trend_embeddings, trend_keys, trend_queries, 

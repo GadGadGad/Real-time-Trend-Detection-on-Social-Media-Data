@@ -6,7 +6,7 @@ import os
 import glob
 import json
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 from umap import UMAP
 
 # Setup
@@ -51,7 +51,12 @@ st.markdown("""
     .st-tn { background: #00AEEF; }
     .st-gen { background: #1f6feb; }
     
+    .sent-pos { color: #2ea043; font-weight: bold; }
+    .sent-neg { color: #f85149; font-weight: bold; }
+    .sent-neu { color: #8b949e; }
+    
     .time-stamp { font-size: 0.8em; color: #8b949e; float: right; }
+    [data-testid="stMetricValue"] { text-align: center; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -68,16 +73,23 @@ def get_source_class(source):
     if any(x in s for x in ['news', 'vietnamnet', 'vnexpress', 'tuoitre']): return 'source-news', 'st-news'
     return '', 'st-gen'
 
-# File Scanner
+def get_sentiment_html(sent):
+    s = str(sent).lower()
+    if 'positive' in s: return '<span class="sent-pos">POSITIVE</span>'
+    if 'negative' in s: return '<span class="sent-neg">NEGATIVE</span>'
+    return '<span class="sent-neu">NEUTRAL</span>'
+
+# ================= DATA PROVIDERS =================
+
+# 1. FILE PROVIDER (Simulation)
 def scan_files():
     patterns = ["demo/data/*.parquet", "demo/data/*.json", "crawlers/results/*.json"]
     found = []
     for p in patterns: found.extend(glob.glob(p))
     return sorted(list(set(found)))
 
-# Data Loading
 @st.cache_data
-def load_data(paths):
+def load_simulation_data(paths):
     if not paths: return None, None, {}
     dfs = []
     for p in paths:
@@ -104,150 +116,270 @@ def get_projection(emb):
     st.info("🔄 Pre-computing Spatial Map (UMAP)...")
     return UMAP(n_components=2, random_state=42).fit_transform(emb)
 
-# Sidebar
-st.sidebar.title("🌐 Live Intelligence")
-available = scan_files()
-default_selection = ["demo/data/results.parquet"] if "demo/data/results.parquet" in available else []
-selected = st.sidebar.multiselect("Nguồn dữ liệu:", available, default=default_selection)
+# 2. REAL-TIME PROVIDER (Placeholder for Kafka/Spark)
+def load_realtime_buffer():
+    return None
 
-df_full, emb_full, topic_totals = load_data(selected)
-projection = get_projection(emb_full) if emb_full is not None else None
+# ================= APP LOGIC =================
 
-# Evolution Setting
-st.sidebar.markdown("---")
-st.sidebar.subheader("🧠 Event Evolution")
-evolution_threshold = st.sidebar.slider("Ngưỡng nhận diện (Discovery %)", 0.0, 1.0, 0.5)
+st.sidebar.title("🌐 Hybrid Intelligence")
 
-# State
+# 1. MODE SELECTION
+mode = st.sidebar.selectbox("System Mode:", ["🛡️ Simulation (File Replay)", "⚡ Real-time (Kafka/Spark)"], index=0)
+
+df_full = None
+emb_full = None
+topic_totals = {}
+projection = None
+
+if "Simulation" in mode:
+    # --- SIMULATION MODE ---
+    st.sidebar.subheader("🗂️ Data Sources")
+    available = scan_files()
+    default_selection = ["demo/data/results.parquet"] if "demo/data/results.parquet" in available else []
+    selected = st.sidebar.multiselect("Select Files:", available, default=default_selection)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🧠 Event Evolution")
+    evolution_threshold = st.sidebar.slider("Discovery Threshold %", 0.0, 1.0, 0.5)
+
+    df_full, emb_full, topic_totals = load_simulation_data(selected)
+    projection = get_projection(emb_full) if emb_full is not None else None
+
+    # Controls
+    st.sidebar.markdown("---")
+    speed = st.sidebar.select_slider("Playback Speed (s)", options=[0.01, 0.1, 0.2, 0.5, 1.0], value=0.1)
+    batch = st.sidebar.number_input("Batch Size", 1, 1000, 100)
+    show_map = st.sidebar.toggle("Show Cluster Map", value=True)
+    
+    st.sidebar.markdown("---")
+    c1, c2 = st.sidebar.columns(2)
+    if c1.button("▶️ START", use_container_width=True, type="primary"): st.session_state.sim_running = True
+    if c2.button("⏸️ STOP", use_container_width=True): st.session_state.sim_running = False
+    if st.sidebar.button("🔄 RESET", use_container_width=True):
+        st.session_state.sim_index = 0
+        st.session_state.sim_running = False
+        st.rerun()
+
+else:
+    # --- REAL-TIME MODE ---
+    st.sidebar.success("⚡ Connected to Real-time Stream")
+    st.sidebar.markdown("Status: **Waiting for signals...**")
+    st.sidebar.info("Integration Point: Kafka Consumer would inject dataframes here.")
+
+# State Management
 if 'sim_index' not in st.session_state: st.session_state.sim_index = 0
 if 'sim_running' not in st.session_state: st.session_state.sim_running = False
 
-# Sidebar Controls
-st.sidebar.markdown("---")
-speed = st.sidebar.select_slider("Nhịp cập nhật (giây)", options=[0.01, 0.1, 0.2, 0.5, 1.0], value=0.1)
-batch = st.sidebar.number_input("Bài viết mỗi nhịp", 1, 1000, 100)
-show_map = st.sidebar.toggle("Hiển thị Cluster Map (2D)", value=True)
+# ================= MAIN UI =================
 
-st.sidebar.markdown("---")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("▶️ START", use_container_width=True, type="primary"): st.session_state.sim_running = True
-if c2.button("⏸️ STOP", use_container_width=True): st.session_state.sim_running = False
-if st.sidebar.button("🔄 RESET", use_container_width=True):
-    st.session_state.sim_index = 0
-    st.session_state.sim_running = False
-    st.rerun()
-
-# UI
 st.title("🛰️ Federated Intelligence Platform")
 
-if df_full is None:
-    st.warning("⚠️ Chọn nguồn dữ liệu ở Sidebar.")
+if "Simulation" in mode and df_full is None:
+    st.warning("⚠️ Please select data sources in the sidebar.")
     st.stop()
 
-# Progress
-st.progress(min(st.session_state.sim_index / len(df_full), 1.0), text=f"Data Replay: {st.session_state.sim_index:,} posts")
+if "Real-time" in mode:
+    st.stop()
 
-# Visible Data
+# --- SIMULATION RENDER LOGIC ---
+
 vis_df = df_full.iloc[:st.session_state.sim_index].copy()
 
 def process_evolving_topic(row, visible_counts):
     topic = row['final_topic']
     is_noise = topic in ['Unassigned', 'None', 'Discovery'] or "Noise" in str(topic)
     if is_noise: return topic, True
-    
     total = topic_totals.get(topic, 1)
     so_far = visible_counts.get(topic, 0)
-    
-    # If not enough data, treat as "Discovery" (Noise)
-    if so_far < (evolution_threshold * total):
-        return "Discovery", True
+    if so_far < (evolution_threshold * total): return "Discovery", True
     return topic, False
 
-# Evolution processing
 if not vis_df.empty:
-    visible_topic_counts = vis_df['final_topic'].value_counts().to_dict()
+    v_counts = vis_df['final_topic'].value_counts().to_dict()
     vis_df[['display_topic', 'is_noise']] = vis_df.apply(
-        lambda r: pd.Series(process_evolving_topic(r, visible_topic_counts)), axis=1
+        lambda r: pd.Series(process_evolving_topic(r, v_counts)), axis=1
     )
+    identified_df = vis_df[vis_df['is_noise'] == False]
 else:
     vis_df['display_topic'] = None
     vis_df['is_noise'] = True
+    identified_df = pd.DataFrame(columns=vis_df.columns)
 
-# Identified for analytics
-identified_clusters_df = vis_df[(vis_df['is_noise'] == False)]
+prog_col, time_col = st.columns([4, 1])
+with prog_col:
+    st.progress(min(st.session_state.sim_index / max(len(df_full), 1), 1.0), text=f"Data Replay: {st.session_state.sim_index:,} posts")
+with time_col:
+    st.markdown(f"**Live Time:** `{datetime.now().strftime('%H:%M:%S')}`")
 
-# Metrics
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Tổng hợp tin bài", f"{len(vis_df):,}")
-m2.metric("Sự kiện hoàn tất", f"{identified_clusters_df['display_topic'].nunique():,}")
-m3.metric("Nguồn cấp tin", f"{vis_df['source'].nunique():,}")
-m4.metric("Live Time", datetime.now().strftime("%H:%M:%S"))
+tab1, tab2 = st.tabs(["📊 Live Monitor", "📌 Identified Events & Insights"])
 
-st.markdown("---")
+with tab1:
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Posts", f"{len(vis_df):,}")
+    m2.metric("Identified Events", f"{identified_df['display_topic'].nunique() if not identified_df.empty else 0:,}")
+    m3.metric("Active Sources", f"{vis_df['source'].nunique() if not vis_df.empty else 0:,}")
+    pos_idx = "0.0%"
+    if not vis_df.empty and 'sentiment' in vis_df.columns:
+        p_val = vis_df['sentiment'].astype(str).str.lower().eq('positive').sum() / len(vis_df) * 100
+        pos_idx = f"{p_val:.1f}%"
+    m4.metric("Positivity Index", pos_idx)
 
-# Layout
-if show_map and projection is not None:
-    col_f, col_m, col_s = st.columns([1, 1.2, 0.8])
-else:
-    col_f, col_s = st.columns([1.6, 1]); col_m = None
-
-with col_f:
-    st.subheader("📡 Live Federated Stream")
-    latest = vis_df.tail(15).iloc[::-1]
-    if latest.empty: st.info("Nhấn **START** để bắt đầu.")
+    st.markdown("---")
+    
+    if show_map and projection is not None:
+        col_f, col_m, col_s = st.columns([1, 1.2, 0.8])
     else:
-        for _, row in latest.iterrows():
-            topic = row['display_topic']
-            is_noise = row['is_noise']
-            s_name = row.get('source', 'SOURCE')
-            s_cls, s_tag_cls = get_source_class(s_name)
-            type_cls = " item-highlight" if not is_noise else " item-noise"
-            
-            st.markdown(f"""
-            <div class="live-feed-item {s_cls}{type_cls}">
-                <span class="time-stamp">{row['time'].strftime('%H:%M:%S')}</span>
-                <span class="topic-tag {'noise-tag' if is_noise else ''}">{topic if not is_noise else 'DIỄN BIẾN MỚI'}</span>
-                <span class="source-tag {s_tag_cls}">{s_name}</span>
-                <div style="margin-top:8px; font-weight:600;">{row.get('title') if pd.notna(row.get('title')) else str(row.get('post_content',''))[:110]}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        col_f, col_s = st.columns([1.6, 1]); col_m = None
 
-if col_m:
-    with col_m:
-        st.subheader("🧩 Spatial Cluster Map")
-        proj_visible = projection[:st.session_state.sim_index]
-        plot_df = vis_df.copy()
-        plot_df['x'] = proj_visible[:, 0]
-        plot_df['y'] = proj_visible[:, 1]
+    with col_f:
+        st.subheader("📡 Live Stream")
+        latest = vis_df.tail(15).iloc[::-1]
+        if latest.empty: st.info("Press **START** to begin simulation.")
+        else:
+            for _, row in latest.iterrows():
+                topic = row['display_topic']
+                is_noise = row['is_noise']
+                s_name = row['source']
+                s_cls, s_tag_cls = get_source_class(s_name)
+                type_cls = " item-highlight" if not is_noise else " item-noise"
+                sent_html = get_sentiment_html(row.get('sentiment', 'neutral'))
+                st.markdown(f"""
+                <div class="live-feed-item {s_cls}{type_cls}">
+                    <span class="time-stamp">{row['time'].strftime('%H:%M:%S')}</span>
+                    <div style="margin-bottom: 4px;">
+                        <span class="topic-tag {'noise-tag' if is_noise else ''}">{topic if not is_noise else 'DIỄN BIẾN MỚI'}</span>
+                        <span class="source-tag {s_tag_cls}">{s_name}</span>
+                    </div>
+                    <div style="margin-top:8px; font-weight:600;">{row.get('title') if pd.notna(row.get('title')) else str(row.get('post_content',''))[:110]}</div>
+                    <div style="margin-top:6px; font-size:0.8em;">{sent_html}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    if col_m:
+        with col_m:
+            st.subheader("🧩 Spatial Map")
+            proj_visible = projection[:st.session_state.sim_index]
+            plot_df = vis_df.copy()
+            plot_df['x'] = proj_visible[:, 0]
+            plot_df['y'] = proj_visible[:, 1]
+            plot_df['map_topic'] = plot_df['display_topic'].apply(lambda x: "Scanning..." if x == "Discovery" else x)
+            fig_map = px.scatter(
+                plot_df, x='x', y='y', color='map_topic', template="plotly_dark",
+                hover_name='final_topic', color_discrete_sequence=px.colors.qualitative.Dark24
+            )
+            fig_map.update_layout(showlegend=False, height=500, margin=dict(l=0, r=0, t=0, b=0), xaxis={'visible': False}, yaxis={'visible': False})
+            st.plotly_chart(fig_map, width='stretch', key=f"map_p_{st.session_state.sim_index}")
+
+    with col_s:
+        st.subheader("📊 Stats")
+        if not identified_df.empty:
+            t_data = identified_df['display_topic'].value_counts().head(8).reset_index()
+            t_data.columns = ['Topic', 'Count']
+            fig_t = px.pie(t_data, values='Count', names='Topic', hole=0.4, template="plotly_dark")
+            fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=0,b=0))
+            st.plotly_chart(fig_t, width='stretch', key=f"t_p_{st.session_state.sim_index}")
+        else: st.caption("Waiting for significant events...")
+
+        if not vis_df.empty:
+            s_data = vis_df['source'].value_counts().reset_index()
+            s_data.columns = ['Source', 'Count']
+            fig_s = px.bar(s_data, x='Count', y='Source', orientation='h', template="plotly_dark", color='Source')
+            fig_s.update_layout(showlegend=False, height=250, margin=dict(l=0,r=0,t=0,b=0), yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_s, width='stretch', key=f"s_p_{st.session_state.sim_index}")
+
+with tab2:
+    st.subheader("📌 Intelligence Reports (Interactive)")
+    if identified_df.empty:
+        st.info("⌛ Analyzing patterns...")
+    else:
+        # Prepare Data
+        summary_map = {}
+        sent_map = {}
+        for t in identified_df['display_topic'].unique():
+            subset = identified_df[identified_df['display_topic'] == t]
+            val = "N/A"
+            if 'summary' in subset.columns:
+                val = subset['summary'].dropna().iloc[0] if not subset['summary'].dropna().empty else "No summary"
+            if val in ["N/A", "No summary"]:
+                if 'title' in subset.columns: val = subset['title'].fillna(subset['post_content']).iloc[0]
+            summary_map[t] = str(val)[:300]
+            # Sentinel
+            if 'sentiment' in subset.columns:
+                counts = subset['sentiment'].str.lower().value_counts()
+                sent_map[t] = counts.index[0].upper() if not counts.empty else "NEUTRAL"
+            else: sent_map[t] = "N/A"
+
+        # --- INTERACTIVE TABLE LOGIC ---
         
-        # Clean legend for map
-        plot_df['map_topic'] = plot_df['display_topic'].apply(lambda x: "Quét dữ liệu..." if x == "Discovery" else x)
+        # 1. Construct the Summary DataFrame
+        trend_stats = identified_df.groupby('display_topic').agg(
+            first_seen=('time', 'min'),
+            last_seen=('time', 'max'),
+            post_count=('display_topic', 'count')
+        ).reset_index()
+        trend_stats['Top Source'] = identified_df.groupby('display_topic')['source'].agg(lambda x: x.value_counts().index[0]).values
+        trend_stats['Dominant Sentiment'] = trend_stats['display_topic'].map(sent_map)
+        trend_stats['Quick Summary'] = trend_stats['display_topic'].map(summary_map)
+        trend_stats = trend_stats.sort_values('post_count', ascending=False)
         
-        fig_map = px.scatter(
-            plot_df, x='x', y='y', color='map_topic', template="plotly_dark",
-            hover_name='final_topic', color_discrete_sequence=px.colors.qualitative.Dark24
+        # Interactive Dataframe
+        st.markdown("### 📋 Event Intelligence Log")
+        st.caption("👈 Click on a row to view full details (Drill-down)")
+        
+        event_df = trend_stats.rename(columns={'display_topic': 'Event Name', 'first_seen': 'First Detected', 'post_count': 'Volume'})
+        
+        selection = st.dataframe(
+            event_df,
+            use_container_width=True,
+            column_config={
+                "First Detected": st.column_config.DatetimeColumn(format="HH:mm:ss"),
+                "last_seen": st.column_config.DatetimeColumn(format="HH:mm:ss"),
+                "Volume": st.column_config.NumberColumn(format="%d posts"),
+                "Dominant Sentiment": st.column_config.TextColumn(help="Majority sentiment"),
+                "Quick Summary": st.column_config.TextColumn(width="medium")
+            },
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
         )
-        fig_map.update_layout(showlegend=False, height=500, margin=dict(l=0, r=0, t=0, b=0), xaxis={'visible': False}, yaxis={'visible': False})
-        st.plotly_chart(fig_map, width='stretch', key=f"map_plot_{st.session_state.sim_index}")
+        
+        if selection and selection.selection.rows:
+            sel_idx = selection.selection.rows[0]
+            sel_topic = event_df.iloc[sel_idx]['Event Name']
+            
+            st.markdown("---")
+            e_df = identified_df[identified_df['display_topic'] == selected_event]
+            st.markdown(f"### 📂 Dossier: {selected_event}")
+            
+            # Close button (simulated by rerunning with empty selection - UI constraint, so we just provide context)
+            
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Volume", f"{len(e_df)} posts")
+            k2.metric("First Seen", e_df['time'].min().strftime('%H:%M:%S'))
+            k3.metric("Last Activity", e_df['time'].max().strftime('%H:%M:%S'))
+            k4.metric("Sentiment", sent_map[selected_event])
+            
+            st.info(f"**Briefing**: {summary_map[selected_event]}")
+            
+            c_left, c_right = st.columns(2)
+            with c_left:
+                st.markdown("**Top Sources**")
+                s_metrics = e_df['source'].value_counts()
+                st.bar_chart(s_metrics, color="#238636")
+            with c_right:
+                st.markdown("**Field Evidence (Top 3)**")
+                for _, p in e_df.head(3).iterrows():
+                    st.markdown(f"""
+                    <div style="background-color: #161b22; padding: 10px; border-radius: 8px; margin-bottom: 5px; border: 1px solid #30363d;">
+                        <span style="color: #8b949e; font-size: 0.8em;">[{p['source']}]</span>
+                        <div style="font-size: 0.9em;">{p.get('title', p.get('post_content'))[:150]}...</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.caption("Select a row above to see details.")
 
-with col_s:
-    st.subheader("📊 Analytics")
-    top_t = identified_clusters_df['display_topic'].value_counts().head(8).reset_index()
-    top_t.columns = ['Topic', 'Count']
-    if not top_t.empty:
-        fig_t = px.pie(top_t, values='Count', names='Topic', hole=0.4, template="plotly_dark")
-        fig_t.update_layout(height=400, margin=dict(l=0,r=0,t=0,b=0))
-        st.plotly_chart(fig_t, width='stretch', key=f"t_pulse_{st.session_state.sim_index}")
-    else: st.caption("Đang chờ nhận diện đủ bằng chứng...")
-
-    s_data = vis_df['source'].value_counts().reset_index()
-    s_data.columns = ['Source', 'Count']
-    fig_s = px.bar(s_data, x='Count', y='Source', orientation='h', template="plotly_dark", color='Source', color_discrete_sequence=px.colors.qualitative.Safe)
-    fig_s.update_layout(showlegend=False, height=300, margin=dict(l=0,r=0,t=0,b=0), yaxis={'categoryorder':'total ascending'})
-    st.plotly_chart(fig_s, width='stretch', key=f"s_pulse_{st.session_state.sim_index}")
-
-# Simulation
-if st.session_state.sim_running:
+if st.session_state.sim_running and "Simulation" in mode:
     if st.session_state.sim_index < len(df_full):
         time.sleep(speed)
         st.session_state.sim_index = min(st.session_state.sim_index + batch, len(df_full))
