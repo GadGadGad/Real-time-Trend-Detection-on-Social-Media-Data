@@ -57,7 +57,6 @@ def train():
         epochs=epochs,
         weight_decay=0,
         scheduler='constantlr',
-        logging_steps=10,
         show_progress_bar=True,
         callbacks=[SimpleLossLogger(log_every=10)],
         checkpoint_path=os.path.join(output_path, 'checkpoints'),
