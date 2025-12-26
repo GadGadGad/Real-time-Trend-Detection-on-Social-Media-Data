@@ -603,43 +603,40 @@ class LLMRefiner:
             return cluster_name, original_category, ""
 
         instruction = custom_instruction or """
-        Role: Senior News Editor.
-
-            Primary task:
-            Rename the cluster into a concise Vietnamese news headline (≤10 words).
-
-            SECONDARY tasks:
-            - Assign category (T1..T7)
-            - Assign event_type (Specific / Generic)
+            Define the headline and extracting structured 5W1H.
 
             RULES:
-            - Base the headline ONLY on provided posts.
-            - Prefer concrete facts over interpretation.
-            - If no clear event → keep generic wording.
-
-            DO NOT:
-            - Add opinions
-            - Add causes or consequences not stated
-            - Guess missing details
-
-            Reasoning:
-            - One short sentence.
-            - Mention ONLY entities explicitly seen in posts.
+            1. Headline: Concise Vietnamese news headline (≤ 15 words).
+               - Prefer concrete facts. No sensationalism.
+            2. Summary: DETAILS ARE CRITICAL. write a LONGER, COMPREHENSIVE paragraph (4-6 sentences).
+               - Include context, specific numbers, quotes (if any), and future implications.
+               - DO NOT start with "Bài viết nói về..." or "Summary:". Just tell the story.
+            3. 5W1H:
+               - WHO: Main entities/people involved.
+               - WHAT: The core interaction or event.
+               - WHERE: Specific locations mentioned.
+               - WHEN: Timeframe/Dates.
+               - WHY: Cause or context (infer if not explicitly stated but logical).
+               - IF UNKNOWN, write "N/A" but TRY HARD TO EXTRACT.
+            4. Advice for State: Provide strategic recommendations for government agencies/authorities (e.g., communication strategy, policy adjustment, crisis management).
+            5. Advice for Business: Provide actionable insights for enterprises/businesses (e.g., market entry, risk mitigation, operational changes, capitalization).
 
             Respond STRICTLY in JSON format:
-            {
+            {{
                 "refined_title": "...",
                 "category": "T1/T2/.../T7",
                 "event_type": "Specific/Generic",
-                "summary": "Short 2-3 sentence summary of the trend/incident.",
+                "summary": "Full detailed story of the event (approx 100-150 words).",
                 "overall_sentiment": "Positive/Negative/Neutral",
-                "who": "ONLY mention names/entities EXPLICITLY stated in the posts (or 'Không xác định')",
-                "what": "Core event/action occurred",
-                "where": "ONLY use place names from the posts. If not found, write 'Không rõ địa điểm'",
-                "when": "Timeframe mentioned (or 'Không rõ thời gian')",
-                "why": "Reason/Cause (or 'Không rõ nguyên nhân')",
+                "who": "...",
+                "what": "...",
+                "where": "...",
+                "when": "...",
+                "why": "...",
+                "advice_state": "Strategic advice for authorities...",
+                "advice_business": "Actionable advice for businesses...",
                 "reasoning": "..."
-            }
+            }}
         """
 
         context_texts = [p.get('content', '')[:300] for p in posts[:5]]
@@ -665,7 +662,7 @@ class LLMRefiner:
             {instruction}
 
             Respond STRICTLY in JSON format:
-                {
+                {{
                     "refined_title": "...",
                     "category": "T1/T2/.../T7",
                     "event_type": "Specific/Generic",
@@ -677,7 +674,7 @@ class LLMRefiner:
                     "when": "...",
                     "why": "...",
                     "reasoning": "..."
-                }
+                }}
         """
         try:
             text = self._generate(prompt)
@@ -695,7 +692,9 @@ class LLMRefiner:
                         "what": data.get('what', 'N/A'),
                         "where": data.get('where', 'N/A'),
                         "when": data.get('when', 'N/A'),
-                        "why": data.get('why', 'N/A')
+                        "why": data.get('why', 'N/A'),
+                        "advice_state": data.get('advice_state', 'N/A'),
+                        "advice_business": data.get('advice_business', 'N/A')
                     }
                 )
             return cluster_name, original_category, "", "Specific", "", "Neutral", {}
@@ -751,7 +750,7 @@ class LLMRefiner:
                 - Category: 
                     * T1 (Crisis & Risk): Accidents, disasters, riots.
                     * T2 (Policy Signal): Regulations, government, politics.
-                    * T3 (Reputation): Scandals, boycotts, controversies.
+                    * T3 (Reputation): Scandals, accusations, boycotts, controversies.
                     * T4 (Market Demand): Products, travel, food trends.
                     * T5 (Cultural Trend): Memes, viral entertainment, celebs.
                     * T6 (Operational): Traffic, outages, public service failures.
@@ -759,14 +758,35 @@ class LLMRefiner:
                 - Event Type: 
                     * "Specific": A concrete, one-time occurrence with clear Who/What/When/Where (e.g., "Fire at building X", "New policy A announced").
                     * "Generic": A broad, recurring topic or routine update (e.g., "Weather outlook", "Daily gold price", "General discussions").
+                - Strategic Advice:
+                    * advice_state: Guidance for government/authorities on policy, communication, or management.
+                    * advice_business: Actionable insights for enterprises on risks or opportunities.
                 - Reasoning: explain your choice and mention if you dropped any unrelated topics from a mixed cluster.
+                
+                SUMMARY Rules:
+                - WRITE A LONG, DETAILED SUMMARY (4-6 sentences, ~100 words).
+                - Include context, key figures, and developments.
+                - Do not be brief. We need a full picture.
 
+                5W1H Rules:
+                - Extract specific details for Who/What/Where/When/Why.
+                - Where: Specific city/district/country.
+                - When: Specific date/time/period.
+                - Why: The cause or reason.
+                
                 Output JSON:
                 {
                     "id": 0,
                     "refined_title": "String",
-                    "summary": "Concise 2-sentence summary of the main event.",
+                    "summary": "Detailed paragraph.",
                     "overall_sentiment": "Positive/Negative/Neutral",
+                    "who": "...",
+                    "what": "...",
+                    "where": "...",
+                    "when": "...",
+                    "why": "...",
+                    "advice_state": "...",
+                    "advice_business": "...",
                     "outlier_ids": [id1, id2],
                     "reasoning": "String"
                 }
@@ -815,9 +835,7 @@ class LLMRefiner:
 
                 batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples (Post 1 is Anchor):\n{context}\n\n"
 
-            json_template = '[ {{"id": 0, "refined_title": "Title", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "outlier_ids": [], "reasoning": "..."}} ]'
-            if generate_summary:
-                json_template = '[ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "outlier_ids": [], "reasoning": "..."}} ]'
+            json_template = '[ {{"id": 0, "refined_title": "Title", "summary": "Detailed summary...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "advice_state": "...", "advice_business": "...", "outlier_ids": [], "reasoning": "..."}} ]'
             
             prompt = f"""
             Analyze những {len(chunk)} news/social clusters này từ Việt Nam.
@@ -856,6 +874,8 @@ class LLMRefiner:
                                     'where': item.get('where', 'N/A'),
                                     'when': item.get('when', 'N/A'),
                                     'why': item.get('why', 'N/A'),
+                                    'advice_state': item.get('advice_state', 'N/A'),
+                                    'advice_business': item.get('advice_business', 'N/A'),
                                     'outlier_ids': item.get('outlier_ids', []),
                                     'reasoning': item.get('reasoning', 'No reasoning provided')
                                 }

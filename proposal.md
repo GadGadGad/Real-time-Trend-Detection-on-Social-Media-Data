@@ -233,6 +233,30 @@ $$
 
 ---
 
-## **8. References**
+## **8. Evaluation Methodology**
+
+Since unsupervised event detection lacks a pre-existing train/test split, we employ a dual-layered evaluation strategy to ensure both technical correctness and practical utility.
+
+### **8.1 Qualitative Evaluation (Explainable AI)**
+We leverage the system's "Reasoning" capabilities to manually inspect the coherence of detected trends:
+*   **Semantic Coherence:** Does the cluster's logic (Reasoning column) make sense? (e.g., verifying that "General Vo Nguyen Giap's memorial" is not mixed with "General election").
+*   **Ranking Quality:** Are top-scored trends (Avg Score > 60) genuinely significant events compared to low-scored noise?
+*   **Noise Filtering:** Precision of the "Noise/Generic" classification.
+
+### **8.2 Quantitative Evaluation (Mini-Ground Truth)**
+To provide objective metrics without labeling millions of posts, we implement a **"Mini-Ground Truth" protocol**:
+1.  **Random Sampling:** Extract a random subset (N=300) of posts from a dense 24-hour window using `scripts/eval/sample_for_annotation.py`.
+2.  **Human Annotation:** A human expert assigns Ground Truth Event IDs to this subset.
+3.  **Blind Execution:** The system clusters these 300 posts without seeing the labels.
+4.  **Metrics Calculation:** We compute agreement metrics using `scripts/eval/calculate_metrics.py`:
+    *   **ARI (Adjusted Rand Index):** Measures cluster similarity (0 = random, 1 = perfect).
+    *   **NMI (Normalized Mutual Information):** Measures shared information.
+    *   **Purity:** The percentage of posts that are correctly assigned to the dominant class of their cluster.
+
+This hybrid approach allows scientifically valid reporting for the thesis while maintaining practical feasibility.
+
+---
+
+## **9. References**
 
 * (References to be added as per `references.bib`)
