@@ -1,6 +1,6 @@
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
+import logging
 # Configuration
 model_name = 'dangvantuan/vietnamese-document-embedding'
 train_file = 'data/train_tsdae.txt'
