@@ -724,7 +724,9 @@ class LLMRefiner:
                     * T5 (Cultural Trend): Memes, viral entertainment, celebs.
                     * T6 (Operational): Traffic, outages, public service failures.
                     * T7 (Noise): Weather, lottery, daily routines (ignore these if possible).
-                - Event Type: "Specific" (One-time event) or "Generic" (Recurring/Topic).
+                - Event Type: 
+                    * "Specific": A concrete, one-time occurrence with clear Who/What/When/Where (e.g., "Fire at building X", "New policy A announced").
+                    * "Generic": A broad, recurring topic or routine update (e.g., "Weather outlook", "Daily gold price", "General discussions").
                 - Reasoning: explain your choice and mention if you dropped any unrelated topics from a mixed cluster.
 
                 Output JSON:
@@ -732,11 +734,10 @@ class LLMRefiner:
                     "id": 0,
                     "refined_title": "String",
                     "summary": "Concise 2-sentence summary of the main event.",
-                    "overall_sentiment": "Positive/Negative/Neutral based on context",
+                    "overall_sentiment": "Positive/Negative/Neutral",
+                    "outlier_ids": [id1, id2],
                     "reasoning": "String"
                 }
-
-        
         """
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
@@ -757,13 +758,13 @@ class LLMRefiner:
             for c in chunk:
                 # Increase context for better reasoning
                 context_list = []
-                for j, p in enumerate(c['sample_posts'][:3]): # Up to 3 posts
+                for j, p in enumerate(c['sample_posts'][:5]): # Up to 5 posts
                     p_text = p.get('content', '')[:500] # Up to 500 chars
                     context_list.append(f"[Post {j+1}] {p_text}")
                 
                 context = "\n".join(context_list)
                 
-                # Extract date range for temporal context
+                # Extract metadata
                 dates = []
                 for p in c['sample_posts']:
                     d = p.get('published_at') or p.get('time')
@@ -777,24 +778,24 @@ class LLMRefiner:
                     else:
                         date_context = f" [Date: {unique_dates[0]}]"
 
-                # Keywords significantly help grounding
+                # Keywords
                 kw_str = f"Keywords: {', '.join(c.get('keywords', []))}" if c.get('keywords') else ""
 
-                batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples:\n{context}\n\n"
+                batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples (Post 1 is Anchor):\n{context}\n\n"
 
-            json_template = '[ {{"id": 0, "refined_title": "Title", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "reasoning": "..."}} ]'
+            json_template = '[ {{"id": 0, "refined_title": "Title", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "outlier_ids": [], "reasoning": "..."}} ]'
             if generate_summary:
-                json_template = '[ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "reasoning": "..."}} ]'
+                json_template = '[ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "outlier_ids": [], "reasoning": "..."}} ]'
             
             prompt = f"""
-            Analyze these {len(chunk)} news/social clusters from Vietnam.
+            Analyze những {len(chunk)} news/social clusters này từ Việt Nam.
             {instruction}
 
             RULES:
             1. Output ONLY a JSON array, nothing else
             2. Start your response with [ and end with ]
-            3. Each cluster must have: id, refined_title, reasoning
-            4. Focus purely on renaming the cluster into a high-quality headline.
+            3. Each cluster must have: id, refined_title, summary, outlier_ids, reasoning
+            4. outlier_ids are the post numbers (1, 2, 3, 4, 5) from context that DON'T match Post 1.
 
             Input Clusters:
             {batch_str}
@@ -823,6 +824,7 @@ class LLMRefiner:
                                     'where': item.get('where', 'N/A'),
                                     'when': item.get('when', 'N/A'),
                                     'why': item.get('why', 'N/A'),
+                                    'outlier_ids': item.get('outlier_ids', []),
                                     'reasoning': item.get('reasoning', 'No reasoning provided')
                                 }
                                 all_results[item['id']] = sane_item
@@ -908,8 +910,9 @@ class LLMRefiner:
             - T7 (Routine Signals): Weather updates, lottery, daily sports results.
                
             2. EVENT TYPE:
-               - Specific: A concrete event (e.g., "Bão Yagi", "Vụ cháy chung cư A").
-               - Generic: A broad topic (e.g., "Tình hình thời tiết", "Giá xăng hôm nay").
+               - Specific: A concrete event with a distinct start/end and clear actors (e.g., "Bão Yagi", "Vụ cháy chung cư A", "Khai mạc hội nghị X").
+               - Generic: Broad topics, recurring reports, or vague discussions (e.g., "Tình hình thời tiết", "Giá xăng hôm nay", "Chuyện đời thường", "Thông tin thị trường"). 
+               - RULE: If it's a routine update without a "breaking" news point, mark as GENERIC.
                
             Input Topics:
             {batch_str}

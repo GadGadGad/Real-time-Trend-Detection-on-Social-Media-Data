@@ -529,7 +529,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
                         cluster_epsilon=0.05, min_quality_cohesion=0.55,
-                        coherence_threshold=0.60,
+                        coherence_threshold=0.65,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
                         custom_stopwords=None, min_member_similarity=0.45,
@@ -745,6 +745,38 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     m["llm_reasoning"] = res["reasoning"]
                     m["summary"] = res.get("summary", "")
                     m["sentiment"] = res.get("overall_sentiment", m.get("sentiment", "Neutral"))
+                    
+                    # [NEW] Handle Outlier Separation
+                    outliers = res.get("outlier_ids", [])
+                    if outliers:
+                        # outlier_ids are 1-indexed (Post 1, Post 2...)
+                        for o_id in outliers:
+                            try:
+                                o_idx = int(o_id) - 1
+                                if 0 <= o_idx < len(m["posts"]):
+                                    # Identify the post and remove its cluster assignment
+                                    # Since m["posts"] is a list of posts in this cluster,
+                                    # we need to find its index in the original 'posts' list.
+                                    # Fortunately, clusters are already built from sorted indices.
+                                    # Each post in m["posts"] is just a reference.
+                                    
+                                    # To be safe and efficient, we just need to know which index in 'posts' 
+                                    # this is. We can use the 'post_index' if it was kept, 
+                                    # but cluster_labels uses original indices.
+                                    
+                                    # Re-finding original index:
+                                    target_post = m["posts"][o_idx]
+                                    # We find where this post is in the global 'posts' list.
+                                    # For faster lookups, we can use id(target_post) or content matching.
+                                    for i, p in enumerate(posts):
+                                        if p is target_post:
+                                            cluster_labels[i] = -1 # Mark as Noise
+                                            break
+                                    
+                                    console.print(f"      🗑️ [yellow]LLM removed outlier post {o_id} from '{m['final_topic']}'[/yellow]")
+                            except (ValueError, TypeError, IndexError):
+                                pass
+
                     # Capture 5W1H Intelligence
                     m["intelligence"] = {
                         "who": res.get("who"),
@@ -861,10 +893,13 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         majority_sentiment = s_counts.most_common(1)[0][0] if post_sentiments else "Neutral"
         s_dist = {k: round(v / len(post_sentiments), 2) for k, v in s_counts.items()} if post_sentiments else {}
         
-        # PRIORITY MERGE: A > B > C
-        final_cat = "C"
-        if "A" in all_categories: final_cat = "A"
-        elif "B" in all_categories: final_cat = "B"
+        # PRIORITY MERGE: T1 > T2 > T3 > T6 > T4 > T5 > T7
+        priority_order = ["T1", "T2", "T3", "T6", "T4", "T5", "T7"]
+        final_cat = "T7" # Default to lowest
+        for cat in priority_order:
+            if cat in all_categories:
+                final_cat = cat
+                break
         
         # Pick first cluster mapping but override merged fields
         m = cluster_mapping[labels[0]].copy()
@@ -922,13 +957,18 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                     # POST-CLASSIFICATION NOISE FILTER
                     # Only demote to Noise if signal is truly low or it's a routine generic topic
                     is_generic = (res["event_type"] == "Generic")
-                    is_routine = (res["category"] == "C")
+                    is_routine = (res["category"] == "T7") # Updated to 7-group taxonomy
+                    is_discovery = (m["topic_type"] == "Discovery")
                     
                     if is_generic and is_routine:
                         # Both generic and routine (e.g., general weather, daily lottery)
-                        if m["trend_score"] < 50:
+                        if m["trend_score"] < 60: # [STRICTER] Raised from 50 to 60 for routine generics
                              m["topic_type"] = "Noise"
                              m["final_topic"] = f"[Noise] {topic}"
+                    elif is_discovery and is_generic:
+                        # Discovery (no trend match) + Generic = Random social noise
+                        m["topic_type"] = "Noise"
+                        m["final_topic"] = f"[Noise-Generic] {topic}"
                     elif is_routine:
                         # Routine but might be specific (e.g., "Xổ số miền Bắc ngày 15/10")
                         # Keep if there's significant trend volume, otherwise hide
@@ -936,8 +976,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                              m["topic_type"] = "Noise"
                              m["final_topic"] = f"[Routine] {topic}"
                     elif is_generic:
-                        # Generic but social/trending (e.g., "iPhone 16 reviews") - keep mostly
-                             m["final_topic"] = f"[Generic] {topic}"
+                        # Generic but social/trending (e.g., "iPhone 16 reviews") - keep but prefix
+                        m["final_topic"] = f"[Generic] {topic}"
 
     matches = []
     noise_count = 0

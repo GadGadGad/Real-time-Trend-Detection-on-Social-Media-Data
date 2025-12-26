@@ -166,7 +166,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             trust_remote_code=trust_remote_code,
             custom_stopwords=custom_stopwords,
             selection_method=selection_method,
-            recluster_large=recluster_large
+            recluster_large=recluster_large,
+            coherence_threshold=coherence_threshold
         )
         
         # Shift social labels to avoid collision with news clusters
