@@ -5,7 +5,7 @@ import logging
 import os
 
 # Configuration
-model_name = 'paraphrase-multilingual-mpnet-base-v2'
+model_name = 'dangvantuan/vietnamese-document-embedding'
 train_file = 'data/train_tsdae.txt'
 output_path = 'models/tuned-mpnet-vietnamese-v1'
 batch_size = 8
