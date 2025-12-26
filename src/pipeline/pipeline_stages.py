@@ -71,7 +71,8 @@ def run_summarization_stage(post_contents, use_llm, summarize_all, model_name='v
 
 def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, 
                         post_contents=None, epsilon=0.15, trust_remote_code=False, 
-                        custom_stopwords=None, min_member_similarity=0.45, selection_method='leaf'):
+                        custom_stopwords=None, min_member_similarity=0.45, selection_method='leaf',
+                        recluster_large=True):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
@@ -86,6 +87,7 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
         custom_stopwords: optional list of stopwords to merge with defaults
         min_member_similarity: Minimum cosine similarity for cluster membership
         selection_method: HDBSCAN selection method ('leaf' or 'eom')
+        recluster_large: If True, re-cluster large mixed clusters to split distinct sub-topics
     """
     # --- SAHC PHASE 1: NEWS-FIRST CLUSTERING ---
     news_indices = [i for i, p in enumerate(posts) if 'Face' not in p.get('source', '')]
@@ -104,7 +106,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             trust_remote_code=trust_remote_code,
             custom_stopwords=custom_stopwords,
             min_member_similarity=min_member_similarity,
-            selection_method=selection_method
+            selection_method=selection_method,
+            recluster_large=recluster_large
         )
     else:
         news_labels = np.array([-1] * len(news_indices))
@@ -161,7 +164,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             min_member_similarity=min_member_similarity, # Pass down
             trust_remote_code=trust_remote_code,
             custom_stopwords=custom_stopwords,
-            selection_method=selection_method
+            selection_method=selection_method,
+            recluster_large=recluster_large
         )
         
         # Shift social labels to avoid collision with news clusters
@@ -217,8 +221,13 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
 
                 tokenized_query = query_str.split()
                 raw_sparse = np.array(bm25_index.get_scores(tokenized_query))
+                
+                # [FIX] Normalize to 0-1 scale but DON'T force max to 1.0
+                # Use a fixed denominator based on typical BM25 scores
+                # BM25 scores can vary widely, so we use sigmoid-like normalization
                 if raw_sparse.max() > 0:
-                    sparse_scores = raw_sparse / raw_sparse.max()
+                    # Soft normalization: scale to roughly 0-1 without forcing max=1
+                    sparse_scores = raw_sparse / (raw_sparse.max() + 5.0)  # +5 prevents max=1
              except Exception:
                  pass
 
@@ -229,9 +238,10 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
             dense_ranks = len(dense_sims) - np.argsort(np.argsort(dense_sims)) 
             sparse_ranks = len(sparse_scores) - np.argsort(np.argsort(sparse_scores))
             
-            # Combine ranks
+            # Combine ranks - RRF naturally produces bounded scores
             rrf_scores = (1.0 / (rrf_k + dense_ranks)) + (1.0 / (rrf_k + sparse_ranks))
-            final_scores = rrf_scores / rrf_scores.max() if rrf_scores.max() > 0 else rrf_scores
+            # [FIX] Don't normalize to max=1, keep relative values
+            final_scores = rrf_scores
         else:
             # Linear Fusion (Default)
             w_dense = weights.get('dense', 0.6)
@@ -242,11 +252,14 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
         top_idx = np.argsort(final_scores)[-1]
         best_candidate_score = float(final_scores[top_idx])
         
+        # [FIX] Also capture the RAW dense similarity for the Semantic Guard
+        raw_dense_sim = float(dense_sims[top_idx])
+        
         # --- 3. THE SEMANTIC GUARD ---
         # Even if BM25 is high, the semantic floor must be met to avoid "World Cup" mismatches.
         # Trend labels like "World Cup 2026" should have AT LEAST some semantic overlap.
-        SEMANTIC_FLOOR = 0.4
-        semantic_signal = dense_sims[top_idx]
+        SEMANTIC_FLOOR = 0.35  # Lowered from 0.4 since we're now using raw dense similarity
+        semantic_signal = raw_dense_sim  # Use the raw cosine similarity, not the fused score
         
         is_valid_match = (semantic_signal >= SEMANTIC_FLOOR)
         
@@ -254,7 +267,8 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
             # High quality match
             assigned_trend = trend_keys[top_idx]
             topic_type = "Trending"
-            best_match_score = best_candidate_score
+            # [FIX] Return the RAW dense similarity as the match score for interpretability
+            best_match_score = raw_dense_sim
             
             # Optional Reranking (Double Check)
             if rerank and reranker:

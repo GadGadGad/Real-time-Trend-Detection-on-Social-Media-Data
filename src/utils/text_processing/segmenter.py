@@ -79,3 +79,52 @@ def batch_segment_texts(texts):
     for t in track(texts, description="[cyan]Running Word Segmentation...[/cyan]"):
         results.append(segment_text(t))
     return results
+
+def is_mostly_english(text, threshold=0.5):
+    """
+    Heuristic to detect if text is predominantly English.
+    Returns True if > threshold of characters are ASCII letters.
+    """
+    import re
+    if not text: return False
+    ascii_letters = len(re.findall(r'[a-zA-Z]', text))
+    total_letters = len(re.findall(r'[a-zA-ZÀ-ỹ]', text))  # ASCII + Vietnamese letters
+    if total_letters == 0: return False
+    return (ascii_letters / total_letters) > threshold
+
+def smart_segment_text(text, english_threshold=0.5):
+    """
+    Language-aware segmentation.
+    - Skips mostly-English text to preserve proper nouns like "Taylor Swift", "iPhone 16"
+    - Applies Vietnamese segmentation otherwise
+    """
+    if not text: return ""
+    if is_mostly_english(text, threshold=english_threshold):
+        return text  # Keep as-is
+    return segment_text(text)
+
+def batch_smart_segment_texts(texts, english_threshold=0.5):
+    """
+    Batch language-aware segmentation.
+    - Only segments Vietnamese-heavy text
+    - Preserves English text (proper nouns, product names)
+    """
+    from rich.progress import track
+    if not texts: return []
+    
+    # Load once
+    load_segmenter()
+    
+    results = []
+    skipped = 0
+    for t in track(texts, description="[cyan]Smart Segmentation...[/cyan]"):
+        if is_mostly_english(t, threshold=english_threshold):
+            results.append(t)
+            skipped += 1
+        else:
+            results.append(segment_text(t))
+    
+    if skipped > 0:
+        console.print(f"   [dim]ℹ️ Skipped {skipped} English-heavy texts[/dim]")
+    
+    return results

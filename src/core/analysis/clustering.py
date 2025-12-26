@@ -17,7 +17,7 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
                  texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
                  selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
                  min_quality_cohesion=0.5, min_member_similarity=0.45, 
-                 trust_remote_code=False, custom_stopwords=None):
+                 trust_remote_code=False, custom_stopwords=None, recluster_large=True):
     """
     Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
     Includes Recursive Sub-Clustering for "Mega Clusters".
@@ -244,6 +244,15 @@ def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan',
             min_cluster_size=min_cluster_size
         )
 
+    # --- POST-PROCESSING: Re-cluster Large/Mixed Clusters ---
+    if labels is not None and recluster_large:
+        labels = recluster_large_clusters(
+            embeddings, labels, 
+            texts=texts,
+            min_cluster_size=min_cluster_size,
+            coherence_threshold=0.60  # Split if cohesion < 0.60
+        )
+
     return labels
 
 def get_cluster_cohesion(cluster_embs, return_all=False):
@@ -425,6 +434,116 @@ def recluster_garbage_clusters(embeddings, labels, min_pairwise_sim=0.35, min_cl
             console.print(f"[red]⚠️ Re-clustering failed: {e}. Keeping garbage as noise.[/red]")
     else:
         console.print(f"[dim]   Too few garbage posts ({len(garbage_indices)}) for re-clustering. Marked as noise.[/dim]")
+    
+    return new_labels
+
+def recluster_large_clusters(embeddings, labels, texts=None, 
+                              size_percentile=90, min_subclusters=2,
+                              min_cluster_size=3, coherence_threshold=0.65):
+    """
+    Identify and re-cluster large "mega-clusters" that likely contain mixed topics.
+    
+    The Problem: Large clusters often contain semantically distinct sub-topics
+    (e.g., "Sudan conflict" + "Thailand-Cambodia conflict" grouped as "international conflict").
+    
+    The Fix: For clusters in the top size_percentile, re-run HDBSCAN with stricter settings
+    to split them into distinct sub-topics.
+    
+    Args:
+        embeddings: Full embedding matrix
+        labels: Current cluster labels
+        texts: Optional list of texts (for logging/debugging)
+        size_percentile: Only re-cluster clusters larger than this percentile (default: 90th = top 10%)
+        min_subclusters: Minimum number of sub-clusters required to accept the split
+        min_cluster_size: Minimum sub-cluster size
+        coherence_threshold: If cluster coherence is above this, don't split (it's already good)
+        
+    Returns:
+        Updated labels with large clusters potentially split
+    """
+    new_labels = labels.copy()
+    unique_labels = sorted([l for l in set(labels) if l != -1])
+    
+    if not unique_labels:
+        return new_labels
+    
+    # Calculate cluster sizes
+    cluster_sizes = {l: np.sum(labels == l) for l in unique_labels}
+    size_values = list(cluster_sizes.values())
+    
+    if len(size_values) < 3:
+        return new_labels  # Not enough clusters to determine outliers
+    
+    # Find the size threshold (top percentile)
+    threshold_size = np.percentile(size_values, size_percentile)
+    large_clusters = [l for l, s in cluster_sizes.items() if s >= threshold_size and s >= min_cluster_size * 3]
+    
+    if not large_clusters:
+        return new_labels
+    
+    console.print(f"[cyan]🔬 Re-Clustering {len(large_clusters)} large clusters (size >= {threshold_size:.0f})...[/cyan]")
+    
+    # Get next available label ID
+    next_label_id = max(unique_labels) + 1
+    total_splits = 0
+    
+    for cluster_id in large_clusters:
+        mask = (labels == cluster_id)
+        indices = np.where(mask)[0]
+        cluster_embs = embeddings[mask]
+        cluster_size = len(indices)
+        
+        # Check current coherence - if already tight, don't split
+        current_coherence = get_cluster_cohesion(cluster_embs)
+        if current_coherence >= coherence_threshold:
+            console.print(f"   [dim]Cluster {cluster_id} (n={cluster_size}): Coherence {current_coherence:.3f} >= {coherence_threshold} - Skipping[/dim]")
+            continue
+        
+        # Re-cluster with stricter settings
+        try:
+            # Use tighter HDBSCAN params for sub-clustering
+            sub_eps = 0.02  # Stricter epsilon
+            sub_min_samples = max(2, min_cluster_size // 2)
+            
+            sub_clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=sub_min_samples,
+                metric='euclidean',
+                cluster_selection_epsilon=sub_eps,
+                cluster_selection_method='leaf'  # Fine-grained
+            )
+            sub_labels = sub_clusterer.fit_predict(cluster_embs)
+            
+            # Count sub-clusters (excluding noise)
+            sub_unique = set(sub_labels) - {-1}
+            num_subs = len(sub_unique)
+            
+            if num_subs >= min_subclusters:
+                # Accept the split
+                console.print(f"   [green]✂️ Cluster {cluster_id} (n={cluster_size}, coh={current_coherence:.2f}) -> {num_subs} sub-clusters[/green]")
+                
+                # Remap sub-labels to global space
+                for orig_sub in sub_unique:
+                    new_labels[indices[sub_labels == orig_sub]] = next_label_id
+                    next_label_id += 1
+                
+                # Mark noise from sub-clustering
+                noise_mask = (sub_labels == -1)
+                if np.any(noise_mask):
+                    new_labels[indices[noise_mask]] = -1
+                    
+                total_splits += 1
+            else:
+                console.print(f"   [dim]Cluster {cluster_id} (n={cluster_size}): Only {num_subs} sub-clusters found - Keeping original[/dim]")
+                
+        except Exception as e:
+            console.print(f"   [yellow]⚠️ Sub-clustering failed for cluster {cluster_id}: {e}[/yellow]")
+    
+    if total_splits > 0:
+        new_count = len(set(new_labels) - {-1})
+        console.print(f"[bold green]✨ Large Cluster Re-Clustering: Split {total_splits} mega-clusters. New total: {new_count} clusters.[/bold green]")
+    else:
+        console.print(f"[dim]   No mega-clusters required splitting.[/dim]")
     
     return new_labels
 
