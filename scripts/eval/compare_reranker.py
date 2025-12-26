@@ -14,7 +14,14 @@ TUNED_MODEL = 'models/reranker-vietnamese-v1'
 TEST_FILE = 'data/reranker_train.jsonl'
 
 def run_eval(model_name_or_path):
-    if not os.path.exists(model_name_or_path) and "/" in model_name_or_path:
+    # If it's a local path (starts with ./ or / or models/) it must exist
+    is_local = model_name_or_path.startswith("/") or \
+               model_name_or_path.startswith("./") or \
+               model_name_or_path.startswith("models/") or \
+               os.path.exists(model_name_or_path)
+               
+    if is_local and not os.path.exists(model_name_or_path):
+        console.print(f"[yellow]Local model path {model_name_or_path} not found. Skipping...[/yellow]")
         return None  # Path not found
         
     try:
