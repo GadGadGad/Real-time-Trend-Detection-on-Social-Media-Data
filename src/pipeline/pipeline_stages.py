@@ -181,7 +181,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
 def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend_keys, trend_queries, embedder, reranker, rerank, threshold, 
                            bm25_index=None, cluster_centroid=None, 
                            use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
-                           weights={'dense': 0.6, 'sparse': 0.4}):
+                           weights={'dense': 0.6, 'sparse': 0.4},
+                           semantic_floor=0.35):
     """
     Helper to match a cluster to existing trends. 
     Implements ADVANCED IR:
@@ -268,13 +269,13 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
         raw_dense_sim = float(dense_sims[top_idx])
         
         # --- 3. THE SEMANTIC GUARD ---
-        SEMANTIC_FLOOR = 0.40  # [TUNED] Raised from 0.30 for stricter matching
+        # semantic_floor is now a parameter (default 0.35)
         semantic_signal = raw_dense_sim
         
         # [MATCH LOGIC] A match is valid if:
         # 1. Semantic Guard passes (we are at least somewhat talking about the same thing)
         # 2. Fused score exceeds threshold (overall signal is strong)
-        is_valid_match = (semantic_signal >= SEMANTIC_FLOOR)
+        is_valid_match = (semantic_signal >= semantic_floor)
         
         if is_valid_match and best_candidate_score >= threshold:
             # High quality match
@@ -299,11 +300,12 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
             # Low quality match or under floor: Relegate to Discovery
             assigned_trend = "Discovery"
             topic_type = "Discovery"
-            best_match_score = 0.0
+            # [FIX] Show actual similarity for debugging (was 0.0)
+            best_match_score = raw_dense_sim
             
             # [NEW] Debug logging for Discovery decisions
             if not is_valid_match:
-                console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (semantic={raw_dense_sim:.2f} < floor={SEMANTIC_FLOOR})[/dim]")
+                console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (semantic={raw_dense_sim:.2f} < floor={semantic_floor})[/dim]")
             elif best_candidate_score < threshold:
                 console.print(f"   [dim]🔍 '{cluster_query[:30]}...' -> Discovery (fused={best_candidate_score:.2f} < threshold={threshold})[/dim]")
             

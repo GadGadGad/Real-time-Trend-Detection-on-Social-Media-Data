@@ -536,7 +536,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
                         embedding_char_limit=500, summarize_refinement=True,
-                        return_components=False):
+                        return_components=False, semantic_floor=0.35):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -700,7 +700,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             embedder, reranker, rerank, threshold, bm25_index=bm25_index,
             cluster_centroid=cluster_centroid,
             use_rrf=use_rrf, rrf_k=rrf_k, use_prf=use_prf, prf_depth=prf_depth,
-            weights=match_weights
+            weights=match_weights, semantic_floor=semantic_floor
         )
 
         trend_data = trends.get(assigned_trend, {'volume': 0})
@@ -808,7 +808,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                                 embedder, reranker, rerank, threshold, bm25_index=bm25_index,
                                 cluster_centroid=new_centroid,
                                 use_rrf=use_rrf, rrf_k=rrf_k, use_prf=use_prf, prf_depth=prf_depth,
-                                weights=match_weights
+                                weights=match_weights, semantic_floor=semantic_floor
                             )
                             if new_type == "Trending":
                                 m["final_topic"] = new_trend
