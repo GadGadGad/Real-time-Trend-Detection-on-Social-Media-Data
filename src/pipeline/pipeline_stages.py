@@ -72,7 +72,7 @@ def run_summarization_stage(post_contents, use_llm, summarize_all, model_name='v
 def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbscan', n_clusters=15, 
                         post_contents=None, epsilon=0.15, trust_remote_code=False, 
                         custom_stopwords=None, min_member_similarity=0.45, selection_method='leaf',
-                        recluster_large=True):
+                        recluster_large=True, coherence_threshold=0.60):
     """
     Phase 1-3: SAHC Clustering
     1. Cluster News (High Quality)
@@ -107,7 +107,8 @@ def run_sahc_clustering(posts, post_embeddings, min_cluster_size=5, method='hdbs
             custom_stopwords=custom_stopwords,
             min_member_similarity=min_member_similarity,
             selection_method=selection_method,
-            recluster_large=recluster_large
+            recluster_large=recluster_large,
+            coherence_threshold=coherence_threshold
         )
     else:
         news_labels = np.array([-1] * len(news_indices))

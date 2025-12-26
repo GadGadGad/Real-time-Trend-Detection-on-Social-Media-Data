@@ -529,6 +529,7 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         debug_llm=False, summarize_all=False, no_dedup=False,
                         selection_method='eom', n_clusters=15,
                         cluster_epsilon=0.05, min_quality_cohesion=0.55,
+                        coherence_threshold=0.60,
                         summarize_posts=False, summarization_model='vit5-large',
                         trust_remote_code=True, use_keywords=True, use_llm_keywords=False,
                         custom_stopwords=None, min_member_similarity=0.45,
@@ -625,7 +626,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         trust_remote_code=trust_remote_code,
         post_contents=post_contents_enriched,
         custom_stopwords=custom_stopwords,
-        min_member_similarity=min_member_similarity
+        min_member_similarity=min_member_similarity,
+        coherence_threshold=coherence_threshold
     )
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     sentiments = batch_analyze_sentiment(post_contents)

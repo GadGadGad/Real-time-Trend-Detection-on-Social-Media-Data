@@ -113,7 +113,8 @@ def compare():
                     n_clusters=15 if method == 'kmeans' else None,
                     texts=texts,
                     embedding_model=model,
-                    min_cohesion=0.4
+                    min_cohesion=0.4,
+                    coherence_threshold=0.60
                 )
             
             elapsed = time.time() - start
