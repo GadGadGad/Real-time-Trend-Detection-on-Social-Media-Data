@@ -535,7 +535,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         custom_stopwords=None, min_member_similarity=0.45,
                         use_rrf=False, rrf_k=60, use_prf=False, prf_depth=3,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
-                        embedding_char_limit=500, summarize_refinement=True):
+                        embedding_char_limit=500, summarize_refinement=True,
+                        return_components=False):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -990,6 +991,16 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     if not matches and posts:
         console.print(f"[yellow]⚠️  Warning: Pipeline returned 0 results. {noise_count} posts were filtered as Noise.[/yellow]")
         console.print(f"[dim]Try setting save_all=True or decreasing min_cluster_size to see more results.[/dim]")
+
+    if return_components:
+        components = {
+            "post_embeddings": post_embeddings,
+            "trend_embeddings": trend_embeddings,
+            "cluster_labels": cluster_labels,
+            "cluster_mapping": cluster_mapping,
+            "model_name": model_name or DEFAULT_MODEL
+        }
+        return matches, components
 
     return matches
 

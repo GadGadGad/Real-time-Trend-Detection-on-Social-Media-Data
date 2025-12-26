@@ -203,7 +203,7 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
         # --- 2. SPARSE MATCHING ---
         sparse_scores = np.zeros(len(trend_keys))
         if bm25_index:
-             try:
+            try:
                 # 2a. Initial Query
                 query_str = cluster_query.lower()
                 
@@ -229,25 +229,35 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
                 if raw_sparse.max() > 0:
                     # Soft normalization: scale to roughly 0-1 without forcing max=1
                     sparse_scores = raw_sparse / (raw_sparse.max() + 5.0)  # +5 prevents max=1
-             except Exception:
-                 pass
+            except Exception:
+                pass
 
         # --- 3. FUSION ---
         if use_rrf:
             # Reciprocal Rank Fusion: 1 / (k + rank)
-            # Ranks: Higher sim = lower rank (1st place = 1)
             dense_ranks = len(dense_sims) - np.argsort(np.argsort(dense_sims)) 
             sparse_ranks = len(sparse_scores) - np.argsort(np.argsort(sparse_scores))
             
-            # Combine ranks - RRF naturally produces bounded scores
+            # Combine ranks
             rrf_scores = (1.0 / (rrf_k + dense_ranks)) + (1.0 / (rrf_k + sparse_ranks))
-            # [FIX] Don't normalize to max=1, keep relative values
-            final_scores = rrf_scores
+            
+            # [FIX] Normalize RRF to 0-1 scale relative to the THEORETICAL MAX (2.0 / (rrf_k + 1))
+            # This makes RRF scores comparable to cosine similarity (0-1).
+            max_rrf = 2.0 / (rrf_k + 1)
+            final_scores = rrf_scores / max_rrf
         else:
             # Linear Fusion (Default)
             w_dense = weights.get('dense', 0.6)
             w_sparse = weights.get('sparse', 0.4)
-            final_scores = w_dense * dense_sims + w_sparse * sparse_scores
+            
+            # Normalize sparse scores so they contribute fairly to the fusion
+            scaled_sparse = sparse_scores
+            if sparse_scores.max() > 0:
+                # We normalize to max=1.0 for the fusion step, but we weighted it with w_sparse
+                # This ensures sparse signal REALLY helps if it's there.
+                scaled_sparse = sparse_scores / sparse_scores.max()
+                
+            final_scores = w_dense * dense_sims + w_sparse * scaled_sparse
 
         # Select Top Candidate
         top_idx = np.argsort(final_scores)[-1]
@@ -257,19 +267,21 @@ def calculate_match_scores(cluster_query, cluster_label, trend_embeddings, trend
         raw_dense_sim = float(dense_sims[top_idx])
         
         # --- 3. THE SEMANTIC GUARD ---
-        # Even if BM25 is high, the semantic floor must be met to avoid "World Cup" mismatches.
-        # Trend labels like "World Cup 2026" should have AT LEAST some semantic overlap.
-        SEMANTIC_FLOOR = 0.35  # Lowered from 0.4 since we're now using raw dense similarity
-        semantic_signal = raw_dense_sim  # Use the raw cosine similarity, not the fused score
+        SEMANTIC_FLOOR = 0.30  # Sligthly lower floor to allow for more discovered matches
+        semantic_signal = raw_dense_sim
         
+        # [MATCH LOGIC] A match is valid if:
+        # 1. Semantic Guard passes (we are at least somewhat talking about the same thing)
+        # 2. Fused score exceeds threshold (overall signal is strong)
         is_valid_match = (semantic_signal >= SEMANTIC_FLOOR)
         
-        if is_valid_match and best_candidate_score > threshold:
+        if is_valid_match and best_candidate_score >= threshold:
             # High quality match
             assigned_trend = trend_keys[top_idx]
             topic_type = "Trending"
-            # [FIX] Return the RAW dense similarity as the match score for interpretability
-            best_match_score = raw_dense_sim
+            
+            # [FIX] Return the FUSED score as the match score, but cap it at 1.0
+            best_match_score = min(best_candidate_score, 1.0)
             
             # Optional Reranking (Double Check)
             if rerank and reranker:
