@@ -907,6 +907,12 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                 if orig == canon:
                     verified_map[orig] = orig
                 else:
+                    # Ensure both topics have embeddings
+                    if orig not in topic_embeddings:
+                        topic_embeddings[orig] = embedder.encode(orig)
+                    if canon not in topic_embeddings:
+                        topic_embeddings[canon] = embedder.encode(canon)
+                    
                     # Check semantic similarity before accepting merge
                     sim = cosine_similarity(
                         topic_embeddings[orig].reshape(1, -1),
