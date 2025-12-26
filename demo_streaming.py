@@ -154,9 +154,9 @@ if "Simulation" in mode:
     
     st.sidebar.markdown("---")
     c1, c2 = st.sidebar.columns(2)
-    if c1.button("▶️ START", use_container_width=True, type="primary"): st.session_state.sim_running = True
-    if c2.button("⏸️ STOP", use_container_width=True): st.session_state.sim_running = False
-    if st.sidebar.button("🔄 RESET", use_container_width=True):
+    if c1.button("▶️ START", width="stretch", type="primary"): st.session_state.sim_running = True
+    if c2.button("⏸️ STOP", width="stretch"): st.session_state.sim_running = False
+    if st.sidebar.button("🔄 RESET", width="stretch"):
         st.session_state.sim_index = 0
         st.session_state.sim_running = False
         st.rerun()
@@ -331,7 +331,7 @@ with tab2:
         
         selection = st.dataframe(
             event_df,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "First Detected": st.column_config.DatetimeColumn(format="HH:mm:ss"),
                 "last_seen": st.column_config.DatetimeColumn(format="HH:mm:ss"),
@@ -349,8 +349,8 @@ with tab2:
             sel_topic = event_df.iloc[sel_idx]['Event Name']
             
             st.markdown("---")
-            e_df = identified_df[identified_df['display_topic'] == selected_event]
-            st.markdown(f"### 📂 Dossier: {selected_event}")
+            e_df = identified_df[identified_df['display_topic'] == sel_topic]
+            st.markdown(f"### 📂 Dossier: {sel_topic}")
             
             # Close button (simulated by rerunning with empty selection - UI constraint, so we just provide context)
             
@@ -358,9 +358,9 @@ with tab2:
             k1.metric("Volume", f"{len(e_df)} posts")
             k2.metric("First Seen", e_df['time'].min().strftime('%H:%M:%S'))
             k3.metric("Last Activity", e_df['time'].max().strftime('%H:%M:%S'))
-            k4.metric("Sentiment", sent_map[selected_event])
+            k4.metric("Sentiment", sent_map[sel_topic])
             
-            st.info(f"**Briefing**: {summary_map[selected_event]}")
+            st.info(f"**Briefing**: {summary_map[sel_topic]}")
             
             c_left, c_right = st.columns(2)
             with c_left:
