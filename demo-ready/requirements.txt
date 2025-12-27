@@ -1,0 +1,15 @@
+pyspark
+kafka-python
+sentence-transformers
+hdbscan
+pandas
+numpy
+sqlalchemy
+psycopg2-binary
+
+streamlit
+plotly
+google-generativeai
+python-dotenv
+rich
+

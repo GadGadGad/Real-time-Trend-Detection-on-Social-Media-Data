@@ -603,38 +603,38 @@ class LLMRefiner:
             return cluster_name, original_category, ""
 
         instruction = custom_instruction or """
-            Phân tích sự kiện và viết tóm tắt bằng TIẾNG VIỆT.
+            Define the headline and extracting structured 5W1H.
 
-            QUY TẮC:
-            1. Tiêu đề: Tiêu đề tin tức tiếng Việt súc tích (≤ 15 từ).
-               - Ưu tiên sự kiện cụ thể. Không giật gân.
-            2. Tóm tắt (TIẾNG VIỆT): Viết đoạn văn chi tiết (4-6 câu).
-               - Bao gồm bối cảnh, số liệu cụ thể, trích dẫn (nếu có), và tác động.
-               - KHÔNG bắt đầu bằng "Bài viết nói về..." hoặc "Tóm tắt:". Kể ngay sự kiện.
+            RULES:
+            1. Headline: Concise Vietnamese news headline (≤ 15 words).
+               - Prefer concrete facts. No sensationalism.
+            2. Summary: DETAILS ARE CRITICAL. write a LONGER, COMPREHENSIVE paragraph (4-6 sentences).
+               - Include context, specific numbers, quotes (if any), and future implications.
+               - DO NOT start with "Bài viết nói về..." or "Summary:". Just tell the story.
             3. 5W1H:
-               - AI: Các thực thể/người liên quan.
-               - GÌ: Sự kiện hoặc tương tác chính.
-               - Ở ĐÂU: Địa điểm cụ thể.
-               - KHI NÀO: Thời gian/Ngày tháng.
-               - TẠI SAO: Nguyên nhân hoặc bối cảnh.
-               - Nếu KHÔNG RÕ, ghi "N/A" nhưng CỐ GẮNG TRÍCH XUẤT.
-            4. Lời khuyên cho Nhà nước (TIẾNG VIỆT): Khuyến nghị chiến lược cho cơ quan nhà nước (ví dụ: chiến lược truyền thông, điều chỉnh chính sách, quản lý khủng hoảng).
-            5. Lời khuyên cho Doanh nghiệp (TIẾNG VIỆT): Góc nhìn hành động cho doanh nghiệp (ví dụ: cơ hội thị trường, giảm thiểu rủi ro, thay đổi vận hành).
+               - WHO: Main entities/people involved.
+               - WHAT: The core interaction or event.
+               - WHERE: Specific locations mentioned.
+               - WHEN: Timeframe/Dates.
+               - WHY: Cause or context (infer if not explicitly stated but logical).
+               - IF UNKNOWN, write "N/A" but TRY HARD TO EXTRACT.
+            4. Advice for State: Provide strategic recommendations for government agencies/authorities (e.g., communication strategy, policy adjustment, crisis management).
+            5. Advice for Business: Provide actionable insights for enterprises/businesses (e.g., market entry, risk mitigation, operational changes, capitalization).
 
-            Trả lời CHÍNH XÁC theo định dạng JSON:
+            Respond STRICTLY in JSON format:
             {{
-                "refined_title": "Tiêu đề tiếng Việt...",
+                "refined_title": "...",
                 "category": "T1/T2/.../T7",
                 "event_type": "Specific/Generic",
-                "summary": "Tóm tắt chi tiết bằng TIẾNG VIỆT (100-150 từ).",
+                "summary": "Full detailed story of the event (approx 100-150 words).",
                 "overall_sentiment": "Positive/Negative/Neutral",
                 "who": "...",
                 "what": "...",
                 "where": "...",
                 "when": "...",
                 "why": "...",
-                "advice_state": "Lời khuyên cho Nhà nước bằng TIẾNG VIỆT...",
-                "advice_business": "Lời khuyên cho Doanh nghiệp bằng TIẾNG VIỆT...",
+                "advice_state": "Strategic advice for authorities...",
+                "advice_business": "Actionable advice for businesses...",
                 "reasoning": "..."
             }}
         """

@@ -114,7 +114,7 @@ class ScoreCalculator:
         news_count = len(news_files)
         
         # Normalize N using log10
-        MAX_ARTICLES = 10
+        MAX_ARTICLES = 100
         n_score = (math.log10(news_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if news_count > 0 else 0
         n_score = min(100, n_score)
         
@@ -205,7 +205,7 @@ def calculate_unified_score(trend_data, cluster_posts, trend_time=None):
 
     # 3. News (N)
     news_count = len([p for p in cluster_posts if 'Face' not in p.get('source', '')])
-    MAX_ARTICLES = 10
+    MAX_ARTICLES = 100
     n_score = (math.log10(news_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if news_count > 0 else 0
     n_score = min(100, n_score)
 
