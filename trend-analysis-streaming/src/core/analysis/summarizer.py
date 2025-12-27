@@ -10,22 +10,36 @@ SUMMARIZATION_MODELS = {
     'vit5-large': 'VietAI/vit5-large-vietnews-summarization',  # Best quality, ~1.2GB
     'vit5-base': 'VietAI/vit5-base-vietnews-summarization',    # Faster, ~900MB
     'bartpho': 'vinai/bartpho-syllable',                       # Alternative, good for short text
-    'gemini': 'gemini-1.5-flash',                              # Cloud LLM, handles massive batches
+    'gemini': 'gemma-3-27b-it',                              # Cloud LLM, handles massive batches
 }
 
 class Summarizer:
-    def __init__(self, model_name="VietAI/vit5-large-vietnews-summarization", device=None):
+    def __init__(self, model_name="VietAI/vit5-base-vietnews-summarization", device=None):
         # Allow shorthand model names
         if model_name in SUMMARIZATION_MODELS:
             model_name = SUMMARIZATION_MODELS[model_name]
         self.model_name = model_name
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # [SMART DEVICE SELECTION]
+        # Nếu không chỉ định device, kiểm tra VRAM. Nếu < 6GB thì mặc định dùng CPU để an toàn.
+        if device:
+            self.device = device
+        else:
+            if torch.cuda.is_available():
+                total_mem = torch.cuda.get_device_properties(0).total_memory
+                if total_mem > 6 * 1024**3: # > 6GB
+                    self.device = 'cuda'
+                else:
+                    self.device = 'cpu' # Fallback to CPU for safety
+            else:
+                self.device = 'cpu'
+                
         self.tokenizer = None
         self.model = None
         self.enabled = False
 
     def load_model(self):
-        if self.model_name.startswith('gemini'):
+        if self.model_name.startswith('gemma'):
             from src.core.llm.llm_refiner import LLMRefiner
             self.model = LLMRefiner(provider="gemini", model_path=self.model_name)
             self.enabled = self.model.enabled
@@ -33,11 +47,23 @@ class Summarizer:
                 console.print(f"[green]✅ Summarizer using Gemini ({self.model_name})[/green]")
             return
 
-        console.print(f"[cyan]📥 Loading Summarizer: {self.model_name}...[/cyan]")
+        console.print(f"[cyan]📥 Loading Summarizer: {self.model_name} on {self.device}...[/cyan]")
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
-            self.model.to(self.device)
+            
+            # [OOM PROTECTION]
+            try:
+                self.model.to(self.device)
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower():
+                    console.print("[yellow]⚠️ GPU OOM during Summarizer load. Falling back to CPU...[/yellow]")
+                    self.device = 'cpu'
+                    self.model.to('cpu')
+                    torch.cuda.empty_cache()
+                else:
+                    raise e
+            
             self.enabled = True
             console.print(f"[green]✅ Summarizer loaded on {self.device}[/green]")
         except Exception as e:
@@ -53,7 +79,7 @@ class Summarizer:
             self.enabled = False
             gc.collect()
             torch.cuda.empty_cache()
-            console.print("[dim]🗑️ Summarizer unloaded to free GPU.[/dim]")
+            console.print("[dim]🗑️ Summarizer unloaded to free resources.[/dim]")
 
     def summarize_batch(self, texts, max_length=256):
         if not self.enabled: 
@@ -63,7 +89,7 @@ class Summarizer:
         if self.model_name.startswith('gemini'):
             # True batching for Gemini: group articles into one long prompt
             summaries = []
-            gemini_batch_size = 20 # Can handle more, but 20 is safe for response parsing
+            gemini_batch_size = 10 # Can handle more, but 20 is safe for response parsing
             for i in range(0, len(texts), gemini_batch_size):
                 chunk = texts[i : i + gemini_batch_size]
                 chunk_str = "\n".join([f"--- ARTICLE {idx+1} ---\n{t[:2000]}" for idx, t in enumerate(chunk)])
@@ -95,9 +121,14 @@ class Summarizer:
         summaries = []
         batch_size = 4 # T4 GPU safe limit
         
-        from rich.progress import track
+        # Nếu chạy trên CPU, tắt thanh tiến trình rich để log đỡ rối và nhanh hơn
+        if self.device == 'cpu':
+            iterator = range(0, len(texts), batch_size)
+        else:
+            from rich.progress import track
+            iterator = track(range(0, len(texts), batch_size), description="[cyan]Summarizing batches...[/cyan]")
         
-        for i in track(range(0, len(texts), batch_size), description="[cyan]Summarizing batches...[/cyan]"):
+        for i in iterator:
             batch = texts[i : i + batch_size]
             
             # ViT5 requires special format: "vietnews: {text} </s>"
