@@ -253,7 +253,7 @@ if AIRFLOW_AVAILABLE:
         dag_id='trend_detection_pipeline',
         default_args=default_args,
         description='Daily trend detection from social media posts',
-        schedule_interval='0 0 * * *',  # Run at midnight daily
+        schedule='0 0 * * *',  # Run at midnight daily (Airflow 3.x syntax)
         start_date=datetime(2024, 1, 1),
         catchup=False,
         tags=['trend-detection', 'nlp', 'ml'],
@@ -263,14 +263,12 @@ if AIRFLOW_AVAILABLE:
         task_load = PythonOperator(
             task_id='load_data',
             python_callable=load_data,
-            provide_context=True,
         )
         
         # Task 2: Run ML pipeline
         task_pipeline = PythonOperator(
             task_id='run_pipeline',
             python_callable=run_pipeline,
-            provide_context=True,
             # Allocate more resources for ML task
             executor_config={
                 "KubernetesExecutor": {
@@ -284,7 +282,6 @@ if AIRFLOW_AVAILABLE:
         task_report = PythonOperator(
             task_id='generate_report',
             python_callable=generate_report,
-            provide_context=True,
         )
         
         # Task 4: Cleanup old cache (optional)
