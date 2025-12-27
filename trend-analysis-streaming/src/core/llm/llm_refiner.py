@@ -1,1025 +1,901 @@
-import re
-import os
-import json
+import numpy as np
 from rich.console import Console
-from rich.progress import track
-from dotenv import load_dotenv
-import torch
+import umap
+import hdbscan
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
 
-load_dotenv()
 console = Console()
 
-class LLMRefiner:
-    def __init__(self, provider="gemini", api_key=None, model_path=None, debug=False, batch_size=4):
-        self.provider = provider
-        self.enabled = False
-        self.debug = debug
-        self.model_name = (model_path or "").lower()  # Track model name for batch size decisions
-        
-        if provider == "gemini":
-            try:
-                import google.generativeai as genai
-                self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-                if not self.api_key:
-                    console.print("[yellow]⚠️ GEMINI_API_KEY not found. LLM Refinement disabled.[/yellow]")
-                else:
-                    genai.configure(api_key=self.api_key)
-                    # Allow specifying model via model_path (e.g. 'gemini-1.5-pro')
-                    gemini_model = model_path or "models/gemma-3-27b-it"
-                    console.print(f"[cyan]♊ Using Gemini Model: {gemini_model}[/cyan]")
-                    self.model = genai.GenerativeModel(gemini_model)
-                    self.enabled = True
-            except ImportError:
-                console.print("[red]❌ google-generativeai not installed.[/red]")
-
-        elif provider == "kaggle" or provider == "local":
-            try:
-                import torch
-                from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
-                
-                model_id = model_path or "google/gemma-2-2b-it"
-                self.model_id = model_id.lower()
-                console.print(f"[bold cyan]🤖 Loading {model_id} via Transformers...[/bold cyan]")
-                
-                # Use 4-bit quantization to fit larger models in Kaggle T4/P100
-                bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float32,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=False, # Disable for max stability
-                )
-
-                self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                
-                # Enforce limit to fix truncation warning and prevent OOB
-                self.tokenizer.model_max_length = 4096
-                
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_id,
-                    quantization_config=bnb_config,
-                    device_map="auto",
-                    trust_remote_code=True,
-                    low_cpu_mem_usage=True
-                )
-                # self.pipeline removal - using manual generate for stability
-                self.enabled = True
-            except Exception as e:
-                console.print(f"[red]❌ Failed to load local model: {e}[/red]")
-
-    @property
-    def is_high_capacity_model(self):
-        """Check if using a high-capacity model (gemini API) vs local model (gemma).
-        Gemini API can handle much larger batch sizes than local gemma models.
-        """
-        # If provider is gemini and model_name contains 'gemini' (not 'gemma'), it's high capacity
-        if self.provider == "gemini":
-            # Check if model_name explicitly mentions gemma (local-like model)
-            if "gemma" in self.model_name:
-                return False
-            return True  # gemini-1.5-pro, gemini-2.0-flash, etc.
-        return False  # kaggle/local providers
-
-    def _generate(self, prompt):
-        return self._generate_batch([prompt])[0]
-
-    def _generate_batch(self, prompts):
-        if not prompts: return []
-        
-        if self.provider == "gemini":
-            import concurrent.futures
-            
-            def get_content(p):
-                import time
-                import re as _re
-                max_retries = 3
-                
-                for attempt in range(max_retries):
-                    try:
-                        # Safety settings to minimize refusals
-                        safety_settings = [
-                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                        ]
-                        response = self.model.generate_content(p, safety_settings=safety_settings)
-                        
-                        # Handle Finish Reasons e.g. RECITATION (4)
-                        if response.candidates and response.candidates[0].finish_reason != 1: # 1 = STOP
-                            if self.debug: 
-                                console.print(f"[dim yellow]Gemini Finish Reason: {response.candidates[0].finish_reason}[/dim yellow]")
-                            # Attempt to extract partial text if available
-                            if hasattr(response, 'text'): 
-                                try: return response.text
-                                except: pass
-                            return ""
-                            
-                        return response.text
-                    except Exception as e:
-                        error_str = str(e)
-                        
-                        # Handle 429 Rate Limit with retry
-                        if "429" in error_str or "quota" in error_str.lower():
-                            # Try to parse recommended wait time
-                            wait_match = _re.search(r'retry in (\d+\.?\d*)', error_str.lower())
-                            wait_time = float(wait_match.group(1)) if wait_match else 30.0
-                            wait_time = min(wait_time + 5, 60)  # Add buffer, cap at 60s
-                            
-                            if attempt < max_retries - 1:
-                                console.print(f"[yellow]⏳ Rate limited. Waiting {wait_time:.0f}s before retry {attempt+2}/{max_retries}...[/yellow]")
-                                time.sleep(wait_time)
-                                continue
-                        
-                        if self.debug: console.print(f"[dim red]Gemini Error: {e}[/dim red]")
-                        return ""
-                
-                return ""  # All retries failed
-
-            # Use ThreadPoolExecutor for parallel API calls
-            # Reduced workers to prevent Rate Limits and "Stuck" behavior
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-                results = list(executor.map(get_content, prompts))
-            return results
-        else:
-            results = []
-            # Use progress bar for visible inference
-            iterator = track(prompts, description="[cyan]🤖 Generating Responses...[/cyan]") if len(prompts) > 1 else prompts
-            for prompt in iterator:
-                try:
-                    # Apply template
-                    formatted = ""
-                    try:
-                        messages = [{"role": "user", "content": prompt}]
-                        formatted = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                    except Exception:
-                        if "qwen" in self.model_id:
-                            formatted = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                        else:
-                            formatted = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
-                            
-                    # Manual Generation (Bare Metal Stability)
-                    inputs = self.tokenizer(formatted, return_tensors="pt", padding=True, truncation=True, max_length=4096).to(self.model.device)
-                    
-                    with torch.no_grad():
-                        outputs = self.model.generate(
-                            **inputs,
-                            max_new_tokens=1024,
-                            do_sample=False,
-                            pad_token_id=self.tokenizer.eos_token_id
-                        )
-                        
-                    # Decode only the new tokens
-                    generated_tokens = outputs[0][inputs.input_ids.shape[1]:]
-                    res_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
-                    results.append(res_text)
-                    
-                except Exception as e:
-                    console.print(f"[red]Generation Error: {e}[/red]")
-                    results.append("")
-            
-            return results
-
-
-    def _extract_json(self, text, is_list=False):
-        """Robustly extract JSON from text even with markdown, newlines, or noise"""
-        if not text or not text.strip():
-            return None
-            
-        try:
-            # Look for markdown blocks first
-            code_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
-            if code_blocks:
-                content = code_blocks[0]
-            else:
-                # Fallback to finding brackets
-                char_start, char_end = ('[', ']') if is_list else ('{', '}')
-                start = text.find(char_start)
-                end = text.rfind(char_end) + 1
-                if start == -1 or end == 0: 
-                    # Try to find at least the start
-                    if start != -1:
-                        content = text[start:]
-                    elif is_list and text.find('{') != -1:
-                        # Case: Model forgot [ ] but started with {
-                        start = text.find('{')
-                        content = text[start:]
-                    else:
-                        return None
-                else:
-                    content = text[start:end]
-            
-            # --- SANITIZATION STEP ---
-            # 0. Ensure we have clean text - strip leading/trailing whitespace
-            content = content.strip()
-            
-            # 1. Remove "..." if the model hallucinated it (as placeholder for truncation)
-            content = content.replace("...", "")
-            content = content.replace("…", "")  # Unicode ellipsis
-            
-            # 2. Normalize whitespace (convert all whitespace including tabs/newlines to single spaces)
-            content = re.sub(r'\s+', ' ', content)
-            
-            # 3. Clean trailing commas (common LLM error)
-            content = re.sub(r",\s*([\]}])", r"\1", content)
-            
-            # 4. Fix common LLM error: single quotes instead of double
-            # Only apply if no double quotes exist (likely all single-quoted)
-            if '"' not in content and "'" in content:
-                content = content.replace("'", '"')
-
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                # 5. If still failing, it might be truncated. Try to close it.
-                if is_list:
-                     # Attempt to wrap bare list if brackets missing
-                    if not content.strip().startswith('['):
-                        content = "[" + content
-                    
-                    if not content.strip().endswith(']'):
-                         # Try rudimentary fixing
-                        try: return json.loads(content + "]")
-                        except: pass
-                        try: return json.loads(content + "}]")
-                        except: pass
-                        try: return json.loads(content + "\"}]")
-                        except: pass
-
-                # 6. Recovery for OBJECTS (is_list=False)
-                if not is_list:
-                    # Attempt to close truncated JSON objects
-                    # Try common closing patterns
-                    candidates = ['}', '"}', '"]}', '"]}}', '"]}}', '']
-                    for suffix in candidates:
-                        try:
-                            return json.loads(content + suffix)
-                        except: pass
-                    
-                    # Try closing open quotes first if odd number of quotes
-                    if content.count('"') % 2 != 0:
-                        for suffix in candidates:
-                            try:
-                                return json.loads(content + '"' + suffix)
-                            except: pass
-
-                # 7. IMPROVED Last resort for LISTS: Use greedy regex for complete objects
-                if is_list:
-                    # Try to find objects with proper brace balancing
-                    objects = []
-                    brace_depth = 0
-                    current_obj = ""
-                    in_string = False
-                    prev_char = ""
-                    
-                    for char in content:
-                        if char == '"' and prev_char != '\\':
-                            in_string = not in_string
-                        
-                        if not in_string:
-                            if char == '{':
-                                if brace_depth == 0:
-                                    current_obj = ""
-                                brace_depth += 1
-                            elif char == '}':
-                                brace_depth -= 1
-                                if brace_depth == 0:
-                                    current_obj += char
-                                    objects.append(current_obj)
-                                    current_obj = ""
-                                    prev_char = char
-                                    continue
-                        
-                        if brace_depth > 0:
-                            current_obj += char
-                        prev_char = char
-                    
-                    # If we captured objects, try to parse them
-                    if objects:
-                        fixed_json = "[" + ",".join(objects) + "]"
-                        try: 
-                            data = json.loads(fixed_json)
-                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} objects via brace-balanced parsing.[/dim green]")
-                            return data
-                        except:
-                            pass
-                    
-                    # Fallback to simple regex
-                    simple_objects = re.findall(r'\{[^{}]+\}', content)
-                    if simple_objects:
-                        fixed_json = "[" + ",".join(simple_objects) + "]"
-                        try: 
-                            data = json.loads(fixed_json)
-                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} objects via simple regex.[/dim green]")
-                            return data
-                        except: pass
-                
-                # 8. NESTED ARRAYS: Salvage complete inner [...] arrays from truncated response
-                # This handles: [["kw1"], ["kw2"], ["kw3  <- incomplete
-                # We extract all complete inner arrays
-                # Check for nested arrays with optional whitespace: [ [ or [[
-                if is_list and re.search(r'\[\s*\[', content):
-                    inner_arrays = []
-                    bracket_depth = 0
-                    current_arr = ""
-                    in_string = False
-                    prev_char = ""
-                    
-                    for char in content:
-                        # Track string state (respecting escaped quotes)
-                        if char == '"' and prev_char != '\\':
-                            in_string = not in_string
-                        
-                        # Handle brackets (only when not inside a string)
-                        if not in_string:
-                            if char == '[':
-                                bracket_depth += 1
-                                if bracket_depth == 2:  # Starting an inner array
-                                    current_arr = "["
-                                elif bracket_depth > 2:  # Nested bracket inside inner array
-                                    current_arr += char
-                            elif char == ']':
-                                if bracket_depth == 2:  # Completing an inner array
-                                    current_arr += "]"
-                                    inner_arrays.append(current_arr)
-                                    current_arr = ""
-                                elif bracket_depth > 2:  # Nested bracket inside inner array
-                                    current_arr += char
-                                bracket_depth -= 1
-                            else:
-                                # Non-bracket char outside string, add if in inner array
-                                if bracket_depth >= 2:
-                                    current_arr += char
-                        else:
-                            # Inside a string, add to current array if we're in an inner array
-                            if bracket_depth >= 2:
-                                current_arr += char
-                        
-                        prev_char = char
-                    
-                    # If we captured complete inner arrays, parse them
-                    if inner_arrays:
-                        fixed_json = "[" + ",".join(inner_arrays) + "]"
-                        try:
-                            data = json.loads(fixed_json)
-                            if self.debug: console.print(f"[dim green]DEBUG: Salvaged {len(data)} nested arrays from truncated response.[/dim green]")
-                            return data
-                        except Exception as e:
-                            if self.debug: console.print(f"[dim yellow]DEBUG: Nested array salvage failed to parse: {e}. Arrays: {inner_arrays[:3]}...[/dim yellow]")
-                            pass
-                
-                if self.debug: console.print(f"[dim red]DEBUG: Sanitization failed on: {content[:200]}...[/dim red]")
-                return None
-        except Exception as e:
-            if self.debug:
-                console.print(f"[dim red]DEBUG: JSON Parse error: {e}[/dim red]")
-                console.print(f"[dim yellow]DEBUG: Raw text was: {text[:300]}...[/dim yellow]")
-            return None
-
-    def deduplicate_topics(self, topic_list):
-        """
-        Phase 4: Semantic Deduplication.
-        Takes a list of topic names and returns a mapping {original: canonical}.
-        """
-        if not self.enabled or not topic_list:
-            return {t: t for t in topic_list}
-
-        unique_topics = list(set(topic_list))
-        # No need to dedup if very few
-        if len(unique_topics) < 2:
-            return {t: t for t in topic_list}
-
-        mapping = {t: t for t in topic_list}
-        
-        # Gemini API handles 100+ items easily, gemma/local models need smaller batches
-        chunk_size = 100 if self.is_high_capacity_model else 20
-        all_prompts = []
-        chunks = []
-        total_chunks = (len(unique_topics) + chunk_size - 1) // chunk_size
-        for i in track(range(0, len(unique_topics), chunk_size), description="[cyan]Building dedup prompts...[/cyan]", total=total_chunks):
-            chunk = unique_topics[i : i + chunk_size]
-            chunks.append(chunk)
-            chunk_str = "\n".join([f"- {t}" for t in chunk])
-            
-            prompt = f"""
-                Role: Senior News Editor.
-
-                Task:
-                From the list below, identify headlines that refer to the EXACT SAME real-world event.
-
-                Hai tiêu đề là CÙNG MỘT SỰ KIỆN khi có ĐÚNG 3 yếu tố:
-                1. CÙNG ĐỊA ĐIỂM: "Hà Nội" vs "Hà Nội" ✓ | "Hà Nội" vs "TP.HCM" ✗
-                2. CÙNG THỜI GIAN: "hôm nay" vs "hôm nay" ✓ | "hôm nay" vs "tuần trước" ✗
-                3. CÙNG THỰC THỂ CHÍNH: "Bão Yagi" vs "Bão số 3" ✓ | "Bão Yagi" vs "Bão Noru" ✗
-
-                Ví dụ khớp/không khớp:
-                - "Tai nạn Quận 1" ≠ "Tai nạn Quận 7" (Khác địa điểm)
-                - "Giá vàng tăng hôm nay" ≠ "Giá vàng tuần trước" (Khác thời gian)
-                - "Man Utd vs Liverpool" ≠ "Arsenal vs Chelsea" (Khác đội bóng)
-                - "Bão Yagi" = "Cơn bão số 3 Yagi" (Cùng thực thể - OK to merge)
-
-                STRICT OUTPUT RULES:
-                - Canonical title MUST be an EXACT COPY of one of the input lines.
-                - DO NOT create new titles.
-                - DO NOT merge if unsure.
-                - Return JSON object: {{ "Original Title": "Canonical Title" }}
-
-                Input headlines:
-                {chunk_str}
-
-                Output format (JSON object ONLY):
-            """
-            all_prompts.append(prompt)
-            
-        if all_prompts:
-            batch_texts = self._generate_batch(all_prompts)
-            for i, text in enumerate(batch_texts):
-                try:
-                    results = self._extract_json(text, is_list=False)
-                    if results:
-                        for orig, canon in results.items():
-                            if orig in mapping:
-                                mapping[orig] = canon
-                        if self.debug: 
-                            console.print(f"[green]DEBUG: Deduped batch {i}: found {len(results)} mappings.[/green]")
-                except Exception as e:
-                    console.print(f"[red]Dedup error in batch {i}: {e}[/red]")
-        
-        return mapping
-        
-        return mapping
-
-    def refine_trends(self, trends_dict):
-        """
-        Phase 6: Google Trends Refinement.
-        Filters out generic/useless trends and merges duplicates.
-        Returns: { "filtered": [...], "merged": { "variant": "canonical" } }
-        """
-        if not self.enabled or not trends_dict:
-            return None
-
-        trend_list = list(trends_dict.keys())
-        
-        # Categorical Grouping: Put related trends in the same batch for better merging
-        keyword_groups = {
-            "Sports": ["đấu với", "vs", "cup", "bóng đá", "tỉ số", "bxh", "ngoại hạng", "trực tiếp"],
-            "Marketplace": ["giá", "vàng", "bạc", "tiền lương", "cà phê", "xăng"],
-            "Lottery": ["xổ số", "số miền", "xs", "quay thử"],
-            "Game": ["code", "wiki", "the forge", "riot", "honkai", "pubg", "roblox"],
-            "General": []
-        }
-        
-        buckets = {k: [] for k in keyword_groups.keys()}
-        for t in trend_list:
-            assigned = False
-            t_lower = t.lower()
-            for cat, kws in keyword_groups.items():
-                if any(kw in t_lower for kw in kws):
-                    buckets[cat].append(t)
-                    assigned = True
-                    break
-            if not assigned:
-                buckets["General"].append(t)
-
-        all_filtered = []
-        all_merged = {}
-        
-        console.print(f"[cyan]🧹 Refining {len(trend_list)} Google Trends with Categorical Grouping (Provider: {self.provider})...[/cyan]")
-        
-        all_prompts = []
-        chunk_size = 300 if self.is_high_capacity_model else 100  # Gemini API handles massive lists
-        
-        for cat, items in buckets.items():
-            if not items: continue
-            for i in range(0, len(items), chunk_size):
-                chunk = items[i : i + chunk_size]
-                chunk_str = "\n".join([f"- {t}" for t in chunk])
-                
-                prompt = f"""
-                    Role: Senior News Editor.
-                        Context: Google Trending Searches in Vietnam.
-                        Category hint: {cat}
-
-                        Task:
-                        1. FILTER: Remove terms that are clearly Generic, Utilities, or meaningless.
-                           - NOISE: "xổ số", "kết quả", "thời tiết", "giá vàng", "lịch vạn niên", "random chars"
-                           - KEEP: "bão Yagi", "iPhone 16", "Man Utd vs Liverpool", "Blackpink"
-
-                        2. MERGE: Group key terms referring to the EXACT SAME event.
-                           - MUST use one of the input terms as the canonical term.
-                           - Example: "lịch thi đấu aff cup", "bxh aff cup" -> "AFF Cup 2024" (if present)
-                           - Example: "giá xăng hôm nay", "giá xăng tăng" -> "Giá xăng dầu" (if present)
-
-                        Input list:
-                        {chunk_str}
-
-                        Output (JSON ONLY):
-                        {{
-                        "filtered": ["term_to_remove", "term_to_remove"],
-                        "merged": {{
-                            "variant_term": "canonical_term"
-                        }}
-                        }}
-                """
-                all_prompts.append(prompt)
-                
-        if all_prompts:
-            # Process one by one to show granular progress
-            inference_batch_size = 1
-            
-            # Using rich progress track
-            for i in track(range(0, len(all_prompts), inference_batch_size), description="[cyan]Processing Trend Batches...[/cyan]"):
-                batch_prompts = all_prompts[i : i + inference_batch_size]
-                batch_texts = self._generate_batch(batch_prompts)
-                
-                for text in batch_texts:
-                    try:
-                        results = self._extract_json(text, is_list=False)
-                        if results:
-                            all_filtered.extend(results.get("filtered", []))
-                            all_merged.update(results.get("merged", {}))
-                    except Exception as e:
-                        console.print(f"[red]Trend Refine Parse Error: {e}[/red]")
-        
-        return {"filtered": all_filtered, "merged": all_merged}
-
-    def filter_noise_trends(self, trend_list):
-        """
-        Ad-hoc filter for specific list of trends.
-        """
-        if not self.enabled: return []
-        
-        console.print(f"[cyan]🧹 Intelligent Noise Filtering via {self.provider} for {len(trend_list)} trends...[/cyan]")
-        all_bad = []
-        chunk_size = 500 if self.is_high_capacity_model else 50  # Gemini API handles 500+ items easily
-        all_prompts = []
-        total_chunks = (len(trend_list) + chunk_size - 1) // chunk_size
-        
-        for i in track(range(0, len(trend_list), chunk_size), description="[cyan]Building filter prompts...[/cyan]", total=total_chunks):
-            chunk = trend_list[i:i+chunk_size]
-            prompt = f"""
-                Role: Classifier for Google Trends (Vietnam).
-                Task: Return a list of keywords that are NOISE or GENERIC.
-
-                DEFINITION OF NOISE (Remove these):
-                1. Weather (Thời tiết): "thời tiết hôm nay", "dự báo mưa", "aqi hà nội" (TRỪ bão có tên như "Bão Yagi")
-                2. Utilities: "giá vàng", "giá xăng", "lịch âm", "xổ số", "xsmn", "vietlott"
-                3. Betting/Gambling: "bet88", "kubet", "soi cầu", "tỷ lệ cược"
-                4. Generic Tech: "facebook", "gmail", "google", "login", "wifi"
-                5. Vague/Meaningless: "hình ảnh", "video", "clip", "full", "hd", "review", "tin tức"
-                6. Broad Concepts: "tình yêu", "cuộc sống", "học tập", "công việc"
-
-                DEFINITION OF EVENTS (KEEP these):
-                - Specific People: "Taylor Swift", "Phạm Minh Chính", "Quang Hải"
-                - Specific Incidents: "Vụ cháy chung cư mini", "Bão Yagi" (bão có tên riêng)
-                - Matches/Games: "MU vs Chelsea", "CKTG 2024"
-                - Products: "iPhone 15", "VinFast VF3"
-
-                Input keys:
-                {chunk}
-
-                Output: JSON Array of strings to REMOVE.
-                Example: ["thời tiết", "xổ số miền bắc"]
-                """
-
-            all_prompts.append(prompt)
-            
-        if all_prompts:
-            if self.provider == 'gemini' and chunk_size > 1: # Optimize batch for Gemini
-                 responses = [self._generate(p) for p in all_prompts] # Gemini SDK often better serial? actually _generate_batch handles it
-            else:
-                 responses = self._generate_batch(all_prompts)
-                 
-            for resp in responses:
-                j = self._extract_json(resp, is_list=True)
-                if j: all_bad.extend(j)
-                
-        return list(set(all_bad))
-        
-
-    def refine_cluster(self, cluster_name, posts, original_category=None, topic_type="Discovery", custom_instruction=None, keywords=None):
-        if not self.enabled:
-            return cluster_name, original_category, ""
-
-        instruction = custom_instruction or """
-        Role: Senior News Editor.
-
-            Primary task:
-            Rename the cluster into a concise Vietnamese news headline (≤10 words).
-
-            SECONDARY tasks:
-            - Assign category (T1..T7)
-            - Assign event_type (Specific / Generic)
-
-            RULES:
-            - Base the headline ONLY on provided posts.
-            - Prefer concrete facts over interpretation.
-            - If no clear event → keep generic wording.
-
-            DO NOT:
-            - Add opinions
-            - Add causes or consequences not stated
-            - Guess missing details
-
-            Reasoning:
-            - One short sentence.
-            - Mention ONLY entities explicitly seen in posts.
-
-            Respond STRICTLY in JSON format:
-            {
-                "refined_title": "...",
-                "category": "T1/T2/.../T7",
-                "event_type": "Specific/Generic",
-                "summary": "Short 2-3 sentence summary of the trend/incident.",
-                "overall_sentiment": "Positive/Negative/Neutral",
-                "who": "ONLY mention names/entities EXPLICITLY stated in the posts (or 'Không xác định')",
-                "what": "Core event/action occurred",
-                "where": "ONLY use place names from the posts. If not found, write 'Không rõ địa điểm'",
-                "when": "Timeframe mentioned (or 'Không rõ thời gian')",
-                "why": "Reason/Cause (or 'Không rõ nguyên nhân')",
-                "reasoning": "..."
-            }
-        """
-
-        context_texts = [p.get('content', '')[:300] for p in posts[:5]]
-        context_str = "\n---\n".join(context_texts)
-        
-        # Extract metadata
-        dates = sorted(list(set([str(p.get('time') or p.get('published_at', '')).split('T')[0] for p in posts if p.get('time') or p.get('published_at')])))
-        meta_info = f"Date Range: {dates[0]} to {dates[-1]}" if dates else "Date: Unknown"
-        
-        # Keywords
-        kw_str = f"Keywords: {', '.join(keywords)}" if keywords else ""
-
-        prompt = f"""
-            Analyze this cluster of social media/news posts from Vietnam.
-            Original Label: {cluster_name}
-            Topic Type: {topic_type}
-            {meta_info}
-            {kw_str}
-            
-            Sample Posts:
-            {context_str}
-
-            {instruction}
-
-            Respond STRICTLY in JSON format:
-                {
-                    "refined_title": "...",
-                    "category": "T1/T2/.../T7",
-                    "event_type": "Specific/Generic",
-                    "summary": "...",
-                    "overall_sentiment": "Positive/Negative/Neutral",
-                    "who": "...",
-                    "what": "...",
-                    "where": "...",
-                    "when": "...",
-                    "why": "...",
-                    "reasoning": "..."
-                }
-        """
-        try:
-            text = self._generate(prompt)
-            data = self._extract_json(text, is_list=False)
-            if data:
-                return (
-                    data.get('refined_title', cluster_name), 
-                    data.get('category', original_category), 
-                    data.get('reasoning', ""), 
-                    data.get('event_type', "Specific"),
-                    data.get('summary', ""),
-                    data.get('overall_sentiment', 'Neutral'),
-                    {
-                        "who": data.get('who', 'N/A'),
-                        "what": data.get('what', 'N/A'),
-                        "where": data.get('where', 'N/A'),
-                        "when": data.get('when', 'N/A'),
-                        "why": data.get('why', 'N/A')
-                    }
-                )
-            return cluster_name, original_category, "", "Specific", "", "Neutral", {}
-        except Exception:
-            return cluster_name, original_category, "", "Specific", "", "Neutral", {}
-
-    def refine_batch(self, clusters_to_refine, custom_instruction=None, generate_summary=True):
-        if not self.enabled or not clusters_to_refine:
-            return {}
-
-        instruction = custom_instruction or """
-            Role: Senior News Editor (Vietnam).
-                Task: Rename the cluster into a single, high-quality Vietnamese headline.
-
-                Headline Rules:
-                1. Concise & Factual (≤ 15 words).
-                2. Must contain specific Entities (Who/Where/What).
-                3. Neutral Tone (No sensationalism like "kinh hoàng", "xôn xao", "cực sốc").
-                4. Use standardized Vietnamese (e.g., "TP.HCM" instead of "Sài Gòn" if formal context).
-                
-                IMPORTANT - Handling Mixed Clusters:
-                - If the posts refer to multiple UNRELATED events (e.g., "Apple iPhone" AND "Flood in Hue"):
-                  - DO NOT combine them (e.g., "Apple ra iPhone và Lũ lụt ở Huế" is WRONG).
-                  - PICK THE DOMINANT TOPIC (the one with more posts or higher news value).
-                  - Generate the title for that dominant topic ONLY.
-                  - Mention the removed topic in the 'reasoning' field.
-
-                CRITICAL - Incoherent Clusters (STEP-BY-STEP CHECK):
-                1. Identify the CORE TOPIC from Post 1 (Anchor Post).
-                   Example Anchor: "Tai nạn giao thông Quận 1"
-                2. For each Post 2-5, ask: "Does this post describe the SAME specific event as Post 1?"
-                   - SAME: Same location AND same incident type AND same time frame.
-                   - DIFFERENT: Different location OR different incident type OR different time.
-                3. If DIFFERENT, add that post number to outlier_ids.
-
-                STEP-BY-STEP Reasoning Example:
-                - Post 1: "Cháy chung cư ở Hà Nội"
-                - Post 2: "Cháy chung cư ở Hà Nội" → SAME (same event)
-                - Post 3: "Chuyện tình yêu sao Việt" → DIFFERENT (unrelated topic) → outlier_ids: [3]
-                - Post 4: "Cháy rừng ở Kon Tum" → DIFFERENT (different location) → outlier_ids: [3, 4]
-                  
-                - If ALL posts are unrelated to each other:
-                  - Set refined_title to "[Incoherent] Mixed Topics"
-                  - Add ALL post IDs (2, 3, 4, 5) to outlier_ids
-
-                Anti-Patterns (DO NOT USE):
-                - "Tin tức về..." (News about...)
-                - "Cập nhật mới nhất..." (Latest updates...)
-                - "Những điều cần biết..." (Things to know...)
-                - "Cộng đồng mạng dậy sóng..." (Netizens go wild...)
-
-                Data extraction:
-                - Category: 
-                    * T1 (Crisis & Risk): Accidents, disasters, riots.
-                    * T2 (Policy Signal): Regulations, government, politics.
-                    * T3 (Reputation): Scandals, boycotts, controversies.
-                    * T4 (Market Demand): Products, travel, food trends.
-                    * T5 (Cultural Trend): Memes, viral entertainment, celebs.
-                    * T6 (Operational): Traffic, outages, public service failures.
-                    * T7 (Noise): Weather, lottery, daily routines (ignore these if possible).
-                - Event Type: 
-                    * "Specific": A concrete, one-time occurrence with clear Who/What/When/Where (e.g., "Fire at building X", "New policy A announced").
-                    * "Generic": A broad, recurring topic or routine update (e.g., "Weather outlook", "Daily gold price", "General discussions").
-                - Reasoning: explain your choice and mention if you dropped any unrelated topics from a mixed cluster.
-
-                Output JSON:
-                {
-                    "id": 0,
-                    "refined_title": "String",
-                    "summary": "Concise 2-sentence summary of the main event.",
-                    "overall_sentiment": "Positive/Negative/Neutral",
-                    "outlier_ids": [id1, id2],
-                    "reasoning": "String"
-                }
-        """
-
-        # Chunking: Small LLMs (Gemma) or large batches can exceed context limits
-        # [QUOTA OPTIMIZATION] For Gemini Free Tier, reduce chunk size to stay under token limits (e.g. 15k tokens/min)
-        chunk_size = 10 if self.is_high_capacity_model else 3  # Gemini API can handle more clusters
-        all_results = {}
-        
-        # Build prompts
-        all_prompts = []
-        cluster_ids_per_chunk = []
-        total_chunks = (len(clusters_to_refine) + chunk_size - 1) // chunk_size
-
-        for i in track(range(0, len(clusters_to_refine), chunk_size), description="[cyan]Building cluster prompts...[/cyan]", total=total_chunks):
-            chunk = clusters_to_refine[i : i + chunk_size]
-            cluster_ids_per_chunk.append([c['label'] for c in chunk])
-            
-            batch_str = ""
-            for c in chunk:
-                # Increase context for better reasoning
-                context_list = []
-                for j, p in enumerate(c['sample_posts'][:5]): # Up to 5 posts
-                    p_text = p.get('content', '')[:500] # Up to 500 chars
-                    context_list.append(f"[Post {j+1}] {p_text}")
-                
-                context = "\n".join(context_list)
-                
-                # Extract metadata
-                dates = []
-                for p in c['sample_posts']:
-                    d = p.get('published_at') or p.get('time')
-                    if d: dates.append(str(d).split('T')[0]) # YYYY-MM-DD
-                
-                date_context = ""
-                if dates:
-                    unique_dates = sorted(list(set(dates)))
-                    if len(unique_dates) > 1:
-                        date_context = f" [Timeframe: {unique_dates[0]} to {unique_dates[-1]}]"
-                    else:
-                        date_context = f" [Date: {unique_dates[0]}]"
-
-                # Keywords
-                kw_str = f"Keywords: {', '.join(c.get('keywords', []))}" if c.get('keywords') else ""
-
-                batch_str += f"### Cluster ID: {c['label']}\nName: {c['name']}{date_context}\n{kw_str}\nContext Samples (Post 1 is Anchor):\n{context}\n\n"
-
-            json_template = '[ {{"id": 0, "refined_title": "Title", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "outlier_ids": [], "reasoning": "..."}} ]'
-            if generate_summary:
-                json_template = '[ {{"id": 0, "refined_title": "Title", "summary": "...", "overall_sentiment": "...", "who": "...", "what": "...", "where": "...", "when": "...", "why": "...", "outlier_ids": [], "reasoning": "..."}} ]'
-            
-            prompt = f"""
-            Analyze những {len(chunk)} news/social clusters này từ Việt Nam.
-            {instruction}
-
-            RULES:
-            1. Output ONLY a JSON array, nothing else
-            2. Start your response with [ and end with ]
-            3. Each cluster must have: id, refined_title, summary, outlier_ids, reasoning
-            4. outlier_ids are the post numbers (1, 2, 3, 4, 5) from context that DON'T match Post 1.
-
-            Input Clusters:
-            {batch_str}
-
-            Respond with ONLY this JSON (no other text):
-            {json_template}
-            """
-            all_prompts.append(prompt)
-
-        if all_prompts:
-            batch_texts = self._generate_batch(all_prompts)
-            for i, text in enumerate(batch_texts):
-                try:
-                    results = self._extract_json(text, is_list=True)
-                    if results:
-                        for item in results:
-                            if isinstance(item, dict) and 'id' in item:
-                                # Ensure minimal schema to prevent KeyErrors
-                                sane_item = {
-                                    'id': item['id'],
-                                    'refined_title': item.get('refined_title', f"Cluster {item['id']}"),
-                                    'summary': item.get('summary', 'No summary provided'),
-                                    'overall_sentiment': item.get('overall_sentiment', 'Neutral'),
-                                    'who': item.get('who', 'N/A'),
-                                    'what': item.get('what', 'N/A'),
-                                    'where': item.get('where', 'N/A'),
-                                    'when': item.get('when', 'N/A'),
-                                    'why': item.get('why', 'N/A'),
-                                    'outlier_ids': item.get('outlier_ids', []),
-                                    'reasoning': item.get('reasoning', 'No reasoning provided')
-                                }
-                                all_results[item['id']] = sane_item
-                        
-                        # Log a sample to show it's working
-                        # Find first valid dict result for sample logging
-                        valid_samples = [r for r in results if isinstance(r, dict) and 'id' in r]
-                        if valid_samples:
-                            sample = valid_samples[0]
-                            console.print(f"      ✨ [green]Refined {len(valid_samples)} clusters. Sample ID {sample.get('id')}: {sample.get('refined_title')}[/green]")
-                        else:
-                            console.print(f"[yellow]⚠️ Chunk {i+1}: Parsed {len(results)} items but none were valid cluster dicts[/yellow]")
-                    else:
-                        console.print(f"[yellow]⚠️ Could not find JSON list in LLM response for chunk {i+1}[/yellow]")
-                        if self.debug:
-                            # Show first 500 chars of response for debugging
-                            console.print(f"[dim yellow]DEBUG Raw Response (first 500 chars):[/dim yellow]")
-                            console.print(f"[dim]{text[:500]}[/dim]")
-                except Exception as e:
-                    console.print(f"[red]Batch LLM error in chunk {i+1}: {type(e).__name__}: {e}[/red]")
-                    # Show response preview for debugging even without debug mode
-                    console.print(f"[dim red]Response preview: {text[:200] if text else 'empty'}...[/dim red]")
-                    if self.debug:
-                        import traceback
-                        console.print(f"[dim red]{traceback.format_exc()}[/dim red]")
-        
-        return all_results
-
-    def classify_batch(self, topic_data_list):
-        """
-        Classify a batch of topics into Categories (A/B/C) and Event Types (Specific/Generic).
-        
-        Args:
-            topic_data_list: List of dicts, each containing:
-                - id: Unique ID
-                - label: Refined title
-                - reasoning: Reasoning from Phase 3
-                
-        Returns:
-            Dict mapping id -> {category, event_type, reasoning}
-        """
-        if not self.enabled:
-            return {item['id']: {'category': 'T5', 'event_type': 'Specific', 'reasoning': 'LLM Disabled'} for item in topic_data_list}
-
-        results = {}
-        batch_size = 10  # Process 10 classifications at a time
-        
-        # Prepare batches
-        batches = [topic_data_list[i:i + batch_size] for i in range(0, len(topic_data_list), batch_size)]
-        
-        all_prompts = []
-        all_items_ordered = []
-        
-        for batch in batches:
-            # Construct prompt for the batch
-            batch_items = []
-            for item in batch:
-                # Defensive check for required keys
-                try:
-                    batch_items.append({
-                        "id": item.get('id', item.get('final_topic', 'unknown')),
-                        "title": item.get('label', item.get('final_topic', 'Unknown Topic')),
-                        "context": item.get('reasoning', '')[:200]
-                    })
-                except Exception:
-                    continue
-            
-            if not batch_items:
-                continue
-
-            batch_str = json.dumps(batch_items, ensure_ascii=False, indent=2)
-            
-            prompt = f"""
-            Role: Crisis & Event Classifier for Vietnam.
-            
-            Task: Classify each topic into one of the following 7 Usage Groups:
-            - T1 (Crisis & Public Risk): Accidents, fires, natural disasters, epidemics, riots.
-            - T2 (Policy & Governance): New regulations, policy announcements, government statements.
-            - T3 (Reputation & Trust): Scandals, accusations, boycotts, controversies.
-            - T4 (Market Opportunity): Product trends, lifestyle changes, tech adoption.
-            - T5 (Cultural & Attention): Memes, celebrities, entertainment, viral noise.
-            - T6 (Operational Pain): Traffic, power outages, public service failures.
-            - T7 (Routine Signals): Weather updates, lottery, daily sports results.
-               
-            2. EVENT TYPE:
-               - Specific: A concrete event with a distinct start/end and clear actors (e.g., "Bão Yagi", "Vụ cháy chung cư A", "Khai mạc hội nghị X").
-               - Generic: Broad topics, recurring reports, or vague discussions (e.g., "Tình hình thời tiết", "Giá xăng hôm nay", "Chuyện đời thường", "Thông tin thị trường"). 
-               - RULE: If it's a routine update without a "breaking" news point, mark as GENERIC.
-               
-            Input Topics:
-            {batch_str}
-            
-            Output: JSON Object mapping ID -> Classification.
-            Example:
-            {{
-                "0": {{ 
-                    "category": "T1", 
-                    "event_type": "Specific", 
-                    "overall_sentiment": "Positive/Negative/Neutral",
-                    "summary": "Short context of the event.",
-                    "reasoning": "..." 
-                }}
-            }}
-            """
-            all_prompts.append(prompt)
-            all_items_ordered.extend(batch)
-            
-        # Execute batch generation
-        if not all_prompts: return {}
-        
-        console.print(f"[cyan]🛡️ Classifying {len(topic_data_list)} topics in {len(batches)} batches...[/cyan]")
-        
-        responses = self._generate_batch(all_prompts)
-        
-        # Process results
-        current_idx = 0
-        for i, resp in enumerate(responses):
-            batch_items = batches[i]
-            parsed = self._extract_json(resp, is_list=False)
-            
-            if not parsed:
-                # Fallback if parsing fails
-                for item in batch_items:
-                    results[item['id']] = {"category": "T5", "event_type": "Specific", "reasoning": "Parse Error"}
-                continue
-                
-            for item in batch_items:
-                # ID might be int or str in JSON keys
-                item_id = item.get('id') or item.get('final_topic', 'unknown')
-                key = str(item_id)
-                if key in parsed:
-                    info = parsed[key]
-                    results[item_id] = {
-                        "category": info.get("category", "T5"),
-                        "event_type": info.get("event_type", "Specific"),
-                        "overall_sentiment": info.get("overall_sentiment", "Neutral"),
-                        "summary": info.get("summary", ""),
-                        "reasoning": info.get("reasoning", "")
-                    }
-                else:
-                    results[item_id] = {"category": "T5", "event_type": "Specific", "overall_sentiment": "Neutral", "summary": "", "reasoning": "Missing in response"}
-
-        return results
-
-    def summarize_text(self, text, max_words=100):
-        """
-        Summarize a long text into a concise paragraph.
-        """
-        if not self.enabled or not text: return text
-        
-        prompt = f"""
-    Role: Senior Editor.
-    Task: Summarize the following article in Vietnamese (max {max_words} words).
-    Keep the main entities, numbers, and key events. Delete fluff.
-
-    Input:
-    {text[:4000]} # Limit input to avoid token overflow even on LLM side
-
-    Result:
+from src.utils.text_processing.stopwords import get_stopwords, SAFE_STOPWORDS, JOURNALISTIC_STOPWORDS, RISKY_STOPWORDS
+
+# Legacy support for variable names if they are imported elsewhere
+VIETNAMESE_STOPWORDS = list(SAFE_STOPWORDS | JOURNALISTIC_STOPWORDS)
+
+def cluster_data(embeddings, min_cluster_size=3, epsilon=0.05, method='hdbscan', n_clusters=15, 
+                 texts=None, embedding_model=None, min_cohesion=None, max_cluster_size=100, 
+                 selection_method='leaf', recluster_garbage=False, min_pairwise_sim=0.35,
+                 min_quality_cohesion=0.5, min_member_similarity=0.60, 
+                 trust_remote_code=False, custom_stopwords=None, recluster_large=True, coherence_threshold=0.70):
     """
+    Cluster embeddings using UMAP + HDBSCAN, K-Means, or BERTopic.
+    Includes Recursive Sub-Clustering for "Mega Clusters".
+    
+    Args:
+        selection_method: 'eom' (Excess of Mass - larger clusters) or 'leaf' (Fine-grained clusters).
+                          'leaf' is better for separating distinct topics.
+        recluster_garbage: If True, filter clusters with low pairwise similarity and attempt to 
+                           re-cluster them into meaningful micro-clusters.
+        min_pairwise_sim: Minimum average pairwise similarity threshold for quality clusters.
+                          Clusters below this are considered 'garbage' (default: 0.35).
+    """
+    labels = None
+
+    if method == 'kmeans':
+        from sklearn.cluster import KMeans
+        console.print(f"[bold cyan]🧩 Running K-Means clustering (k={n_clusters})...[/bold cyan]")
+        clusterer = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        labels = clusterer.fit_predict(embeddings)
+        console.print(f"[green]✅ Created {n_clusters} clusters (no noise with K-Means).[/green]")
+    
+    elif method == 'bertopic':
         try:
-            summary = self._generate(prompt)
-            # Basic cleanup
-            return summary.replace("Summary:", "").strip()
+            from bertopic import BERTopic
+            from bertopic.vectorizers import ClassTfidfTransformer
+        except ImportError:
+            console.print("[red]❌ BERTopic not installed. Run: pip install bertopic[/red]")
+            console.print("[yellow]Falling back to K-Means...[/yellow]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+        
+        if texts is None:
+            console.print("[red]❌ BERTopic requires texts parameter[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+        
+        # [ROBUSTNESS] Check length alignment
+        if len(texts) != embeddings.shape[0]:
+            console.print(f"[red]❌ Shape Mismatch: len(texts)={len(texts)} but embeddings.shape={embeddings.shape}[/red]")
+            console.print("[yellow]Check if you filtered posts but kept old embeddings.[/yellow]")
+            # Attempt to align if mismatch is small or keep the smallest to avoid crash (risky but better for playground)
+            min_len = min(len(texts), embeddings.shape[0])
+            texts = list(texts)[:min_len]
+            embeddings = embeddings[:min_len]
+        
+        console.print(f"[bold cyan]🧩 Running BERTopic (min_topic_size={min_cluster_size}, n_clusters={n_clusters})...[/bold cyan]")
+        
+        # 1. Custom Vectorizer to filter generic words
+        all_stopwords = list(VIETNAMESE_STOPWORDS)
+        if custom_stopwords:
+            all_stopwords.extend(custom_stopwords)
+        vectorizer_model = CountVectorizer(stop_words=all_stopwords)
+        
+        # 2. Stronger UMAP for better separation (default 5 is too small)
+        umap_model = umap.UMAP(n_neighbors=15, n_components=10, min_dist=0.0, metric='cosine', random_state=42)
+        
+        # Prepare embedding model for BERTopic
+        if isinstance(embedding_model, str):
+             from sentence_transformers import SentenceTransformer
+             embedding_model = SentenceTransformer(embedding_model, trust_remote_code=trust_remote_code)
+
+        topic_model = BERTopic(
+            embedding_model=embedding_model,
+            umap_model=umap_model,
+            vectorizer_model=vectorizer_model,
+            language="multilingual",
+            min_topic_size=min_cluster_size,
+            nr_topics=n_clusters if n_clusters else "auto", # Forced reduction can cause garbage bins
+            verbose=True,
+            calculate_probabilities=True
+        )
+        
+        topics, probs = topic_model.fit_transform(texts, embeddings)
+        
+        num_topics = len(set(topics)) - (1 if -1 in topics else 0)
+        num_noise = list(topics).count(-1)
+        console.print(f"[green]✅ Found {num_topics} topics (with {num_noise} outliers).[/green]")
+        
+        # Store topic model for later use
+        cluster_data._bertopic_model = topic_model
+        labels = np.array(topics)
+
+    elif method == 'top2vec':
+        try:
+            from top2vec import Top2Vec
+        except ImportError:
+            console.print("[red]❌ Top2Vec not installed.[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+        
+        if texts is None:
+            console.print("[red]❌ Top2Vec requires 'texts' parameter[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+
+        console.print(f"[bold cyan]🧩 Running Top2Vec...[/bold cyan]")
+        try:
+            # Using speed='fast-learn' for quicker testing
+            model = Top2Vec(documents=texts, embedding_model='paraphrase-multilingual-MiniLM-L12-v2', speed='learn', workers=4, min_count=2)
+            labels = model.doc_top
+            cluster_data._top2vec_model = model
+        except Exception as e:
+            console.print(f"[red]Error initializing Top2Vec: {e}[/red]")
+            return cluster_data(embeddings, method='kmeans', n_clusters=n_clusters or 15)
+    
+    else: # Default: HDBSCAN
+        console.print("[bold cyan]🔮 Running UMAP dimensionality reduction (10D)...[/bold cyan]")
+        try:
+            umap_embeddings = umap.UMAP(
+                n_neighbors=min(30, len(embeddings)-1), 
+                n_components=10, 
+                metric='cosine',
+                random_state=42
+            ).fit_transform(embeddings)
         except Exception:
-            return text[:500] # Fallback to truncation
+            # Fallback for very small data
+            umap_embeddings = embeddings
+        
+        console.print(f"[bold cyan]🧩 Running HDBSCAN (min_size={min_cluster_size}, eps={epsilon:.3f}, method={selection_method})...[/bold cyan]")
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=2,
+            metric='euclidean', 
+            cluster_selection_method=selection_method, # 'leaf' is default for quality
+            cluster_selection_epsilon=epsilon 
+        )
+        labels = clusterer.fit_predict(umap_embeddings)
+        
+        num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        num_noise = list(labels).count(-1)
+        console.print(f"[green]✅ Found {num_clusters} clusters (with {num_noise} noise points).[/green]")
+
+    # --- RECURSIVE SUB-CLUSTERING ---
+    # Only applicable if we have valid labels and a max size constraint
+    if max_cluster_size and labels is not None:
+        unique_labels = list(set(labels))
+        if -1 in unique_labels: unique_labels.remove(-1)
+        
+        next_label_id = max(unique_labels) + 1 if unique_labels else 0
+        recursion_occured = False
+        
+        for label in unique_labels:
+            mask = (labels == label)
+            cluster_size = np.sum(mask)
+            
+            # QUALITY-BASED RECURSIVE SPLITTING
+            # Split if too big OR if too "messy" (low cohesion)
+            should_split = False
+            if cluster_size > max_cluster_size:
+                should_split = True
+            elif cluster_size >= min_cluster_size * 2:
+                # Check for "similarity outliers" even if size is okay
+                avg_cohesion, member_sims = get_cluster_cohesion(embeddings[mask], return_all=True)
+                
+                # Split if average is too low OR if we have significant outliers
+                # (e.g., if more than 20% of members are below the threshold)
+                outlier_ratio = np.sum(member_sims < min_member_similarity) / cluster_size
+                
+                if avg_cohesion < min_quality_cohesion or outlier_ratio > 0.2:
+                    should_split = True
+                    reason = "low cohesion" if avg_cohesion < min_quality_cohesion else f"high outliers ({outlier_ratio:.1%})"
+                    console.print(f"[yellow]⚖️ Quality Split: Cluster {label} (size {cluster_size}) has {reason}. Splitting...[/yellow]")
+
+            if should_split:
+                if not recursion_occured:
+                    console.print(f"[yellow]⚡ Running Recursive Quality Split...[/yellow]")
+                
+                # Extract subset
+                sub_embs = embeddings[mask]
+                sub_texts = [texts[i] for i in range(len(texts)) if mask[i]] if texts else None
+                
+                # Recursive call with stricter parameters
+                # Decay epsilon to force splitting
+                new_epsilon = max(0.01, epsilon * 0.7)
+                
+                sub_labels = cluster_data(
+                    sub_embs, 
+                    min_cluster_size=min_cluster_size, 
+                    epsilon=new_epsilon, 
+                    method=method, 
+                    n_clusters=n_clusters,
+                    texts=sub_texts, 
+                    embedding_model=embedding_model,
+                    min_cohesion=None, 
+                    max_cluster_size=max_cluster_size,
+                    min_quality_cohesion=min_quality_cohesion,
+                    min_member_similarity=min_member_similarity, # Pass down
+                    selection_method=selection_method,
+                    custom_stopwords=custom_stopwords
+                )
+                
+                # Remap sub-labels to global space
+                sub_unique = set(sub_labels)
+                remap_dict = {}
+                for sl in sub_unique:
+                    if sl == -1:
+                        remap_dict[sl] = -1 # Keep noise as noise
+                    else:
+                        remap_dict[sl] = next_label_id
+                        next_label_id += 1
+                
+                # Apply new labels to original array
+                final_sub_labels = np.array([remap_dict[l] for l in sub_labels])
+                labels[mask] = final_sub_labels
+                recursion_occured = True
+        
+        if recursion_occured:
+            final_count = len(set(labels)) - (1 if -1 in labels else 0)
+            console.print(f"[bold green]✨ Recursion Complete. Final cluster count: {final_count}[/bold green]")
+
+    # --- POST-PROCESSING: Member Similarity Pruning (Phase 8) ---
+    if labels is not None and min_member_similarity > 0:
+        labels = refine_clusters_by_member_similarity(
+            embeddings, labels, 
+            threshold=min_member_similarity,
+            min_cluster_size=min_cluster_size
+        )
+
+    # --- POST-PROCESSING: Cohesion Filtering (Cluster-level) ---
+    if labels is not None and min_cohesion is not None and min_cohesion > 0:
+        labels = refine_clusters_by_cohesion(embeddings, labels, threshold=min_cohesion)
+
+    # --- POST-PROCESSING: Re-cluster Garbage Clusters ---
+    if labels is not None and recluster_garbage:
+        labels = recluster_garbage_clusters(
+            embeddings, labels, 
+            min_pairwise_sim=min_pairwise_sim,
+            min_cluster_size=min_cluster_size
+        )
+
+    # --- POST-PROCESSING: Re-cluster Large/Mixed Clusters ---
+    if labels is not None and recluster_large:
+        labels = recluster_large_clusters(
+            embeddings, labels, 
+            texts=texts,
+            min_cluster_size=min_cluster_size,
+            coherence_threshold=coherence_threshold  # Split if cohesion < 0.60
+        )
+
+    return labels
+
+def get_cluster_cohesion(cluster_embs, return_all=False):
+    """
+    Calculate semantic similarity of cluster members to its centroid.
+    
+    Args:
+        cluster_embs: Embedding matrix for the cluster
+        return_all: If True, return (avg_sim, all_member_sims). If False, return avg_sim.
+    """
+    if len(cluster_embs) <= 1: 
+        return (1.0, np.array([1.0])) if return_all else 1.0
+        
+    centroid = cluster_embs.mean(axis=0).reshape(1, -1)
+    sims = cosine_similarity(cluster_embs, centroid).flatten()
+    
+    if return_all:
+        return float(sims.mean()), sims
+    return float(sims.mean())
+
+def refine_clusters_by_member_similarity(embeddings, labels, threshold=0.45, min_cluster_size=3):
+    """
+    Quality Pruning (Phase 8): Remove individual posts from a cluster if they 
+    are below a specific similarity to the centroid.
+    
+    If pruning leaves a cluster with < min_cluster_size members, the whole cluster is dissolved.
+    """
+    new_labels = labels.copy()
+    unique_labels = sorted(list(set(labels)))
+    if -1 in unique_labels: unique_labels.remove(-1)
+    
+    pruned_posts = 0
+    dissolved_clusters = 0
+    
+    for label in unique_labels:
+        mask = (labels == label)
+        indices = np.where(mask)[0]
+        cluster_embs = embeddings[mask]
+        
+        # Calculate per-post similarity to centroid
+        _, member_sims = get_cluster_cohesion(cluster_embs, return_all=True)
+        
+        # Identify outliers
+        outliers_mask = (member_sims < threshold)
+        outlier_count = np.sum(outliers_mask)
+        
+        if outlier_count > 0:
+            # Check remaining size
+            remaining_size = len(member_sims) - outlier_count
+            
+            if remaining_size < min_cluster_size:
+                # Dissolve entire cluster
+                new_labels[mask] = -1
+                dissolved_clusters += 1
+            else:
+                # Prune only outliers
+                outlier_indices = indices[outliers_mask]
+                new_labels[outlier_indices] = -1
+                pruned_posts += outlier_count
+                
+    if pruned_posts > 0 or dissolved_clusters > 0:
+        console.print(f"[yellow]⚖️ Similarity Pruning: Pruned {pruned_posts} outlier posts and dissolved {dissolved_clusters} weak clusters (Threshold: {threshold}).[/yellow]")
+        
+    return new_labels
+
+def refine_clusters_by_cohesion(embeddings, labels, threshold=0.5):
+    """
+    Remove clusters whose average internal similarity (cohesion) is below a threshold.
+    """
+    new_labels = labels.copy()
+    unique_labels = sorted(list(set(labels)))
+    if -1 in unique_labels: unique_labels.remove(-1)
+    
+    removed_count = 0
+    for label in unique_labels:
+        mask = (labels == label)
+        cluster_embs = embeddings[mask]
+        
+        # Calculate centroid
+        centroid = cluster_embs.mean(axis=0).reshape(1, -1)
+        
+        # Calculate average similarity to centroid
+        sims = cosine_similarity(cluster_embs, centroid)
+        avg_sim = sims.mean()
+        
+        # Individual topic logging for debugging
+        # console.print(f"[dim]  - Topic {label}: Cohesion {avg_sim:.3f}[/dim]")
+        
+        if avg_sim < threshold:
+            new_labels[mask] = -1
+            removed_count += 1
+            # console.print(f"[dim]    🗑️ REMOVED (under {threshold})[/dim]")
+            
+    if removed_count > 0:
+        console.print(f"[yellow]🧹 Cohesion Filter: Removed {removed_count} clusters due to low cohesion (<{threshold}).[/yellow]")
+        
+    return new_labels
+
+def recluster_garbage_clusters(embeddings, labels, min_pairwise_sim=0.35, min_cluster_size=3):
+    """
+    Filter clusters with low pairwise similarity and attempt to re-cluster them.
+    
+    Args:
+        embeddings: Original embedding matrix
+        labels: Current cluster labels
+        min_pairwise_sim: Clusters below this threshold are considered garbage
+        min_cluster_size: Min size for re-clustering
+        
+    Returns:
+        Updated labels with garbage clusters either re-clustered or marked as noise
+    """
+    from collections import defaultdict
+    
+    new_labels = labels.copy()
+    unique_labels = sorted(list(set(labels)))
+    if -1 in unique_labels: unique_labels.remove(-1)
+    
+    # Step 1: Identify garbage clusters based on pairwise similarity
+    garbage_cluster_ids = []
+    garbage_indices = []
+    
+    for label in unique_labels:
+        mask = (labels == label)
+        cluster_embs = embeddings[mask]
+        
+        if len(cluster_embs) > 1:
+            pairwise = cosine_similarity(cluster_embs)
+            avg_sim = np.mean(pairwise[np.triu_indices(len(cluster_embs), k=1)])
+        else:
+            avg_sim = 1.0
+        
+        if avg_sim < min_pairwise_sim:
+            garbage_cluster_ids.append(label)
+            indices = np.where(mask)[0]
+            garbage_indices.extend(indices.tolist())
+    
+    if not garbage_cluster_ids:
+        console.print("[green]✅ No garbage clusters found (all clusters have good pairwise similarity).[/green]")
+        return new_labels
+    
+    console.print(f"[yellow]♻️ Garbage Re-clustering: Found {len(garbage_cluster_ids)} low-quality clusters ({len(garbage_indices)} posts).[/yellow]")
+    
+    # Step 2: Mark garbage clusters as noise first
+    for gid in garbage_cluster_ids:
+        new_labels[labels == gid] = -1
+    
+    # Step 3: Attempt to re-cluster garbage embeddings
+    if len(garbage_indices) >= min_cluster_size * 2:
+        garbage_embs = embeddings[garbage_indices]
+        
+        try:
+            # Re-cluster with tighter parameters
+            reclustered = hdbscan.HDBSCAN(
+                min_cluster_size=max(3, min_cluster_size - 1),
+                min_samples=2,
+                metric='euclidean',
+                cluster_selection_method='leaf'  # Finer-grained for micro-clusters
+            ).fit_predict(garbage_embs)
+            
+            # Assign new labels (offset from existing max)
+            max_label = max(set(new_labels)) if set(new_labels) - {-1} else 0
+            next_label = max_label + 1
+            
+            recovered_count = 0
+            label_remap = {}
+            
+            for i, (orig_idx, new_cluster) in enumerate(zip(garbage_indices, reclustered)):
+                if new_cluster != -1:
+                    if new_cluster not in label_remap:
+                        label_remap[new_cluster] = next_label
+                        next_label += 1
+                    new_labels[orig_idx] = label_remap[new_cluster]
+                    recovered_count += 1
+            
+            num_new_clusters = len(label_remap)
+            console.print(f"[green]✅ Recovered {recovered_count}/{len(garbage_indices)} posts into {num_new_clusters} micro-clusters.[/green]")
+            
+        except Exception as e:
+            console.print(f"[red]⚠️ Re-clustering failed: {e}. Keeping garbage as noise.[/red]")
+    else:
+        console.print(f"[dim]   Too few garbage posts ({len(garbage_indices)}) for re-clustering. Marked as noise.[/dim]")
+    
+    return new_labels
+
+def recluster_large_clusters(embeddings, labels, texts=None, 
+                              size_percentile=90, min_subclusters=2,
+                              min_cluster_size=3, coherence_threshold=0.65):
+    """
+    Identify and re-cluster large "mega-clusters" that likely contain mixed topics.
+    
+    The Problem: Large clusters often contain semantically distinct sub-topics
+    (e.g., "Sudan conflict" + "Thailand-Cambodia conflict" grouped as "international conflict").
+    
+    The Fix: For clusters in the top size_percentile, re-run HDBSCAN with stricter settings
+    to split them into distinct sub-topics.
+    
+    Args:
+        embeddings: Full embedding matrix
+        labels: Current cluster labels
+        texts: Optional list of texts (for logging/debugging)
+        size_percentile: Only re-cluster clusters larger than this percentile (default: 90th = top 10%)
+        min_subclusters: Minimum number of sub-clusters required to accept the split
+        min_cluster_size: Minimum sub-cluster size
+        coherence_threshold: If cluster coherence is above this, don't split (it's already good)
+        
+    Returns:
+        Updated labels with large clusters potentially split
+    """
+    new_labels = labels.copy()
+    unique_labels = sorted([l for l in set(labels) if l != -1])
+    
+    if not unique_labels:
+        return new_labels
+    
+    # Calculate cluster sizes
+    cluster_sizes = {l: np.sum(labels == l) for l in unique_labels}
+    size_values = list(cluster_sizes.values())
+    
+    if len(size_values) < 3:
+        return new_labels  # Not enough clusters to determine outliers
+    
+    # Find the size threshold (top percentile)
+    threshold_size = np.percentile(size_values, size_percentile)
+    large_clusters = [l for l, s in cluster_sizes.items() if s >= threshold_size and s >= min_cluster_size * 3]
+    
+    if not large_clusters:
+        return new_labels
+    
+    console.print(f"[cyan]🔬 Re-Clustering {len(large_clusters)} large clusters (size >= {threshold_size:.0f})...[/cyan]")
+    
+    # Get next available label ID
+    next_label_id = max(unique_labels) + 1
+    total_splits = 0
+    
+    for cluster_id in large_clusters:
+        mask = (labels == cluster_id)
+        indices = np.where(mask)[0]
+        cluster_embs = embeddings[mask]
+        cluster_size = len(indices)
+        
+        # Check current coherence - if already tight, don't split
+        current_coherence = get_cluster_cohesion(cluster_embs)
+        if current_coherence >= coherence_threshold:
+            console.print(f"   [dim]Cluster {cluster_id} (n={cluster_size}): Coherence {current_coherence:.3f} >= {coherence_threshold} - Skipping[/dim]")
+            continue
+        
+        # Re-cluster with stricter settings
+        try:
+            # Use tighter HDBSCAN params for sub-clustering
+            sub_eps = 0.02  # Stricter epsilon
+            sub_min_samples = max(2, min_cluster_size // 2)
+            
+            sub_clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=sub_min_samples,
+                metric='euclidean',
+                cluster_selection_epsilon=sub_eps,
+                cluster_selection_method='leaf'  # Fine-grained
+            )
+            sub_labels = sub_clusterer.fit_predict(cluster_embs)
+            
+            # Count sub-clusters (excluding noise)
+            sub_unique = set(sub_labels) - {-1}
+            num_subs = len(sub_unique)
+            
+            if num_subs >= min_subclusters:
+                # Accept the split
+                console.print(f"   [green]✂️ Cluster {cluster_id} (n={cluster_size}, coh={current_coherence:.2f}) -> {num_subs} sub-clusters[/green]")
+                
+                # Remap sub-labels to global space
+                for orig_sub in sub_unique:
+                    new_labels[indices[sub_labels == orig_sub]] = next_label_id
+                    next_label_id += 1
+                
+                # Mark noise from sub-clustering
+                noise_mask = (sub_labels == -1)
+                if np.any(noise_mask):
+                    new_labels[indices[noise_mask]] = -1
+                    
+                total_splits += 1
+            else:
+                console.print(f"   [dim]Cluster {cluster_id} (n={cluster_size}): Only {num_subs} sub-clusters found - Keeping original[/dim]")
+                
+        except Exception as e:
+            console.print(f"   [yellow]⚠️ Sub-clustering failed for cluster {cluster_id}: {e}[/yellow]")
+    
+    if total_splits > 0:
+        new_count = len(set(new_labels) - {-1})
+        console.print(f"[bold green]✨ Large Cluster Re-Clustering: Split {total_splits} mega-clusters. New total: {new_count} clusters.[/bold green]")
+    else:
+        console.print(f"[dim]   No mega-clusters required splitting.[/dim]")
+    
+    return new_labels
+
+
+def extract_cluster_labels(texts, labels, model=None, method="semantic", anchors=None, custom_stopwords=None):
+    """
+    Extract labels for clusters with generic word filtering.
+    """
+    # Group texts by cluster
+    cluster_texts = {}
+    for text, label in zip(texts, labels):
+        if label == -1: continue
+        if label not in cluster_texts:
+            cluster_texts[label] = []
+        cluster_texts[label].append(text)
+        
+    cluster_names = {}
+    if not cluster_texts: return {}
+
+    unique_labels = sorted(cluster_texts.keys())
+    cluster_docs = [" ".join(cluster_texts[l]) for l in unique_labels]
+    
+    # Use custom stopwords here too
+    vectorizer = TfidfVectorizer(ngram_range=(1, 3), max_features=2000, stop_words=None)
+    
+    try:
+        tfidf_matrix = vectorizer.fit_transform(cluster_docs)
+        feature_names = vectorizer.get_feature_names_out()
+    except ValueError:
+        return {l: f"Cluster {l}" for l in unique_labels}
+
+    anchor_set = set(anchors) if anchors else set()
+
+    for i, label in enumerate(unique_labels):
+        try:
+            row = tfidf_matrix[i].toarray().flatten()
+            if anchor_set:
+                for idx, feat in enumerate(feature_names):
+                    if feat in anchor_set: row[idx] *= 1.5 
+
+            # Stronger penalty for generic stopwords in labels
+            all_stopwords = set(VIETNAMESE_STOPWORDS)
+            if custom_stopwords:
+                all_stopwords.update(custom_stopwords)
+            
+            for idx, feat in enumerate(feature_names):
+                if any(sw == feat.lower() for sw in all_stopwords):
+                    row[idx] *= 0.001 # Aggressive stopword filtering
+                
+                tokens = feat.split()
+                # Heavy penalty for generic single words
+                if len(tokens) == 1: 
+                    row[idx] *= 0.05
+                elif len(tokens) == 2:
+                    row[idx] *= 1.2 # Bonus for 2-word phrases
+                elif len(tokens) == 3:
+                    row[idx] *= 1.5 # Higher bonus for 3-word phrases
+                
+                if len(feat) < 4: 
+                    row[idx] *= 0.05
+
+            top_indices = row.argsort()[-30:][::-1] 
+            candidates = [feature_names[idx] for idx in top_indices if row[idx] > 0]
+            
+            if not candidates:
+                 cluster_names[label] = f"Cluster {label}"
+                 continue
+
+            if method == "tfidf" or model is None:
+                 cluster_names[label] = ", ".join(candidates[:2]).title()
+                 continue
+            
+            # Semantic Reranking
+            full_text = cluster_docs[i]
+            
+            # [FIX] Rank candidates against the CENTROID of the cluster, not just the concatenated blob
+            # 1. Get embeddings for all texts in this cluster
+            max_docs = 50
+            texts_in_cluster = cluster_texts[label][:max_docs]
+            if texts_in_cluster and model:
+                try:
+                    c_embs = model.encode(texts_in_cluster)
+                    centroid = np.mean(c_embs, axis=0).reshape(1, -1)
+                    # 2. Get embeddings for candidates
+                    candidate_embeddings = model.encode(candidates)
+                    
+                    # 3. Calculate similarity to CENTROID
+                    similarities = cosine_similarity(centroid, candidate_embeddings)[0]
+                except:
+                    # Fallback to old method if encoding fails
+                    candidate_embeddings = model.encode(candidates)
+                    doc_embedding = model.encode([full_text[:800]])
+                    similarities = cosine_similarity(doc_embedding, candidate_embeddings)[0]
+            else:
+                candidate_embeddings = model.encode(candidates)
+                doc_embedding = model.encode([full_text[:800]])
+                similarities = cosine_similarity(doc_embedding, candidate_embeddings)[0]
+            
+            final_scores = []
+            for idx, cand in enumerate(candidates):
+                sim = similarities[idx]
+                len_bonus = 1.1 if len(cand.split()) > 1 else 1.0
+                anchor_bonus = 1.5 if cand in anchor_set else 1.0
+                final_scores.append(sim * len_bonus * anchor_bonus)
+
+            best_idx = np.argmax(final_scores)
+            cluster_names[label] = candidates[best_idx].title()
+        except:
+            cluster_names[label] = f"Cluster {label}"
+            
+    return cluster_names
+
+def filter_cluster_outliers(embeddings, labels, cluster_titles, embedding_model, threshold=0.3, texts=None):
+    """
+    Refines cluster membership by verifying semantic similarity between each post 
+    and its cluster's Refined Title (the Dominant Topic chosen by LLM).
+    
+    If a post is too dissimilar to the title (similarity < threshold), 
+    it is reassigned to the Noise cluster (-1).
+    
+    Args:
+        embeddings: Numpy array of post embeddings shape (N, D)
+        labels: Array of cluster labels shape (N,)
+        cluster_titles: Dict mapping {cluster_id: "Refined Title String"}
+        embedding_model: Model with .encode(text) -> np.array
+        threshold: Cosine similarity threshold (default 0.3). Lower for broad topics.
+        texts: Optional list of texts for debug logging (must correspond to embeddings indices)
+        
+    Returns:
+        new_labels: Refined label array
+        stats: Dictionary with 'outliers_removed' count
+    """
+    if len(embeddings) != len(labels):
+        raise ValueError(f"Embeddings length ({len(embeddings)}) != Labels length ({len(labels)})")
+
+    new_labels = np.array(labels).copy()
+    stats = {'outliers_removed': 0, 'clusters_processed': 0}
+    
+    # Pre-compute title embeddings
+    title_embeddings = {}
+    valid_clusters = [c for c in cluster_titles.keys() if c != -1]
+    
+    if not valid_clusters:
+        return new_labels, stats
+
+    console.print(f"[cyan]🔄 Semantic Filtering: Validating posts against {len(valid_clusters)} cluster titles...[/cyan]")
+    
+    # Handle cases where some titles might be None or empty
+    safe_titles = []
+    safe_clusters = []
+    
+    for c in valid_clusters:
+        # cluster_titles values might be dicts (if refiner returns raw result) or strings
+        # Adjust based on expected input. Usually this function expects strings.
+        val = cluster_titles[c]
+        t_str = val['refined_title'] if isinstance(val, dict) and 'refined_title' in val else val
+        
+        if t_str and isinstance(t_str, str):
+            safe_titles.append(t_str)
+            safe_clusters.append(c)
+
+    if not safe_titles:
+        return new_labels, stats
+
+    # Batch encode titles
+    try:
+        t_embs = embedding_model.encode(safe_titles)
+        if not isinstance(t_embs, np.ndarray):
+            t_embs = np.array(t_embs)
+    except AttributeError:
+        t_embs = np.array([embedding_model.encode(t) for t in safe_titles])
+        
+    for i, cid in enumerate(safe_clusters):
+        title_embeddings[cid] = t_embs[i]
+
+    # Iterate through valid clusters
+    for cluster_id in safe_clusters:
+        if cluster_id not in title_embeddings:
+            continue
+            
+        # Get indices of posts in this cluster
+        indices = np.where(labels == cluster_id)[0]
+        if len(indices) == 0:
+            continue
+            
+        stats['clusters_processed'] += 1
+        
+        # Get post embeddings for this cluster
+        cluster_post_embs = embeddings[indices]
+        
+        # Calculate similarity: (N_posts, D) vs (1, D)
+        title_vec = title_embeddings[cluster_id].reshape(1, -1)
+        sims = cosine_similarity(cluster_post_embs, title_vec).flatten()
+        
+        # Identify outliers
+        outlier_mask = sims < threshold
+        outlier_indices = indices[outlier_mask]
+        
+        if len(outlier_indices) > 0:
+            new_labels[outlier_indices] = -1 # Reassign to noise
+            stats['outliers_removed'] += len(outlier_indices)
+            
+            if texts and len(outlier_indices) > 0:
+                first_outlier_idx = outlier_indices[0]
+                # Check if texts is indexable
+                try:
+                    # console.print(f"[dim]      Moved outlier to noise: {texts[first_outlier_idx][:50]}...[/dim]")
+                    pass
+                except: pass
+
+    if stats['outliers_removed'] > 0:
+        console.print(f"[green]✅ Semantic Filtering Complete. Removed {stats['outliers_removed']} outliers.[/green]")
+    else:
+        console.print(f"[dim]Semantic Filtering: No outliers found.[/dim]")
+        
+    return new_labels, stats
+
+def recluster_noise(embeddings, labels, min_cluster_size=3, epsilon=0.1):
+    """
+    Attempts to re-cluster items labeled as noise (-1) to identify missed micro-clusters.
+    Useful after "Semantic Filtering" to recover valid topics from rejected outliers.
+    
+    Args:
+        embeddings: Full embeddings array
+        labels: Current labels array
+        min_cluster_size: Stricter than global default (e.g., 3)
+        epsilon: Stricter than global default (e.g., 0.1)
+        
+    Returns:
+        updated_labels: Labels array with noise points potentially assigned to new clusters
+    """
+    import hdbscan
+    import umap
+    
+    updated_labels = np.array(labels).copy()
+    noise_mask = (updated_labels == -1)
+    noise_indices = np.where(noise_mask)[0]
+    
+    if len(noise_indices) < min_cluster_size:
+        return updated_labels 
+        
+    console.print(f"[cyan]♻️  Re-clustering {len(noise_indices)} noise/rejected items...[/cyan]")
+    
+    try:
+        noise_embeddings = embeddings[noise_indices]
+        
+        # Lightweight UMAP for noise subset
+        if len(noise_embeddings) > 15:
+             noise_umap = umap.UMAP(n_neighbors=min(10, len(noise_embeddings)-1), 
+                                  n_components=5, metric='cosine', random_state=42).fit_transform(noise_embeddings)
+        else:
+             noise_umap = noise_embeddings
+             
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=1, 
+            metric='euclidean',
+            cluster_selection_epsilon=epsilon
+        )
+        sub_labels = clusterer.fit_predict(noise_umap)
+        
+        unique_sub = set(sub_labels)
+        if -1 in unique_sub: unique_sub.remove(-1)
+        
+        if not unique_sub:
+            console.print("[dim]   No new clusters found in noise.[/dim]")
+            return updated_labels
+            
+        # Determine next available cluster ID
+        current_max = max(updated_labels) if len(updated_labels) > 0 else 0
+        next_id = current_max + 1
+        
+        count = 0
+        for l in unique_sub:
+            # Mask for this new cluster in the noise subset
+            l_mask = (sub_labels == l)
+            
+            # Find corresponding indices in original array
+            target_indices = noise_indices[l_mask]
+            
+            # Assign new global ID
+            global_id = next_id + count
+            updated_labels[target_indices] = global_id
+            
+            count += 1
+            
+        console.print(f"[green]✅ Recovered {count} new clusters from noise![/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Re-clustering noise failed: {e}[/red]")
+        
+    return updated_labels
+
+def diagnose_clustering(posts, labels, embeddings, console=None):
+    import numpy as np
+    from sklearn.metrics import silhouette_score
+    from sklearn.metrics.pairwise import cosine_similarity
+    
+    if console is None:
+        from rich.console import Console
+        console = Console()
+
+    unique_labels = set(labels)
+    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    n_noise = list(labels).count(-1)
+    noise_ratio = n_noise / len(labels) if len(labels) > 0 else 0
+    
+    console.print(f"\n[bold]🕵️ Clustering Diagnosis[/bold]")
+    console.print(f"   • Clusters: {n_clusters}")
+    console.print(f"   • Noise: {n_noise} ({noise_ratio:.1%})")
+    
+    if len(set(labels)) > 1:
+        try:
+            sil = silhouette_score(embeddings, labels)
+            console.print(f"   • Silhouette Score: {sil:.3f} (Target: >0.1)")
+        except: pass
+
+    # 0. Global Similarity Check
+    if len(embeddings) > 0:
+        sample_size = min(1000, len(embeddings))
+        indices = np.random.choice(len(embeddings), sample_size, replace=False)
+        subset = embeddings[indices]
+        sims = cosine_similarity(subset)
+        avg_sim = np.mean(sims)
+        console.print(f"   • Avg Global Similarity: {avg_sim:.3f} (If >0.8, everything is the same!)")
+
+    # 1. Analyze Noise
+    if n_noise > 0:
+        console.print(f"\n[bold red]🔊 Noise Samples (-1)[/bold red]")
+        noise_idx = [i for i, l in enumerate(labels) if l == -1]
+        for i in noise_idx[:5]:
+            content = posts[i].get('content', '') if isinstance(posts[i], dict) else str(posts[i])
+            console.print(f"   - {content[:100]}...")
+
+    # 2. Analyze Top Clusters
+    console.print(f"\n[bold cyan]📦 Top 5 Clusters Analysis[/bold cyan]")
+    counts = {l: list(labels).count(l) for l in unique_labels if l != -1}
+    top_clusters = sorted(counts.items(), key=lambda x: -x[1])[:5]
+    
+    for label, size in top_clusters:
+        indices = [i for i, l in enumerate(labels) if l == label]
+        c_embeddings = embeddings[indices]
+        c_posts = [posts[i].get('content', '') if isinstance(posts[i], dict) else str(posts[i]) for i in indices]
+        
+        # Cohesion
+        if len(c_embeddings) > 0:
+            center = np.mean(c_embeddings, axis=0).reshape(1, -1)
+            sims = cosine_similarity(c_embeddings, center)
+            cohesion = np.mean(sims)
+        else:
+            cohesion = 0
+        
+        console.print(f"\n   [bold]Cluster {label}[/bold] (n={size}, Cohesion={cohesion:.2f})")
+        for p in c_posts[:3]:
+             console.print(f"      - {p[:100]}...")
