@@ -67,6 +67,10 @@ st.markdown("""
         display: inline-block; 
         margin-bottom: 8px;
     }
+    .topic-tag.analyzed {
+        background: #7c3aed; /* Violet for Analyzed */
+        box-shadow: 0 0 10px rgba(124, 58, 237, 0.5);
+    }
     .noise-tag { background: #64748b; }
     
     .source-tag {
@@ -122,6 +126,7 @@ st.sidebar.title("🌐 Bảng điều khiển")
 score_threshold = st.sidebar.slider("Ngưỡng điểm nóng", 0.0, 100.0, 30.0)
 auto_refresh = st.sidebar.toggle("Tự động cập nhật", value=True)
 refresh_rate = st.sidebar.select_slider("Tần suất (giây)", options=[2, 5, 10, 30], value=5)
+sim_threshold = st.sidebar.slider("Độ tương đồng tối thiểu", 0.0, 1.0, 0.4, 0.05)
 
 if st.sidebar.button("🗑️ Xóa dữ liệu"):
     with get_db_engine().begin() as conn:
@@ -174,10 +179,20 @@ with tab_live:
         s_cls, s_tag_cls = get_source_class(s_name)
         type_cls = " item-highlight" if not is_noise else " item-noise"
         
+        # Check if analyzed (has summary)
+        summary = row.get('summary')
+        is_analyzed = summary and len(str(summary)) > 20 and str(summary) != "Waiting for analysis..."
+        
+        tag_class = "topic-tag"
+        if is_noise: tag_class += " noise-tag"
+        elif is_analyzed: tag_class += " analyzed"
+        
+        icon = "✅ " if is_analyzed else ""
+
         st.markdown(f"""
         <div class="live-feed-item {s_cls}{type_cls}">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <span class="topic-tag {'noise-tag' if is_noise else ''}">{topic}</span>
+                <span class="{tag_class}">{icon}{topic}</span>
                 <span class="time-stamp">ĐIỂM: {score:.1f}</span>
             </div>
             <div><span class="source-tag {s_tag_cls}">{s_name}</span></div>
@@ -256,10 +271,18 @@ with tab_intel:
             posts = json.loads(raw_posts) if isinstance(raw_posts, str) else (raw_posts or [])
             
             if posts:
-                for post in posts[:10]:
+                count_shown = 0
+                for post in posts:
+                    sim_score = post.get('similarity', post.get('score', 0))
+                    # Filter by Similarity Threshold
+                    if sim_score < sim_threshold:
+                        continue
+                        
+                    count_shown += 1
+                    if count_shown > 10: break
+
                     source = normalize_source(post.get('source', 'Unknown'))
                     content = post.get('content', '')[:500]
-                    sim_score = post.get('similarity', post.get('score', 0))
                     sim_display = f"{float(sim_score):.2f}" if sim_score and float(sim_score) > 0 else "N/A"
                     time_str = str(post.get('time', ''))[:19]
                     border_color = '#3b82f6' if 'facebook' in source.lower() else '#f97316'

@@ -16,11 +16,11 @@ import math
 KAFKA_BOOTSTRAP = "localhost:29092"
 KAFKA_TOPIC = "posts-stream"
 MODEL_NAME = "dangvantuan/vietnamese-document-embedding"
-RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
-THRESHOLD = 0.65
+# RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
+THRESHOLD = 0.75
 RERANK_THRESHOLD = -2.5 # Logit threshold from notebook
-MIN_CLUSTER_SIZE = 5
-CLUSTER_EPSILON = 0.15 # Loosened for discovery
+MIN_CLUSTER_SIZE = 3
+CLUSTER_EPSILON = 0.05 # Loosened for discovery
 POSTGRES_URL = "postgresql://user:password@localhost:5432/trend_db"
 
 def calculate_realtime_score(g_vol, interactions, post_count):
@@ -33,7 +33,7 @@ def calculate_realtime_score(g_vol, interactions, post_count):
     f_score = (math.log10(interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
     f_score = min(100, f_score)
 
-    MAX_ARTICLES = 100
+    MAX_ARTICLES = 10
     n_score = (math.log10(post_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if post_count > 0 else 0
     n_score = min(100, n_score)
 

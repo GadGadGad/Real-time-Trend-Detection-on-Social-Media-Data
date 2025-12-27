@@ -45,9 +45,17 @@ def load_from_cache():
     with open(CACHE_FILE, 'rb') as f:
         cache = pickle.load(f)
     
-    posts = cache['posts']
-    embeddings = cache['embeddings']
-    print(f"✅ Loaded {len(posts)} posts with embeddings (Created: {cache['created_at']})")
+    if isinstance(cache, dict):
+        posts = cache['posts']
+        embeddings = cache['embeddings']
+        print(f"✅ Loaded {len(posts)} posts with embeddings (Created: {cache.get('created_at', 'Unknown')})")
+    elif isinstance(cache, tuple):
+        # Handle format: (posts, embeddings)
+        posts, embeddings = cache
+        print(f"✅ Loaded {len(posts)} posts from import.")
+    else:
+        print("❌ Unknown cache format")
+        return None, None
     return posts, embeddings
 
 def load_data_raw(data_dir):
