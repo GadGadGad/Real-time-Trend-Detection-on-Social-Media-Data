@@ -56,7 +56,7 @@ ELECTRA_LABELS = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-
 
 
 def load_electra_ner(device: str = "auto"):
-    """Load ELECTRA NER model (singleton)."""
+    """Load ELECTRA NER model (singleton) with OOM Protection."""
     global _electra_model, _electra_tokenizer, _electra_device
     
     if _electra_model is not None:
@@ -66,17 +66,35 @@ def load_electra_ner(device: str = "auto"):
         return None, None, None
     
     try:
+        # [SMART DEVICE SELECTION]
         if device == "auto":
-            _electra_device = "cuda" if torch.cuda.is_available() else "cpu"
+             # Nếu VRAM > 6GB thì mới dám dùng GPU cho NER, không thì dùng CPU để nhường cho Embedder
+            if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory > 6e9:
+                _electra_device = "cuda"
+            else:
+                _electra_device = "cpu"
         else:
             _electra_device = device
             
         console.print(f"[cyan]🔌 Loading ELECTRA NER model ({ELECTRA_MODEL_NAME}) on {_electra_device}...[/cyan]")
         _electra_tokenizer = AutoTokenizer.from_pretrained(ELECTRA_MODEL_NAME)
-        _electra_model = AutoModelForTokenClassification.from_pretrained(ELECTRA_MODEL_NAME)
-        _electra_model.to(_electra_device)
+        model = AutoModelForTokenClassification.from_pretrained(ELECTRA_MODEL_NAME)
+        
+        # [OOM PROTECTION]
+        try:
+            model.to(_electra_device)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                console.print("[yellow]⚠️ GPU OOM for NER. Falling back to CPU...[/yellow]")
+                _electra_device = "cpu"
+                model.to("cpu")
+                torch.cuda.empty_cache()
+            else:
+                raise e
+        
+        _electra_model = model
         _electra_model.eval()
-        console.print("[green]✅ ELECTRA NER loaded successfully[/green]")
+        console.print(f"[green]✅ ELECTRA NER loaded successfully on {_electra_device}[/green]")
         return _electra_model, _electra_tokenizer, _electra_device
     except Exception as e:
         console.print(f"[yellow]⚠️ Failed to load ELECTRA NER: {e}. Falling back to Underthesea.[/yellow]")
@@ -192,14 +210,6 @@ def extract_entities_underthesea(text: str) -> Dict[str, List[str]]:
 def extract_entities(text: str, backend: str = "auto") -> Dict[str, List[str]]:
     """
     Extract named entities from Vietnamese text.
-    
-    Args:
-        text: Vietnamese text to extract entities from
-        backend: "electra", "underthesea", or "auto" (tries ELECTRA first, falls back)
-        
-    Returns:
-        Dictionary mapping entity types to list of entity values
-        Example: {"PER": ["Công Phượng", "Quang Hải"], "LOC": ["Hà Nội"]}
     """
     if not text or len(text.strip()) == 0:
         return {}
@@ -231,15 +241,7 @@ def extract_entities(text: str, backend: str = "auto") -> Dict[str, List[str]]:
 
 
 def get_unique_entities(text: str) -> Set[str]:
-    """
-    Get all unique entities from text as a flat set.
-    
-    Args:
-        text: Vietnamese text to process
-        
-    Returns:
-        Set of unique entity strings
-    """
+    """Get all unique entities from text as a flat set."""
     entities = extract_entities(text)
     unique = set()
     for entity_list in entities.values():
@@ -248,21 +250,7 @@ def get_unique_entities(text: str) -> Set[str]:
 
 
 def enrich_text_with_entities(text: str, weight_factor: int = 2) -> str:
-    """
-    Enrich text by prepending extracted entities.
-    This gives more weight to named entities in embedding-based similarity.
-    
-    Args:
-        text: Original text
-        weight_factor: How many times to repeat the entities (default: 2)
-        
-    Returns:
-        Enriched text with entities prepended
-        
-    Example:
-        Input: "Thầy Park dẫn đội tuyển Việt Nam đến Qatar"
-        Output: "Park Việt Nam Qatar Park Việt Nam Qatar Thầy Park dẫn đội tuyển Việt Nam đến Qatar"
-    """
+    """Enrich text by prepending extracted entities."""
     if not HAS_NER:
         return text
         
@@ -279,16 +267,7 @@ def enrich_text_with_entities(text: str, weight_factor: int = 2) -> str:
 
 
 def batch_extract_entities(texts: List[str], show_progress: bool = True) -> List[Dict[str, List[str]]]:
-    """
-    Extract entities from multiple texts.
-    
-    Args:
-        texts: List of texts to process
-        show_progress: Whether to show progress bar
-        
-    Returns:
-        List of entity dictionaries
-    """
+    """Extract entities from multiple texts."""
     if not HAS_NER:
         return [{} for _ in texts]
     
@@ -304,17 +283,7 @@ def batch_extract_entities(texts: List[str], show_progress: bool = True) -> List
 
 
 def batch_enrich_texts(texts: List[str], weight_factor: int = 2, show_progress: bool = True) -> List[str]:
-    """
-    Enrich multiple texts with their entities.
-    
-    Args:
-        texts: List of texts to enrich
-        weight_factor: Entity repetition factor
-        show_progress: Whether to show progress
-        
-    Returns:
-        List of enriched texts
-    """
+    """Enrich multiple texts with their entities."""
     if not HAS_NER:
         return texts
     
@@ -330,16 +299,7 @@ def batch_enrich_texts(texts: List[str], weight_factor: int = 2, show_progress: 
 
 
 def summarize_entities(texts: List[str]) -> Dict[str, int]:
-    """
-    Get entity frequency summary across multiple texts.
-    Useful for understanding what entities are most common.
-    
-    Args:
-        texts: List of texts to analyze
-        
-    Returns:
-        Dictionary mapping entities to their frequency
-    """
+    """Get entity frequency summary across multiple texts."""
     entity_counts = defaultdict(int)
     
     for text in texts:
