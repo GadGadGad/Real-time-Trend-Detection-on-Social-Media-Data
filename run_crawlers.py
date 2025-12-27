@@ -8,14 +8,14 @@ from rich.logging import RichHandler
 
 # Import crawler classes
 
-sys.path.append(str(Path(__file__).parent / "crawlers"))
+sys.path.append(str(Path(__file__).parent))
 
 try:
-    from crawlers.vnexpress_crawler import VnExpressCrawler
-    from crawlers.nld_crawler import NLDCrawler
-    from crawlers.thanhnien_crawler import ThanhNienCrawler
-    from crawlers.tuoitre_crawler import TuoiTreCrawler
-    from crawlers.vietnamnet_crawler import VietnamNetCrawler
+    from src.scrapers.social.vnexpress_crawler import VnExpressCrawler
+    from src.scrapers.social.nld_crawler import NLDCrawler
+    from src.scrapers.social.thanhnien_crawler import ThanhNienCrawler
+    from src.scrapers.social.tuoitre_crawler import TuoiTreCrawler
+    from src.scrapers.social.vietnamnet_crawler import VietnamNetCrawler
 except ImportError as e:
     print(f"Error importing crawlers: {e}")
     print("Make sure you are running this script from the project root.")

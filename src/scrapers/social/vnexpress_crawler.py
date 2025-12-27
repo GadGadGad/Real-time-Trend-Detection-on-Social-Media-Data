@@ -37,7 +37,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from utils import Cache, sha1, normalize_url, resolve_category_id
+from src.utils.text_processing.utils import Cache, sha1, normalize_url, resolve_category_id
 
 console = Console()
 logging.basicConfig(

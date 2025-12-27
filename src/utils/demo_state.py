@@ -258,8 +258,12 @@ def attach_new_post(
     best_trend_idx = np.argmax(trend_sims)
     best_trend_score = trend_sims[best_trend_idx]
     
-    if best_trend_score >= threshold:
+    if best_trend_score >= threshold and best_trend_idx < len(trend_keys):
         final_topic = trend_keys[best_trend_idx]
+        topic_type = "Trending"
+    elif best_trend_score >= threshold:
+        # Index out of range but score is high - use generic trend name
+        final_topic = f"Trend_{best_trend_idx}"
         topic_type = "Trending"
     else:
         final_topic = "Discovery"

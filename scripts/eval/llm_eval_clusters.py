@@ -1,15 +1,26 @@
 """
-LLM-as-a-Judge Evaluation for Pipeline Clusters.
-Uses Gemini/LLM to evaluate cluster coherence and topic relevance.
+LLM-as-a-Judge Evaluation for Pipeline Clusters
+(PAIRWISE + LLM-INFERRED TOPIC CONSISTENCY)
+
+Metrics:
+- Pairwise win-rate (coherence comparison)
+- LLM-inferred Topic Consistency (semantic purity)
 
 Usage:
-    python scripts/eval/llm_eval_clusters.py --state demo/demo_finetuned_reranker --sample-size 10
+    python scripts/eval/llm_eval_clusters.py \
+        --state demo/demo_finetuned_reranker \
+        --sample-size 10 \
+        --pairwise-runs 3 \
+        --topic-sample 15
 """
+
 import argparse
 import os
 import json
 import random
+import re
 import pandas as pd
+from collections import defaultdict
 from rich.console import Console
 from rich.table import Table
 from rich.progress import track
@@ -18,200 +29,275 @@ from dotenv import load_dotenv
 load_dotenv()
 console = Console()
 
+# -------------------------
+# Data loading
+# -------------------------
 def load_demo_state(save_dir):
-    """Load demo state files."""
     state = {}
-    
-    results_path = os.path.join(save_dir, 'results.parquet')
+    results_path = os.path.join(save_dir, "results.parquet")
+    mapping_path = os.path.join(save_dir, "cluster_mapping.json")
+
     if os.path.exists(results_path):
-        state['df_results'] = pd.read_parquet(results_path)
-    
-    mapping_path = os.path.join(save_dir, 'cluster_mapping.json')
+        state["df_results"] = pd.read_parquet(results_path)
+
     if os.path.exists(mapping_path):
-        with open(mapping_path, 'r', encoding='utf-8') as f:
-            state['cluster_mapping'] = json.load(f)
-    
+        with open(mapping_path, "r", encoding="utf-8") as f:
+            state["cluster_mapping"] = json.load(f)
+
     return state
 
-def get_cluster_samples(df, cluster_id, n=5):
-    """Get sample posts from a cluster."""
-    cluster_posts = df[df['cluster_id'] == cluster_id]
-    if len(cluster_posts) == 0:
+
+def get_cluster_samples(df, group_col, cid, n=5):
+    cluster_df = df[df[group_col] == cid]
+    if len(cluster_df) == 0:
         return []
-    
-    samples = cluster_posts.sample(min(n, len(cluster_posts)))
-    return samples['post_content'].tolist()
+    return (
+        cluster_df.sample(min(n, len(cluster_df)))["post_content"]
+        .astype(str)
+        .str.slice(0, 300)
+        .tolist()
+    )
 
-def evaluate_cluster_with_llm(cluster_name, posts, model):
-    """Use LLM to evaluate cluster coherence."""
-    posts_text = "\n".join([f"- {p[:300]}" for p in posts[:5]])
-    
-    prompt = f"""Bạn là chuyên gia đánh giá chất lượng clustering tin tức.
 
-Cluster Name: "{cluster_name}"
-
-Sample Posts trong cluster:
-{posts_text}
-
-Đánh giá cluster này theo các tiêu chí sau (thang điểm 1-5):
-
-1. **Coherence** (Các bài viết có cùng chủ đề không?): 1-5
-2. **Topic Relevance** (Tên cluster có mô tả đúng nội dung không?): 1-5
-3. **Distinctiveness** (Cluster có rõ ràng, không bị trộn lẫn topics không?): 1-5
-
-Trả lời CHÍNH XÁC theo format JSON:
-{{"coherence": X, "relevance": X, "distinctiveness": X, "reasoning": "..."}}
-"""
-    
+# -------------------------
+# Utils
+# -------------------------
+def safe_json_extract(text):
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return None
     try:
-        response = model.generate_content(prompt)
-        text = response.text
-        
-        # Extract JSON
-        import re
-        json_match = re.search(r'\{[^}]+\}', text, re.DOTALL)
-        if json_match:
-            result = json.loads(json_match.group())
-            return result
-    except Exception as e:
-        console.print(f"[yellow]LLM error: {e}[/yellow]")
-    
-    return {"coherence": 0, "relevance": 0, "distinctiveness": 0, "reasoning": "Error"}
+        return json.loads(match.group())
+    except Exception:
+        return None
 
-def evaluate_topic_assignment(post_content, assigned_topic, model):
-    """Use LLM to evaluate if a post was correctly assigned to a topic."""
-    prompt = f"""Bạn là chuyên gia đánh giá việc gán bài viết vào chủ đề.
 
-Bài viết: "{post_content[:400]}"
+# -------------------------
+# Pairwise judging
+# -------------------------
+def pairwise_judge(posts_a, posts_b, model):
+    prompt = f"""
+Bạn là chuyên gia đánh giá chất lượng clustering tin tức.
+Hai cluster dưới đây KHÔNG có tên, chỉ gồm các bài viết mẫu.
 
-Được gán vào topic: "{assigned_topic}"
+Cluster A:
+{chr(10).join("- " + p for p in posts_a)}
 
-Đánh giá:
-1. Bài viết này có THỰC SỰ liên quan đến topic "{assigned_topic}" không?
-2. Đây có phải là topic PHÙ HỢP NHẤT cho bài viết này không?
+Cluster B:
+{chr(10).join("- " + p for p in posts_b)}
 
-Trả lời CHÍNH XÁC theo format JSON:
-{{"is_relevant": true/false, "is_best_fit": true/false, "confidence": 1-5, "better_topic": "..." }}
+Câu hỏi:
+1. Cluster nào COHERENT hơn (các bài cùng chủ đề hơn)?
+2. Cluster nào RÕ RÀNG hơn, ít bị trộn topic hơn?
+
+Trả lời CHÍNH XÁC theo JSON:
+{{
+  "better_cluster": "A" | "B" | "Tie",
+  "confidence": 1-5,
+  "reasoning": "..."
+}}
 """
-    
-    try:
-        response = model.generate_content(prompt)
-        text = response.text
-        
-        import re
-        json_match = re.search(r'\{[^}]+\}', text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-    except Exception as e:
-        pass
-    
-    return {"is_relevant": False, "is_best_fit": False, "confidence": 0}
+    response = model.generate_content(prompt)
+    return safe_json_extract(response.text)
 
+
+# -------------------------
+# Topic Consistency
+# -------------------------
+def infer_cluster_topic(posts, model):
+    prompt = f"""
+Bạn là chuyên gia phân tích chủ đề tin tức.
+
+Dưới đây là các bài viết thuộc CÙNG MỘT CLUSTER:
+{chr(10).join("- " + p for p in posts)}
+
+Nhiệm vụ:
+1. Suy ra CHỦ ĐỀ CHUNG của cluster
+2. Đặt một tên topic NGẮN GỌN (≤ 10 từ)
+3. Mô tả topic trong 1 câu
+
+Trả lời CHÍNH XÁC theo JSON:
+{{
+  "topic_name": "...",
+  "topic_description": "..."
+}}
+"""
+    res = model.generate_content(prompt)
+    return safe_json_extract(res.text)
+
+
+def check_post_topic(post, topic, model):
+    prompt = f"""
+Bạn là chuyên gia đánh giá nội dung tin tức.
+
+Topic:
+"{topic['topic_name']}"
+Mô tả:
+"{topic['topic_description']}"
+
+Bài viết:
+"{post}"
+
+Câu hỏi:
+Bài viết này có PHÙ HỢP với topic trên không?
+
+Trả lời CHÍNH XÁC theo JSON:
+{{
+  "is_relevant": true | false,
+  "confidence": 1-5
+}}
+"""
+    res = model.generate_content(prompt)
+    return safe_json_extract(res.text)
+
+
+def compute_topic_consistency(df, group_col, cid, model, sample_n=15):
+    cluster_df = df[df[group_col] == cid]
+    if len(cluster_df) == 0:
+        return None
+
+    posts = (
+        cluster_df.sample(min(sample_n, len(cluster_df)))["post_content"]
+        .astype(str)
+        .str.slice(0, 400)
+        .tolist()
+    )
+
+    topic = infer_cluster_topic(posts[:5], model)
+    if not topic:
+        return None
+
+    judgments = []
+    for p in posts:
+        r = check_post_topic(p, topic, model)
+        if r:
+            judgments.append(r)
+
+    if not judgments:
+        return None
+
+    simple = sum(j["is_relevant"] for j in judgments) / len(judgments)
+    weighted = (
+        sum(j["confidence"] for j in judgments if j["is_relevant"])
+        / sum(j["confidence"] for j in judgments)
+    )
+
+    return {
+        "topic": topic,
+        "simple_consistency": round(simple, 3),
+        "weighted_consistency": round(weighted, 3),
+        "n_checked": len(judgments),
+    }
+
+
+# -------------------------
+# Main
+# -------------------------
 def main():
-    parser = argparse.ArgumentParser(description="LLM-based evaluation of pipeline clusters")
-    parser.add_argument('--state', required=True, help='Path to demo state directory')
-    parser.add_argument('--sample-size', type=int, default=10, help='Number of clusters to evaluate')
-    parser.add_argument('--eval-assignments', action='store_true', help='Also evaluate topic assignments')
-    parser.add_argument('--api-key', type=str, help='Gemini API key (or set GEMINI_API_KEY env)')
-    parser.add_argument('--model', type=str, default='gemma-3-27b-it', help='Gemini model name')
+    parser = argparse.ArgumentParser("LLM cluster evaluation")
+    parser.add_argument("--state", required=True)
+    parser.add_argument("--sample-size", type=int, default=10)
+    parser.add_argument("--pairwise-runs", type=int, default=3)
+    parser.add_argument("--topic-sample", type=int, default=15)
+    parser.add_argument("--api-key", type=str)
+    parser.add_argument("--model", type=str, default="gemma-3-27b-it")
     args = parser.parse_args()
-    
-    # Setup Gemini
+
     api_key = args.api_key or os.getenv("GEMINI_API_KEY")
     if not api_key:
-        console.print("[red]Error: GEMINI_API_KEY required. Set via --api-key or environment.[/red]")
+        console.print("[red]GEMINI_API_KEY required[/red]")
         return
-    
+
     import google.generativeai as genai
+
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(args.model)
-    
-    console.print(f"[bold cyan]🧠 LLM Evaluation of Pipeline Results[/bold cyan]")
-    console.print(f"   State: {args.state}")
-    console.print(f"   Sample Size: {args.sample_size}\n")
-    
-    # Load state
-    state = load_demo_state(args.state)
-    if 'df_results' not in state:
-        console.print("[red]Error: Could not load results.[/red]")
-        return
-    
-    df = state['df_results']
-    cluster_mapping = state.get('cluster_mapping', {})
-    
-    # Find column for grouping - could be cluster_id or final_topic
-    group_col = 'cluster_id' if 'cluster_id' in df.columns else 'final_topic'
-    
-    # Get unique topics (exclude noise/unassigned)
-    if group_col == 'cluster_id':
-        valid_mask = df[group_col] != -1
-    else:
-        valid_mask = ~df[group_col].isin(['Unassigned', 'Noise', '[Noise]', 'Discovery'])
-    
-    clusters = df[valid_mask][group_col].unique()
-    sample_clusters = random.sample(list(clusters), min(args.sample_size, len(clusters)))
-    
-    console.print(f"[dim]Evaluating {len(sample_clusters)} clusters/topics...[/dim]\n")
-    
-    # Evaluate clusters
-    results = []
-    for cid in track(sample_clusters, description="Evaluating clusters"):
-        if group_col == 'cluster_id':
-            cluster_name = df[df[group_col] == cid]['final_topic'].iloc[0] if len(df[df[group_col] == cid]) > 0 else f"Cluster {cid}"
-            posts = get_cluster_samples(df, cid, n=5)
-        else:
-            cluster_name = cid
-            cluster_df = df[df[group_col] == cid]
-            posts = cluster_df['post_content'].head(5).tolist() if 'post_content' in cluster_df.columns else cluster_df['content'].head(5).tolist()
 
-        
-        if posts:
-            eval_result = evaluate_cluster_with_llm(cluster_name, posts, model)
-            eval_result['cluster_id'] = cid
-            eval_result['cluster_name'] = cluster_name
-            eval_result['num_posts'] = len(df[df[group_col] == cid])
-            results.append(eval_result)
-    
-    # Display results
-    table = Table(title="LLM Cluster Quality Evaluation")
-    table.add_column("Cluster", style="bold", max_width=40)
-    table.add_column("#Posts", justify="right")
-    table.add_column("Coherence", justify="right")
-    table.add_column("Relevance", justify="right")
-    table.add_column("Distinct", justify="right")
-    
-    total_coherence = 0
-    total_relevance = 0
-    total_distinct = 0
-    
-    for r in results:
-        table.add_row(
-            r.get('cluster_name', '')[:40],
-            str(r.get('num_posts', 0)),
-            f"{r.get('coherence', 0)}/5",
-            f"{r.get('relevance', 0)}/5",
-            f"{r.get('distinctiveness', 0)}/5"
+    state = load_demo_state(args.state)
+    if "df_results" not in state:
+        console.print("[red]results.parquet not found[/red]")
+        return
+
+    df = state["df_results"]
+    group_col = "cluster_id" if "cluster_id" in df.columns else "final_topic"
+    valid_df = df[df[group_col] != -1] if group_col == "cluster_id" else df
+    clusters = list(valid_df[group_col].unique())
+    sampled = random.sample(clusters, min(args.sample_size, len(clusters)))
+
+    # -------------------------
+    # Pairwise
+    # -------------------------
+    win_stats = defaultdict(lambda: {"win": 0, "loss": 0, "tie": 0})
+
+    for _ in track(range(args.pairwise_runs), description="Pairwise judging"):
+        random.shuffle(sampled)
+        for i in range(0, len(sampled) - 1, 2):
+            a, b = sampled[i], sampled[i + 1]
+            pa = get_cluster_samples(df, group_col, a)
+            pb = get_cluster_samples(df, group_col, b)
+            if not pa or not pb:
+                continue
+
+            r = pairwise_judge(pa, pb, model)
+            if not r:
+                continue
+
+            if r["better_cluster"] == "A":
+                win_stats[a]["win"] += 1
+                win_stats[b]["loss"] += 1
+            elif r["better_cluster"] == "B":
+                win_stats[b]["win"] += 1
+                win_stats[a]["loss"] += 1
+            else:
+                win_stats[a]["tie"] += 1
+                win_stats[b]["tie"] += 1
+
+    # -------------------------
+    # Topic consistency
+    # -------------------------
+    topic_stats = {}
+    for cid in track(sampled, description="Topic consistency"):
+        res = compute_topic_consistency(
+            df, group_col, cid, model, args.topic_sample
         )
-        total_coherence += r.get('coherence', 0)
-        total_relevance += r.get('relevance', 0)
-        total_distinct += r.get('distinctiveness', 0)
-    
+        if res:
+            topic_stats[cid] = res
+
+    # -------------------------
+    # Report
+    # -------------------------
+    table = Table(title="LLM Cluster Evaluation")
+    table.add_column("Cluster")
+    table.add_column("Win-rate")
+    table.add_column("Topic")
+    table.add_column("Consistency")
+
+    for cid in sampled:
+        s = win_stats[cid]
+        total = s["win"] + s["loss"]
+        winrate = s["win"] / total if total > 0 else 0.0
+
+        topic = topic_stats.get(cid, {})
+        table.add_row(
+            str(cid),
+            f"{winrate:.2f}",
+            topic.get("topic", {}).get("topic_name", "-"),
+            str(topic.get("weighted_consistency", "-")),
+        )
+
     console.print(table)
-    
-    # Summary
-    n = len(results)
-    if n > 0:
-        console.print(f"\n[bold]📊 Average Scores:[/bold]")
-        console.print(f"   Coherence:      {total_coherence/n:.2f}/5")
-        console.print(f"   Relevance:      {total_relevance/n:.2f}/5")
-        console.print(f"   Distinctiveness: {total_distinct/n:.2f}/5")
-        console.print(f"   [bold]Overall:        {(total_coherence+total_relevance+total_distinct)/(3*n):.2f}/5[/bold]")
-    
-    # Save detailed results
-    output_path = os.path.join(args.state, 'llm_eval_results.json')
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-    console.print(f"\n[dim]Detailed results saved to {output_path}[/dim]")
+
+    out = {
+        "pairwise": win_stats,
+        "topic_consistency": topic_stats,
+    }
+
+    out_path = os.path.join(args.state, "llm_cluster_eval.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+
+    console.print(f"\n[dim]Saved results to {out_path}[/dim]")
+
 
 if __name__ == "__main__":
     main()

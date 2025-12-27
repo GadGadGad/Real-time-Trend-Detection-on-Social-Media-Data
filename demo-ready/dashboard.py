@@ -167,7 +167,7 @@ def get_db_engine():
 
 def load_realtime_data():
     engine = get_db_engine()
-    query = text("SELECT * FROM detected_trends ORDER BY created_at DESC LIMIT 100")
+    query = text("SELECT * FROM detected_trends ORDER BY created_at DESC LIMIT 1000")
     return pd.read_sql(query, engine)
 
 
@@ -215,7 +215,7 @@ if df_full.empty:
     st.stop()
 
 # --- TABS ---
-tab_live, tab_map, tab_intel = st.tabs(["🚀 Luồng Live", "🧩 Bản đồ Trọng lực", "🧠 Chi tiết & Phân tích"])
+tab_live, tab_map, tab_intel, tab_sys = st.tabs(["🚀 Luồng Live", "🧩 Bản đồ Trọng lực", "🧠 Chi tiết & Phân tích", "📈 Hiệu suất Hệ thống"])
 
 # --- TAB 1: LIVE MONITOR ---
 @st.fragment(run_every=refresh_rate if auto_refresh else None)
@@ -488,4 +488,79 @@ with tab_intel:
             fig_s.update_layout(showlegend=False, height=350, margin=dict(l=0,r=0,t=40,b=0), 
                                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_s, use_container_width=True)
+
+# --- TAB 4: SYSTEM PERFORMANCE ---
+with tab_sys:
+    @st.fragment(run_every=refresh_rate if auto_refresh else None)
+    def show_system_stats():
+        st.subheader("⚙️ Chỉ số Vận hành Hệ thống")
+        df_sys = load_realtime_data()
+        
+        if df_sys.empty:
+            st.info("Chưa có dữ liệu hệ thống.")
+            return
+
+        total_posts = df_sys['post_count'].sum()
+        total_trends = len(df_sys)
+        active_trends = len(df_sys[df_sys['trend_score'] >= score_threshold])
+        
+        # Row 1: Big Metrics
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Tổng bài viết xử lý", f"{total_posts:,}", delta=None)
+            st.caption("Tổng số tin bài đã được gán vào các cụm")
+        with c2:
+            st.metric("Tổng số cụm tin", f"{total_trends:,}")
+            st.caption("Các nhóm tin có sự tương đồng nội dung")
+        with c3:
+            st.metric("Sự kiện tiêu điểm", f"{active_trends:,}")
+            st.caption(f"Cụm tin vượt ngưỡng {score_threshold}")
+
+        st.markdown("---")
+
+        # Row 2: Charts
+        col_plot1, col_plot2 = st.columns(2)
+        
+        with col_plot1:
+            st.markdown("#### 📊 Phân bổ tin bài theo Chủ đề")
+            fig_bar = px.bar(
+                df_sys.sort_values('post_count', ascending=False).head(10),
+                x='post_count',
+                y='trend_name',
+                orientation='h',
+                color='trend_score',
+                template="plotly_dark",
+                labels={'post_count': 'Số lượng bài', 'trend_name': 'Chủ đề'},
+                color_continuous_scale="Viridis"
+            )
+            fig_bar.update_layout(height=400, margin=dict(l=0,r=0,t=20,b=0))
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        with col_plot2:
+            st.markdown("#### ⏳ Trạng thái Xử lý (LLM)")
+            summaries = df_sys['summary'].fillna('')
+            analyzed = (summaries.str.len() > 20) & (summaries != "Waiting for analysis...")
+            
+            status_df = pd.DataFrame({
+                'Trạng thái': ['Đã phân tích (Deep)', 'Chờ xử lý (Fast Path)'],
+                'Số lượng': [analyzed.sum(), (~analyzed).sum()]
+            })
+            
+            fig_pie = px.pie(
+                status_df, 
+                values='Số lượng', 
+                names='Trạng thái',
+                color='Trạng thái',
+                color_discrete_map={'Đã phân tích (Deep)': '#7c3aed', 'Chờ xử lý (Fast Path)': '#334155'},
+                hole=0.4,
+                template="plotly_dark"
+            )
+            fig_pie.update_layout(height=400, margin=dict(l=0,r=0,t=20,b=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        # System Health Note
+        st.success(f"✅ Hệ thống đang chạy ở chế độ **Real-time Injection** (Simulation).")
+        st.info(f"💡 Tốc độ nạp dữ liệu: ~1 bài/3 giây. Tự động cập nhật mỗi {refresh_rate} giây.")
+
+    show_system_stats()
 

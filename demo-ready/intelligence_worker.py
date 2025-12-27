@@ -54,35 +54,36 @@ def calculate_realtime_score(g_vol, interactions, post_count):
     return round(final_score, 1), round(g_score, 1), round(f_score, 1), round(n_score, 1)
 
 # Database Setup
+# Database Setup
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://user:password@localhost:5432/trend_db")
 db_engine = create_engine(POSTGRES_URL)
 
+MODEL_NAME = "keepitreal/vietnamese-sbert"
+
 def get_unanalyzed_trends():
-    """Fetch trends that need analysis: 
-    1. Discovery trends with placeholder summary
-    2. Seeded trends that received enough REAL matches (post_count increased)
-    """
+    """Fetch trends that need analysis."""
     query = text("""
         SELECT id, trend_name, representative_posts, post_count 
         FROM detected_trends 
         WHERE (
             -- Discovery trends awaiting analysis
-            (summary IS NULL OR summary = 'Waiting for analysis...')
+            (summary IS NULL OR summary = 'Waiting for analysis...' OR summary = 'Auto-detected trend')
             -- OR Seeded trends that got real matches (need T1-T7 classification)
             OR (category = 'Seeded Topic' AND post_count >= 5)
             OR (category LIKE '%Seeded%' AND post_count >= 5)
         )
         AND post_count >= 3
         ORDER BY post_count DESC
-        LIMIT 5
+        LIMIT 15
     """)
     with db_engine.connect() as conn:
         result = conn.execute(query).fetchall()
         return result
 
-def update_trend_analysis(trend_id, analysis_result):
-    """Update trend with LLM analysis results. Implements Merge-on-Rename logic."""
+def update_trend_analysis(trend_id, analysis_result, model=None):
+    """Update trend with LLM analysis results + Re-embedding."""
     new_name = analysis_result[0]
+    import numpy as np
     
     with db_engine.begin() as conn:
         # 1. Check if name already exists (Deduplication)
@@ -107,25 +108,15 @@ def update_trend_analysis(trend_id, analysis_result):
                 # Sum stats
                 merged_pc = (e_pc or 0) + (c_pc or 0)
                 merged_inter = (e_inter or 0) + (c_inter or 0)
-                merged_gvol = max((e_gvol or 0), (c_gvol or 0)) # Google vol is usually same for same name
+                merged_gvol = max((e_gvol or 0), (c_gvol or 0)) 
                 
-                # Merge Rep Posts (Keep unique ones)
+                # Merge Rep Posts
                 try: e_reps = json.loads(e_reps_raw) if e_reps_raw else []
                 except: e_reps = []
                 try: c_reps = json.loads(c_reps_raw) if c_reps_raw else []
                 except: c_reps = []
                 
-                # Combine and deduplicate by content
-                all_reps = e_reps + c_reps
-                seen_content = set()
-                merged_reps = []
-                for r in all_reps:
-                    txt = r.get('content', '')[:100]
-                    if txt not in seen_content:
-                        merged_reps.append(r)
-                        seen_content.add(txt)
-                
-                merged_reps = merged_reps[:1000] # Limit reps
+                all_reps = (e_reps + c_reps)[:1000]
                 
                 # Recalculate score
                 new_score, g_s, f_s, n_s = calculate_realtime_score(merged_gvol, merged_inter, merged_pc)
@@ -136,14 +127,14 @@ def update_trend_analysis(trend_id, analysis_result):
                         volume = :vol, post_count = :pc, interactions = :inter,
                         representative_posts = :reps, trend_score = :score,
                         score_n = :sn, score_f = :sf,
-                         summary = :summ, category = :cat, sentiment = :sent,
+                        summary = :summ, category = :cat, sentiment = :sent,
                         advice_state = :as, advice_business = :ab, topic_type = :type,
                         reasoning = :reasoning,
                         last_updated = :now
                     WHERE id = :e_id
                 """), {
                     "vol": merged_gvol + merged_pc, "pc": merged_pc, "inter": merged_inter,
-                    "reps": json.dumps(merged_reps, ensure_ascii=False), "score": new_score,
+                    "reps": json.dumps(all_reps, ensure_ascii=False), "score": new_score,
                     "sn": n_s, "sf": f_s, "summ": analysis_result[4], "cat": analysis_result[1],
                     "sent": analysis_result[5], "as": analysis_result[6].get('advice_state', 'N/A'),
                     "ab": analysis_result[6].get('advice_business', 'N/A'), "type": analysis_result[3],
@@ -156,8 +147,20 @@ def update_trend_analysis(trend_id, analysis_result):
                 logger.info(f"✅ Merged and deleted discovery {trend_id}")
                 return
                 
-        # 2. Sequential Update (Normal path)
-        conn.execute(text("""
+        # 2. Sequential Update (Normal path) + Re-embedding
+        new_emb_json = None
+        if model:
+            # Re-embed if name is valid
+            try:
+                emb = model.encode(new_name)
+                norm = np.linalg.norm(emb)
+                if norm > 0: emb = emb / norm
+                new_emb_json = json.dumps(emb.tolist())
+                logger.info(f"🧠 Re-embedded new name: '{new_name}'")
+            except Exception as e:
+                logger.error(f"⚠️ Embedding failed: {e}")
+
+        update_query = """
             UPDATE detected_trends 
             SET 
                 trend_name = :new_name,
@@ -169,8 +172,8 @@ def update_trend_analysis(trend_id, analysis_result):
                 topic_type = :topic_type,
                 reasoning = :reasoning,
                 last_updated = :now
-            WHERE id = :id
-        """), {
+        """
+        params = {
             "id": trend_id,
             "new_name": analysis_result[0],
             "category": analysis_result[1],
@@ -181,7 +184,15 @@ def update_trend_analysis(trend_id, analysis_result):
             "advice_business": analysis_result[6].get('advice_business', 'N/A'),
             "reasoning": analysis_result[2],
             "now": datetime.now()
-        })
+        }
+        
+        if new_emb_json:
+            update_query += ", embedding = :emb "
+            params["emb"] = new_emb_json
+            
+        update_query += " WHERE id = :id "
+        
+        conn.execute(text(update_query), params)
         logger.info(f"✅ Updated Trend {trend_id}: {analysis_result[0]}")
 
 def main():
@@ -193,6 +204,16 @@ def main():
         logger.warning("⚠️ GEMINI_API_KEY not found. Worker will fail to initialize LLM.")
     
     logger.info("🧠 Initializing Intelligence Worker (Slow Path)...")
+    
+    # Load Embedding Model
+    model = None
+    try:
+        from sentence_transformers import SentenceTransformer
+        logger.info("📥 Loading Embedding Model (this may take a moment)...")
+        model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+    except Exception as e:
+        logger.error(f"⚠️ Failed to load embedding model: {e}")
+
     try:
         # Initialize Refiner (High Capacity mode for demo speed)
         refiner = LLMRefiner(provider="gemini", api_key=api_key, debug=True)
@@ -234,8 +255,8 @@ def main():
                         topic_type="Discovery"
                     )
                     
-                    # Update DB
-                    update_trend_analysis(t_id, analysis_result)
+                    # Update DB (with model for embeddings)
+                    update_trend_analysis(t_id, analysis_result, model=model)
                     
                 except Exception as e:
                     logger.error(f"⚠️ Error analyzing trend {t_id}: {e}")

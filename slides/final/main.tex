@@ -126,23 +126,23 @@
 % SECTION 1: GIỚI THIỆU BÀI TOÁN
 %============================================================
 \section{Giới thiệu bài toán}
-    
-    
+
+
 % Frame 1.2: Mục tiêu đề tài
 \begin{frame}{Mục tiêu đề tài}
     \justifying
     Xây dựng hệ thống \textbf{phát hiện xu hướng/sự kiện theo thời gian thực} từ dữ liệu mạng xã hội và báo chí,
     nhằm rút ngắn khoảng cách giữa \textit{dữ liệu thô} và \textit{thông tin có thể hành động}.
-  
+
     \begin{block}{Hai nhóm đối tượng chính}
-      \begin{itemize}
-        \item \textbf{Chính phủ/An toàn công cộng:} Phát hiện sớm rủi ro xã hội, thiệt hại thiên tai, biểu tình, ... (\textit{Social Risk}).
-        \item \textbf{Doanh nghiệp/Marketing:} Nắm bắt nhanh xu hướng tiêu dùng, viral trends, ... (\textit{Market Opportunity}).
-      \end{itemize}
+        \begin{itemize}
+            \item \textbf{Chính phủ/An toàn công cộng:} Phát hiện sớm rủi ro xã hội, thiệt hại thiên tai, biểu tình, ... (\textit{Social Risk}).
+            \item \textbf{Doanh nghiệp/Marketing:} Nắm bắt nhanh xu hướng tiêu dùng, viral trends, ... (\textit{Market Opportunity}).
+        \end{itemize}
     \end{block}
-  
+
     \textbf{Hướng tiếp cận:} Kết hợp \textbf{tín hiệu đa nguồn} (Search--Social--News) để \textbf{gom chủ đề}, \textbf{chấm điểm xu hướng} từ đó nắm bắt được tình trạng, phản ứng của mọi người về các xu hướng mới nhất.
-  \end{frame}
+\end{frame}
 
 %============================================================
 % SECTION 2: DỮ LIỆU
@@ -152,18 +152,18 @@
 %============================================================
 \begin{frame}[fragile]{Nguồn dữ liệu 1: Mạng xã hội Facebook}
     \justifying
-  
+
     \begin{block}{Vai trò trong hệ thống}
-      \begin{itemize}
-        \item \textbf{Nguồn tín hiệu sớm:} Cập nhật rất nhanh, đa dạng nội dung $\rightarrow$ bắt trend trước báo chí.
-        \item \textbf{Nguồn thu thập:} Các Fanpage tin tức lớn (Theanh28, ThongTinChinhPhu, ...) được thu thập thông qua Apify.
-        \item \textbf{Thách thức:} Nhiễu cao $\rightarrow$ cần lọc + xác thực bằng News/Trends.
-      \end{itemize}
+        \begin{itemize}
+            \item \textbf{Nguồn tín hiệu sớm:} Cập nhật rất nhanh, đa dạng nội dung $\rightarrow$ bắt trend trước báo chí.
+            \item \textbf{Nguồn thu thập:} Các Fanpage tin tức lớn (Theanh28, ThongTinChinhPhu, ...) được thu thập thông qua Apify.
+            \item \textbf{Thách thức:} Nhiễu cao $\rightarrow$ cần lọc + xác thực bằng News/Trends.
+        \end{itemize}
     \end{block}
-  
+
     \begin{exampleblock}{Các trường chính của dữ liệu Facebook}
-      {\footnotesize
-      \begin{verbatim}
+        {\footnotesize
+            \begin{verbatim}
   {
     "pageName": "baodantridientu",
     "postId": "1191254559782876",
@@ -173,69 +173,69 @@
     "likes": 9, "comments": 1, "shares": 1
   }
       \end{verbatim}
-      }
+        }
     \end{exampleblock}
-  
+
     \begin{exampleblock}{Lợi ích}
-      Tính \textbf{engagement theo thời gian} chính xác hơn
-      $\rightarrow$ phát hiện trend sớm hơn.
+        Tính \textbf{engagement theo thời gian} chính xác hơn
+        $\rightarrow$ phát hiện trend sớm hơn.
     \end{exampleblock}
-  
+
 \end{frame}
-  
+
 
 %============================================================
 \begin{frame}[fragile]{Nguồn dữ liệu 2: Tin tức}
     \justifying
-  
+
     \begin{block}{Vai trò trong hệ thống}
-      \begin{itemize}
-        \item \textbf{Nguồn xác thực:} Chuẩn ngữ pháp, độ tin cậy cao $\rightarrow$ kiểm chứng sự kiện.
-        \item \textbf{Nguồn:} VnExpress, Tuổi Trẻ, Thanh Niên, Người Lao Động, ...
-        \item \textbf{Thách thức:} Thông tin thường dài dòng, khó tóm tắt.
-      \end{itemize}
+        \begin{itemize}
+            \item \textbf{Nguồn xác thực:} Chuẩn ngữ pháp, độ tin cậy cao $\rightarrow$ kiểm chứng sự kiện.
+            \item \textbf{Nguồn:} VnExpress, Tuổi Trẻ, Thanh Niên, Người Lao Động, ...
+            \item \textbf{Thách thức:} Thông tin thường dài dòng, khó tóm tắt.
+        \end{itemize}
     \end{block}
-  
+
     \begin{exampleblock}{Các trường chính trong dữ liệu báo chí}
-      {\scriptsize
-      \begin{table}
-        \centering
-        \begin{tabular}{p{1.1cm} p{1.8cm} p{1.8cm} p{2.5cm} p{1.1cm}}
-          \toprule
-          \textbf{ID} & \textbf{URL} & \textbf{Tiêu đề} & \textbf{Nội dung} & \textbf{Thời gian} \\
-          \midrule
-          7287b... &    
-          vietnamnet.vn/... &
-          Nhật Bản đau đầu với ngân sách &
-          Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen từ các nguồn thu bất thường... &
-          09/12/2025 10:37 \\
-          \bottomrule
-        \end{tabular}
-      \end{table}
-      }
+        {\scriptsize
+            \begin{table}
+                \centering
+                \begin{tabular}{p{1.1cm} p{1.8cm} p{1.8cm} p{2.5cm} p{1.1cm}}
+                    \toprule
+                    \textbf{ID}                                                                            & \textbf{URL} & \textbf{Tiêu đề} & \textbf{Nội dung} & \textbf{Thời gian} \\
+                    \midrule
+                    7287b...                                                                               &
+                    vietnamnet.vn/...                                                                      &
+                    Nhật Bản đau đầu với ngân sách                                                         &
+                    Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen từ các nguồn thu bất thường... &
+                    09/12/2025 10:37                                                                                                                                                  \\
+                    \bottomrule
+                \end{tabular}
+            \end{table}
+        }
     \end{exampleblock}
-  
-  \end{frame}
-  
+
+\end{frame}
+
 %============================================================
 \begin{frame}{Nguồn dữ liệu 3: Từ khóa xu hướng Google Trends}
     \justifying
-  
+
     \begin{block}{Mục tiêu}
-      Dùng \textbf{Google Trends} như một \textbf{tín hiệu dẫn đường} để:
-      (1) định hình các chủ đề đang được quan tâm, (2) hỗ trợ lọc nhiễu từ Social,
-      (3) ưu tiên theo dõi các sự kiện có khả năng bùng nổ.
+        Dùng \textbf{Google Trends} như một \textbf{tín hiệu dẫn đường} để:
+        (1) định hình các chủ đề đang được quan tâm, (2) hỗ trợ lọc nhiễu từ Social,
+        (3) ưu tiên theo dõi các sự kiện có khả năng bùng nổ.
     \end{block}
-  
+
     \begin{figure}
         \centering
         \includegraphics[width=0.8\textwidth]{assets/images/google_trends_example.png}
         \caption{\scriptsize Minh họa từ khóa xu hướng trên Google Trends}
     \end{figure}
-    
-  
-  \end{frame}
-  
+
+
+\end{frame}
+
 
 % Frame 2.2: Thống kê bộ dữ liệu
 \begin{frame}{Thống kê bộ dữ liệu thử nghiệm}
@@ -247,8 +247,8 @@
             \toprule
             \textbf{Nguồn dữ liệu} & \textbf{Số lượng bài đăng} & \textbf{Tỷ lệ (\%)} \\
             \midrule
-            Mạng xã hội (Facebook)       & 2,961                      & 38.9\%              \\
-            Báo chí         & 4,644                      & 61.1\%              \\
+            Mạng xã hội (Facebook) & 2,961                      & 38.9\%              \\
+            Báo chí                & 4,644                      & 61.1\%              \\
             \midrule
             \textbf{Tổng cộng}     & \textbf{7,605}             & \textbf{100\%}      \\
             \bottomrule
@@ -319,7 +319,7 @@
 % Frame 3.2: Chi tiết Preprocessing & Embedding
 \begin{frame}{Vector hóa và Làm sạch dữ liệu}
     Trước khi đưa vào mô hình, dữ liệu trải qua quy trình làm sạch nghiêm ngặt:
-    
+
     \begin{columns}
         \column{0.6\textwidth}
         \textbf{1. Denoising (Lọc nhiễu nguồn):}
@@ -338,12 +338,12 @@
         \column{0.4\textwidth}
         \begin{center}
             \fbox{\parbox{0.9\linewidth}{\small
-            \textbf{Input:} "(VTV) Bão Yagi đổ bộ..."\\
-            $\downarrow$\\
-            \textbf{Clean:} "Bão Yagi đổ bộ..."\\
-            $\downarrow$\\
-            \textbf{Vector:} $[0.12, -0.54, ..., 0.08]$
-            }}
+                    \textbf{Input:} "(VTV) Bão Yagi đổ bộ..."\\
+                    $\downarrow$\\
+                    \textbf{Clean:} "Bão Yagi đổ bộ..."\\
+                    $\downarrow$\\
+                    \textbf{Vector:} $[0.12, -0.54, ..., 0.08]$
+                }}
         \end{center}
     \end{columns}
 \end{frame}
@@ -355,16 +355,16 @@
 % Frame 3.3a: Cơ sở toán học - Phần 1 (Tạo tâm)
 \begin{frame}{Thuật toán SAHC: Mô hình Toán học (1/2)}
     Thuật toán hoạt động trên không gian vector $\mathbb{R}^{d}$ ($d=768$ với mô hình MPNet).
-    
+
     \begin{block}{Bước 1: News Centroid Calculation (Tạo mỏ neo tin tức)}
         Mục tiêu là tạo ra một đại diện duy nhất (Vector tâm) cho mỗi sự kiện đã được xác thực trên báo chí.
-        
+
         Với cụm tin tức $C_k$ gồm $n$ bài viết $\{x_1, x_2, ..., x_n\}$, vector tâm $\mathbf{\mu}_k$ được tính bằng trung bình cộng các vector thành phần:
-        
+
         \begin{equation}
             \mathbf{\mu}_k = \frac{1}{|C_k|} \sum_{i=1}^{|C_k|} \mathbf{v}(x_i)
         \end{equation}
-        
+
         \vspace{0.2cm}
         \textit{\small(Trong đó $\mathbf{v}(x)$ là hàm embedding chuyển văn bản thành vector)}
     \end{block}
@@ -376,20 +376,20 @@
 
     \begin{block}{Bước 2: Social Attachment Decision (Quyết định gắn kết)}
         Với mỗi bài viết mạng xã hội $s_j$, ta tính độ tương đồng Cosine với tâm cụm News $\mathbf{\mu}_k$:
-        
+
         \begin{equation}
             \text{sim}(s_j, \mathbf{\mu}_k) = \frac{s_j \cdot \mathbf{\mu}_k}{\|s_j\| \|\mathbf{\mu}_k\|}
         \end{equation}
 
         \textbf{Hàm quyết định gán nhãn (Decision Function):}
         $$
-        \text{Label}(s_j) = 
-        \begin{cases} 
-        k^* & \text{nếu } \max_k(\text{sim}(s_j, \mathbf{\mu}_k)) \geq \tau \\
-        \text{Unassigned} & \text{nếu } \forall k, \text{sim} < \tau
-        \end{cases}
+            \text{Label}(s_j) =
+            \begin{cases}
+                k^*               & \text{nếu } \max_k(\text{sim}(s_j, \mathbf{\mu}_k)) \geq \tau \\
+                \text{Unassigned} & \text{nếu } \forall k, \text{sim} < \tau
+            \end{cases}
         $$
-        
+
         \vspace{0.2cm}
         \textit{\small(Với ngưỡng thực nghiệm $\tau = 0.65$ giúp lọc bỏ nhiễu tin rác)}
     \end{block}
@@ -406,7 +406,7 @@
         \end{itemize}
 
         \textbf{Bước 2 (Social Input):} Bài viết $s_{new}$ = \textit{"Bão số 3 làm gió giật kinh khủng quá mn ơi, bay cả mái tôn rồi"}.
-        
+
         \textbf{Bước 3 (Matching):}
         \begin{itemize}
             \item Mặc dù không có từ "Yagi", nhưng vector của "Bão số 3" và "Gió giật" nằm gần vector "Bão Yagi" trong không gian ngữ nghĩa.
@@ -421,23 +421,23 @@
 
 % Frame 3.5: Chấm điểm xu hướng (Trend Scoring) \begin{frame}{Thuật toán Chấm điểm Xu hướng (Multi-factor Scoring)} Hệ thống xếp hạng mức độ "Hot" của sự kiện dựa trên mô hình tổng hợp đa nguồn (Multi-source Weighted Scoring).
 \begin{frame}{Thuật toán Chấm điểm Xu hướng}
-\begin{block}{Công thức tính điểm Hot (G-Score)}
-    Điểm xu hướng $S_{trend}$ được tính bằng tổng trọng số của 3 thành phần:
-    
-    \begin{equation}
-        S_{trend} = \alpha \cdot N_{score} + \beta \cdot F_{score} + \gamma \cdot G_{score}
-    \end{equation}
-    
-    \textit{Trong đó:}
-    \begin{itemize}
-        \item $N_{score}$ (News Volume): Tần suất xuất hiện trên báo chí (Normalized).
-        \item $F_{score}$ (Social Interaction): Tổng lượng like, share, comment (Log-scale để giảm ảnh hưởng của outlier).
-        \item $G_{score}$ (Google Search): Chỉ số quan tâm tìm kiếm (0-100).
-        \item $\alpha, \beta, \gamma$: Các trọng số thực nghiệm (Ví dụ: 0.3, 0.5, 0.2).
-    \end{itemize}
-\end{block}
+    \begin{block}{Công thức tính điểm Hot (G-Score)}
+        Điểm xu hướng $S_{trend}$ được tính bằng tổng trọng số của 3 thành phần:
 
-\textbf{Ứng dụng:} Chỉ những cụm có $S_{trend} > Threshold$ mới được đẩy lên Dashboard và gửi cảnh báo.
+        \begin{equation}
+            S_{trend} = \alpha \cdot N_{score} + \beta \cdot F_{score} + \gamma \cdot G_{score}
+        \end{equation}
+
+        \textit{Trong đó:}
+        \begin{itemize}
+            \item $N_{score}$ (News Volume): Tần suất xuất hiện trên báo chí (Normalized).
+            \item $F_{score}$ (Social Interaction): Tổng lượng like, share, comment (Log-scale để giảm ảnh hưởng của outlier).
+            \item $G_{score}$ (Google Search): Chỉ số quan tâm tìm kiếm (0-100).
+            \item $\alpha, \beta, \gamma$: Các trọng số thực nghiệm (Ví dụ: 0.3, 0.5, 0.2).
+        \end{itemize}
+    \end{block}
+
+    \textbf{Ứng dụng:} Chỉ những cụm có $S_{trend} > Threshold$ mới được đẩy lên Dashboard và gửi cảnh báo.
 
 \end{frame}
 
@@ -449,19 +449,19 @@
             \item \textbf{Task:} Phân loại chuỗi (Sequence Classification) vào 3 nhãn: \textcolor{green}{Positive}, \textcolor{red}{Negative}, \textcolor{gray}{Neutral}.
         \end{itemize}
     \end{block}
-    
+
     \textbf{Công thức xác suất (Softmax Probability):}
     Với vector đại diện văn bản $h_{CLS}$ từ tầng cuối cùng của PhoBERT, xác suất của nhãn $k$ được tính:
-    
+
     \begin{equation}
         P(y=k | x) = \text{softmax}(W \cdot h_{CLS} + b)_k = \frac{e^{z_k}}{\sum_{j=1}^{C} e^{z_j}}
     \end{equation}
-    
+
     \begin{itemize}
         \item Hệ thống tính \textbf{Average Sentiment Score} cho cả cụm bằng cách trung bình hóa điểm số của top 20 bài viết tiêu biểu nhất.
     \end{itemize}
-    
-    \end{frame}
+
+\end{frame}
 %============================================================
 % CHI TIẾT LLM & TAXONOMY (Đã tách thành 2 frame)
 %============================================================
@@ -525,43 +525,43 @@
 \begin{frame}
     \frametitle{Tổng quan quy trình (Pipeline Overview)}
     Hệ thống vận hành theo luồng xử lý dữ liệu lớn thời gian thực (Big Data Streaming Pipeline):
-    
+
     \begin{center}
-    \resizebox{0.85\textwidth}{!}{%
-    \begin{tikzpicture}[
-        node distance=0.6cm and 0.4cm,
-        process/.style={rectangle, draw=blue!60, fill=blue!5, very thick, minimum size=6mm, rounded corners=3mm, font=\footnotesize\bfseries, align=center},
-        io/.style={trapezium, trapezium left angle=70, trapezium right angle=110, draw=orange!60, fill=orange!10, thick, minimum width=1.5cm, font=\footnotesize, align=center},
-        storage/.style={cylinder, draw=gray!60, fill=gray!10, shape border rotate=90, aspect=0.25, font=\footnotesize, align=center},
-        arrow/.style={thick, ->, >=stealth, color=gray!80}
-    ]
+        \resizebox{0.85\textwidth}{!}{%
+            \begin{tikzpicture}[
+                    node distance=0.6cm and 0.4cm,
+                    process/.style={rectangle, draw=blue!60, fill=blue!5, very thick, minimum size=6mm, rounded corners=3mm, font=\footnotesize\bfseries, align=center},
+                    io/.style={trapezium, trapezium left angle=70, trapezium right angle=110, draw=orange!60, fill=orange!10, thick, minimum width=1.5cm, font=\footnotesize, align=center},
+                    storage/.style={cylinder, draw=gray!60, fill=gray!10, shape border rotate=90, aspect=0.25, font=\footnotesize, align=center},
+                    arrow/.style={thick, ->, >=stealth, color=gray!80}
+                ]
 
-    % Nodes
-    \node (source) [io] {Multi-Source\\Crawlers\\(News \& Social)};
-    \node (kafka) [process, right=of source, fill=orange!20] {Kafka\\Message Queue};
-    \node (spark) [process, right=of kafka, fill=green!10, draw=green!60] {Spark Streaming\\(Micro-batch)};
-    
-    \node (nlp) [process, below=of spark] {Core NLP Module\\(Embedding + Cleaning)};
-    \node (sahc) [process, below=of nlp] {SAHC Clustering\\(Algorithm)};
-    
-    \node (llm) [process, left=of sahc, fill=purple!10, draw=purple!60] {LLM Refinement\\(Gemini + Taxonomy)};
-    
-    \node (db) [storage, left=of llm] {PostgreSQL\\Database};
-    \node (dash) [process, above=of db] {Streamlit\\Dashboard};
+                % Nodes
+                \node (source) [io] {Multi-Source\\Crawlers\\(News \& Social)};
+                \node (kafka) [process, right=of source, fill=orange!20] {Kafka\\Message Queue};
+                \node (spark) [process, right=of kafka, fill=green!10, draw=green!60] {Spark Streaming\\(Micro-batch)};
 
-    % Arrows
-    \draw [arrow] (source) -- (kafka);
-    \draw [arrow] (kafka) -- (spark);
-    \draw [arrow] (spark) -- (nlp);
-    \draw [arrow] (nlp) -- (sahc);
-    \draw [arrow] (sahc) -- (llm);
-    \draw [arrow] (llm) -- (db);
-    \draw [arrow] (db) -- (dash);
+                \node (nlp) [process, below=of spark] {Core NLP Module\\(Embedding + Cleaning)};
+                \node (sahc) [process, below=of nlp] {SAHC Clustering\\(Algorithm)};
 
-    \end{tikzpicture}
-    }
+                \node (llm) [process, left=of sahc, fill=purple!10, draw=purple!60] {LLM Refinement\\(Gemini + Taxonomy)};
+
+                \node (db) [storage, left=of llm] {PostgreSQL\\Database};
+                \node (dash) [process, above=of db] {Streamlit\\Dashboard};
+
+                % Arrows
+                \draw [arrow] (source) -- (kafka);
+                \draw [arrow] (kafka) -- (spark);
+                \draw [arrow] (spark) -- (nlp);
+                \draw [arrow] (nlp) -- (sahc);
+                \draw [arrow] (sahc) -- (llm);
+                \draw [arrow] (llm) -- (db);
+                \draw [arrow] (db) -- (dash);
+
+            \end{tikzpicture}
+        }
     \end{center}
-    
+
     \vspace{0.1cm}
     \begin{itemize} \small
         \item \textbf{1. Ingestion:} Kafka tiếp nhận luồng dữ liệu thô (Raw Stream).
@@ -576,23 +576,23 @@
 
     \begin{itemize}
         \item \textbf{Data Producers:}
-        \begin{itemize}
-            \item Các Crawlers (News) và API Collectors (Social) hoạt động đa luồng.
-            \item Dữ liệu được chuẩn hóa JSON và đẩy vào \textbf{Kafka Topic} ('raw\_data').
-        \end{itemize}
-        
+              \begin{itemize}
+                  \item Các Crawlers (News) và API Collectors (Social) hoạt động đa luồng.
+                  \item Dữ liệu được chuẩn hóa JSON và đẩy vào \textbf{Kafka Topic} ('raw\_data').
+              \end{itemize}
+
         \item \textbf{Streaming Engine (Spark):}
-        \begin{itemize}
-            \item Subscribe vào Kafka topic.
-            \item Xử lý theo cơ chế \textbf{Micro-batch} (Chu kỳ 15 giây).
-            \item Đảm bảo tính nhất quán (Exactly-once semantics) và chịu lỗi (Fault-tolerance).
-        \end{itemize}
+              \begin{itemize}
+                  \item Subscribe vào Kafka topic.
+                  \item Xử lý theo cơ chế \textbf{Micro-batch} (Chu kỳ 15 giây).
+                  \item Đảm bảo tính nhất quán (Exactly-once semantics) và chịu lỗi (Fault-tolerance).
+              \end{itemize}
 
         \item \textbf{Serving Layer:}
-        \begin{itemize}
-            \item Kết quả phân tích (Trends, Score, Sentiment) được ghi vào \textbf{PostgreSQL}.
-            \item Dashboard (Streamlit) truy vấn trực tiếp từ Database để hiển thị độ trễ thấp.
-        \end{itemize}
+              \begin{itemize}
+                  \item Kết quả phân tích (Trends, Score, Sentiment) được ghi vào \textbf{PostgreSQL}.
+                  \item Dashboard (Streamlit) truy vấn trực tiếp từ Database để hiển thị độ trễ thấp.
+              \end{itemize}
     \end{itemize}
 \end{frame}
 
@@ -622,14 +622,14 @@
     \begin{itemize}
         \item \textbf{Batch Processing:} Gom nhóm các request gửi lên LLM (Gemini) để giảm số lượng API Call (Ví dụ: Xử lý 10 cụm/lần thay vì 1).
         \item \textbf{Early Filtering:}
-        \begin{itemize}
-            \item Loại bỏ các bài viết quá ngắn (< 20 ký tự) hoặc chứa từ khóa nhiễu (spam, quảng cáo) ngay tại nguồn input.
-            \item Giảm tải cho các bước Embedding và Clustering tốn kém tài nguyên.
-        \end{itemize}
+              \begin{itemize}
+                  \item Loại bỏ các bài viết quá ngắn (< 20 ký tự) hoặc chứa từ khóa nhiễu (spam, quảng cáo) ngay tại nguồn input.
+                  \item Giảm tải cho các bước Embedding và Clustering tốn kém tài nguyên.
+              \end{itemize}
         \item \textbf{Hybrid Search Indexing:}
-        \begin{itemize}
-            \item Sử dụng BM25 Indexing cho các từ khóa Trend để tăng tốc độ so khớp (Matching) thay vì chỉ dựa hoàn toàn vào Vector Search.
-        \end{itemize}
+              \begin{itemize}
+                  \item Sử dụng BM25 Indexing cho các từ khóa Trend để tăng tốc độ so khớp (Matching) thay vì chỉ dựa hoàn toàn vào Vector Search.
+              \end{itemize}
     \end{itemize}
 \end{frame}
 
@@ -644,17 +644,17 @@
 
     \begin{itemize}
         \item \textbf{1. Reranker Data (Contrastive Learning):}
-        \begin{itemize}
-            \item \textbf{Positive Pairs:} Các bài viết thuộc cùng một cụm (Cluster) được coi là cặp tích cực.
-            \item \textbf{Hard Negatives:} Ghép bài viết của cụm A với bài viết của cụm B (khác chủ đề nhưng có thể cùng từ khóa nhiễu) theo tỷ lệ 1:3.
-            \item \textit{Tổng mẫu:} ~15,000 cặp huấn luyện.
-        \end{itemize}
-        
+              \begin{itemize}
+                  \item \textbf{Positive Pairs:} Các bài viết thuộc cùng một cụm (Cluster) được coi là cặp tích cực.
+                  \item \textbf{Hard Negatives:} Ghép bài viết của cụm A với bài viết của cụm B (khác chủ đề nhưng có thể cùng từ khóa nhiễu) theo tỷ lệ 1:3.
+                  \item \textit{Tổng mẫu:} ~15,000 cặp huấn luyện.
+              \end{itemize}
+
         \item \textbf{2. Taxonomy Data (Distillation):}
-        \begin{itemize}
-            \item \textbf{Teacher:} Gemini Pro (LLM) gán nhãn T1-T7 cho 1,000 mẫu ngẫu nhiên.
-            \item \textbf{Student:} Finetune model \texttt{visobert} trên dữ liệu này để học cách phân loại nhanh (tốc độ gấp 50 lần LLM).
-        \end{itemize}
+              \begin{itemize}
+                  \item \textbf{Teacher:} Gemini Pro (LLM) gán nhãn T1-T7 cho 1,000 mẫu ngẫu nhiên.
+                  \item \textbf{Student:} Finetune model \texttt{visobert} trên dữ liệu này để học cách phân loại nhanh (tốc độ gấp 50 lần LLM).
+              \end{itemize}
     \end{itemize}
 \end{frame}
 
@@ -666,11 +666,11 @@
         \begin{enumerate}
             \item \textbf{Input:} Tên cụm + 5 bài viết tiêu biểu (Sample Posts).
             \item \textbf{Criteria (Thang 1-5):}
-            \begin{itemize}
-                \item \textbf{Coherence (Độ nhất quán):} Các bài viết có cùng nội dung không?
-                \item \textbf{Relevance (Độ liên quan):} Tên cụm có phản ánh đúng nội dung không?
-                \item \textbf{Distinctiveness (Độ tách biệt):} Cụm này có bị trùng với cụm khác không?
-            \end{itemize}
+                  \begin{itemize}
+                      \item \textbf{Coherence (Độ nhất quán):} Các bài viết có cùng nội dung không?
+                      \item \textbf{Relevance (Độ liên quan):} Tên cụm có phản ánh đúng nội dung không?
+                      \item \textbf{Distinctiveness (Độ tách biệt):} Cụm này có bị trùng với cụm khác không?
+                  \end{itemize}
             \item \textbf{Output:} JSON Score + Lý do giải thích (Reasoning).
         \end{enumerate}
     \end{block}
@@ -684,36 +684,119 @@
 %============================================================
 \section{Kết quả thực nghiệm}
 
+\begin{frame}{Các Chỉ số Đánh giá Clustering được sử dụng}
+
+    \textbf{Bài toán:} Event-based clustering trên văn bản ngắn, nhiễu cao, nhãn không hoàn hảo.
+
+    \vspace{0.2cm}
+
+    \textbf{Nhóm Metric theo mục tiêu:}
+
+    \begin{itemize}
+        \item \textbf{External Consistency Metrics (so với nhãn tham chiếu):}
+              \begin{itemize}
+                  \item \textbf{NMI (Normalized Mutual Information):} đo mức độ phù hợp tổng thể giữa cluster và nhãn, ổn định khi số cluster khác nhau.
+                  \item \textbf{BCubed-F1:} đánh giá độ chính xác và đầy đủ \emph{ở mức từng điểm dữ liệu}, phù hợp với clustering mất cân bằng và nhiễu.
+              \end{itemize}
+
+        \item \textbf{Internal Semantic Quality Metrics (không cần nhãn):}
+              \begin{itemize}
+                  \item \textbf{Entropy:} đo độ thuần chủ đề trong mỗi cluster (thấp hơn là tốt).
+                  \item \textbf{NPMI:} đo mức độ đồng xuất hiện từ vựng trong cluster; trong văn bản ngắn, giá trị âm là phổ biến.
+              \end{itemize}
+
+        \item \textbf{Robustness / Practical Metric:}
+              \begin{itemize}
+                  \item \textbf{Noise Rate:} tỷ lệ bài viết bị loại bỏ như nhiễu, phản ánh độ khắt khe của hệ thống.
+              \end{itemize}
+    \end{itemize}
+
+    \vspace{0.15cm}
+
+    \textbf{Lý do không sử dụng các metric phổ biến khác:}
+    \begin{itemize}
+        \item \textbf{Silhouette Score:} giả định cluster có hình học rõ ràng trong không gian vector — không phù hợp với embedding văn bản nhiễu.
+        \item \textbf{ARI:} nhạy với phân bố nhãn và số lượng cluster; với nhãn yếu hoặc gần ngẫu nhiên, ARI dễ về gần 0.
+    \end{itemize}
+
+    \vspace{0.1cm}
+    {\footnotesize
+        \textit{Chiến lược đánh giá:} Kết hợp metric có nhãn và không nhãn để phản ánh cả độ đúng sự kiện và chất lượng ngữ nghĩa.
+    }
+
+\end{frame}
+
 
 % Frame 6.1: So sánh các phiên bản (Experimental Results)
-\begin{frame}{So sánh Hiệu năng các mô hình (Model Comparison)}
-    Kết quả thực nghiệm trên 3 cấu hình khác nhau (Batch Evaluation):
+\begin{frame}{Đánh giá Hiệu năng Clustering (Evaluation Metrics)}
+
+    \textbf{Thiết lập:} Event-based clustering trên dữ liệu văn bản ngắn, nhiễu cao (social media).
+
+    \vspace{0.2cm}
 
     \begin{table}[]
         \centering
         \resizebox{0.95\textwidth}{!}{%
-        \begin{tabular}{l c c c}
-            \toprule
-            \textbf{Metrics} & \textbf{Baseline (Hybrid)} & \textbf{Generic Reranker (BGE)} & \textbf{Ours (Finetuned Reranker)} \\
-            \midrule
-            \textbf{NMI} ($\uparrow$)          & \textbf{0.54} & 0.23 (Poor) & \underline{0.52} (Comparable) \\
-            \textbf{BCubed F1} ($\uparrow$)    & \textbf{0.35} & 0.14 & 0.31 \\
-            \textbf{Purity} ($\uparrow$)       & \textbf{0.24} & 0.11 & 0.22 \\
-            \textbf{Noise Rate} (Filter \%)    & 59\%          & \alert{84\%} (Too Strict) & 57\% (Balanced) \\
-            \textbf{Entropy} ($\downarrow$)    & 4.85          & 6.81 & 5.02 \\
-            \bottomrule
-        \end{tabular}%
+            \begin{tabular}{l c c c c c}
+                \toprule
+                \textbf{Metric}
+                 & \textbf{Full LLM}
+                 & \textbf{Refined Trends}
+                 & \textbf{Sentiment-trained}
+                 & \textbf{Taxonomy-trained}
+                 & \textbf{Trained Both}      \\
+                \midrule
+                \textbf{NMI} ($\uparrow$)
+                 & \textbf{0.5978}
+                 & 0.5384
+                 & 0.5379
+                 & 0.5892
+                 & 0.5859                     \\
+                \textbf{BCubed-F1} ($\uparrow$)
+                 & \textbf{0.3821}
+                 & 0.3148
+                 & 0.3358
+                 & 0.3777
+                 & 0.3558                     \\
+                \textbf{Entropy} ($\downarrow$)
+                 & \textbf{4.4178}
+                 & 4.9137
+                 & 4.9075
+                 & 4.4860
+                 & 4.5062                     \\
+                \textbf{NPMI} ($\uparrow^\ast$)
+                 & -0.2400
+                 & -0.2348
+                 & \textbf{-0.2262}
+                 & -0.2328
+                 & -0.2353                    \\
+                \textbf{Noise Rate} (\%)
+                 & 51.39
+                 & 54.58
+                 & 56.12
+                 & 53.28
+                 & \textbf{52.78}             \\
+                \bottomrule
+            \end{tabular}%
         }
-        \caption{So sánh giữa Baseline, Reranker phổ biến (BGE-M3) và Reranker tinh chỉnh}
+        \caption{So sánh các metric đánh giá clustering (Batch Evaluation)}
     \end{table}
 
-    \vspace{0.2cm}
-    \textbf{Nhận xét (Insights):}
+    \vspace{0.15cm}
+
+    \textbf{Nhận xét chính:}
     \begin{itemize}
-        \item \textbf{Generic Reranker (BGE)} hoạt động kém trên dữ liệu tiếng Việt đặc thù (Social Slang), lọc bỏ quá nhiều bài viết hợp lệ (\textbf{84\% Noise}).
-        \item \textbf{Finetuned Reranker} phục hồi được hiệu năng gần tương đương Baseline nhưng có khả năng mở rộng tốt hơn cho các tác vụ Ranking sâu hơn.
-        \item \textbf{Entropy \& PMI:} Các chỉ số này cho thấy độ gắn kết chủ đề ổn định mặc dù dữ liệu rất nhiễu.
+        \item \textbf{BCubed-F1 và NMI} cho thấy các mô hình đều tạo được cluster có ý nghĩa ngữ nghĩa; cấu hình \textbf{Full LLM} đạt hiệu năng cao nhất.
+        \item \textbf{Entropy thấp hơn} phản ánh mức độ thuần (semantic purity) tốt hơn của các cluster.
+        \item \textbf{NPMI âm là expected} trong event-based clustering trên văn bản ngắn; giá trị \textbf{ít âm hơn} cho thấy mức gắn kết từ vựng tốt hơn.
+        \item \textbf{Noise Rate} quanh 50\% phản ánh đúng bản chất dữ liệu mạng xã hội nhiều nhiễu.
     \end{itemize}
+
+    \vspace{0.1cm}
+    {\footnotesize
+        $\uparrow^\ast$ : Với NPMI, giá trị \textit{ít âm hơn} được xem là tốt hơn trong so sánh tương đối.
+    }
+
 \end{frame}
 
 
@@ -724,17 +807,17 @@
     \begin{table}[]
         \centering
         \resizebox{0.8\textwidth}{!}{%
-        \begin{tabular}{l c c}
-            \toprule
-            \textbf{Chỉ số (Metric)} & \textbf{Giá trị đạt được} & \textbf{Ý nghĩa}                               \\
-            \midrule
-            \textbf{NMI}             & \alert{0.54}              & Thông tin tương hỗ so với nhãn gốc (Tốt > 0.5) \\
-            \textbf{BCubed F1}       & \alert{0.35}              & Trung bình điều hòa giữa Precision và Recall   \\
-            \textbf{Purity}          & \alert{0.25}              & Độ tinh khiết của cụm (tỷ lệ đúng nhãn)        \\
-            \textbf{Entropy}         & \alert{4.85}              & Độ hỗn loạn trong cụm (Thấp là tốt)            \\
-            \textbf{PMI Coherence}   & -0.61                     & Độ gắn kết ngữ nghĩa giữa các từ trong topic   \\
-            \bottomrule
-        \end{tabular}%
+            \begin{tabular}{l c c}
+                \toprule
+                \textbf{Chỉ số (Metric)} & \textbf{Giá trị đạt được} & \textbf{Ý nghĩa}                               \\
+                \midrule
+                \textbf{NMI}             & \alert{0.54}              & Thông tin tương hỗ so với nhãn gốc (Tốt > 0.5) \\
+                \textbf{BCubed F1}       & \alert{0.35}              & Trung bình điều hòa giữa Precision và Recall   \\
+                \textbf{Purity}          & \alert{0.25}              & Độ tinh khiết của cụm (tỷ lệ đúng nhãn)        \\
+                \textbf{Entropy}         & \alert{4.85}              & Độ hỗn loạn trong cụm (Thấp là tốt)            \\
+                \textbf{PMI Coherence}   & -0.61                     & Độ gắn kết ngữ nghĩa giữa các từ trong topic   \\
+                \bottomrule
+            \end{tabular}%
         }
         \caption{Hiệu năng phân cụm trên tập Mini-Ground Truth (300 mẫu)}
     \end{table}
@@ -793,10 +876,10 @@
         % [LƯU Ý] Bạn cần thay 'images/dashboard_ui.png' bằng đường dẫn file ảnh chụp màn hình thực tế của bạn
         % Tỷ lệ width=0.95\textwidth giúp ảnh to rõ, tràn slide
         % \includegraphics[width=0.95\textwidth]{images/dashboard_ui.png}
-        
+
         % Nếu chưa có ảnh, dùng lệnh này để tạo khung giữ chỗ (Placeholder box)
         \framebox(300,180){[PLACEHOLDER: ẢNH CHỤP MÀN HÌNH DASHBOARD]}
-        
+
         \caption{\small Giao diện theo dõi xu hướng đa luồng (Federated Stream \& Gravity Map)}
     \end{figure}
 \end{frame}
