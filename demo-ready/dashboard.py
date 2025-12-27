@@ -6,6 +6,7 @@ import json
 import plotly.express as px
 from datetime import datetime
 from sqlalchemy import create_engine, text
+import math
 
 DB_URL = "postgresql://user:password@localhost:5432/trend_db"
 
@@ -266,18 +267,29 @@ with tab_intel:
         
         target_df = df_full if show_all else identified_df
         
-        # Add Status Filter
+        # Prepare filtered data for counts
+        summaries = target_df['summary'].fillna('')
+        analyzed_mask = (summaries.str.len() > 20) & (summaries != "Waiting for analysis...")
+        count_all = len(target_df)
+        count_analyzed = analyzed_mask.sum()
+        count_pending = count_all - count_analyzed
+
+        # Add Status Filter with Counts
         status_filter = st.radio(
             "Lọc theo trạng thái:",
-            options=["Tất cả", "✨ Đã xử lý", "🔍 Chờ xử lý"],
+            options=[
+                f"Tất cả ({count_all})", 
+                f"✨ Đã xử lý ({count_analyzed})", 
+                f"🔍 Chờ xử lý ({count_pending})"
+            ],
             horizontal=True,
             index=0
         )
         
-        if status_filter == "✨ Đã xử lý":
-            target_df = target_df[target_df['summary'].str.len() > 20]
-        elif status_filter == "🔍 Chờ xử lý":
-            target_df = target_df[~(target_df['summary'].str.len() > 20)]
+        if "Đã xử lý" in status_filter:
+            target_df = target_df[analyzed_mask]
+        elif "Chờ xử lý" in status_filter:
+            target_df = target_df[~analyzed_mask]
         
         if not target_df.empty:
             # Create labels with status icons
@@ -333,21 +345,49 @@ with tab_intel:
             
             st.markdown("#### 📰 Các bài viết liên quan")
             raw_posts = trend_data.get('representative_posts', '[]')
-            posts = json.loads(raw_posts) if isinstance(raw_posts, str) else (raw_posts or [])
+            all_posts = json.loads(raw_posts) if isinstance(raw_posts, str) else (raw_posts or [])
             
-            if posts:
-                count_shown = 0
-                for post in posts:
+            # 1. Filter all posts by similarity threshold
+            filtered_posts = []
+            if all_posts:
+                for post in all_posts:
                     sim_score = post.get('similarity', post.get('score', 0))
-                    # Filter by Similarity Threshold
-                    if sim_score < sim_threshold:
-                        continue
-                        
-                    count_shown += 1
-                    if count_shown > 10: break
+                    if sim_score >= sim_threshold:
+                        filtered_posts.append(post)
 
+            # 2. Pagination Logic
+            PAGE_SIZE = 5
+            total_items = len(filtered_posts)
+            
+            if total_items > 0:
+                total_pages = math.ceil(total_items / PAGE_SIZE)
+                
+                # Use a unique key for the page selection based on the selected trend
+                page_key = f"page_{selected_trend.replace(' ', '_')}"
+                if page_key not in st.session_state:
+                    st.session_state[page_key] = 1
+                
+                # Page selection UI
+                p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
+                with p_col2:
+                    current_page = st.number_input(
+                        f"Trang (Tổng {total_pages})", 
+                        min_value=1, 
+                        max_value=total_pages, 
+                        value=st.session_state[page_key],
+                        key=page_key
+                    )
+                
+                st.caption(f"Hiển thị {min((current_page-1)*PAGE_SIZE + 1, total_items)} - {min(current_page*PAGE_SIZE, total_items)} / {total_items} bài viết")
+
+                # 3. Display current page
+                start_idx = (current_page - 1) * PAGE_SIZE
+                end_idx = start_idx + PAGE_SIZE
+                
+                for post in filtered_posts[start_idx:end_idx]:
                     source = normalize_source(post.get('source', 'Unknown'))
                     content = post.get('content', '')[:500]
+                    sim_score = post.get('similarity', post.get('score', 0))
                     sim_display = f"{float(sim_score):.2f}" if sim_score and float(sim_score) > 0 else "N/A"
                     time_str = str(post.get('time', ''))[:19]
                     border_color = '#3b82f6' if 'facebook' in source.lower() else '#f97316'
@@ -360,7 +400,10 @@ with tab_intel:
 <div style="margin-top: 10px; color: #e2e8f0; line-height: 1.5;">{content}...</div>
 </div>""", unsafe_allow_html=True)
             else:
-                st.warning("Không có bài viết nào.")
+                if not all_posts:
+                    st.warning("Không có bài viết nào trong cụm này.")
+                else:
+                    st.warning("Không có bài viết nào thỏa mãn ngưỡng tương đồng.")
     
     with col_right:
         st.subheader("📊 Thống kê")

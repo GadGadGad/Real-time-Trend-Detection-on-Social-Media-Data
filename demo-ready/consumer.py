@@ -20,12 +20,13 @@ MODEL_NAME = "dangvantuan/vietnamese-document-embedding"
 THRESHOLD = 0.75
 RERANK_THRESHOLD = -2.5 # Logit threshold from notebook
 MIN_CLUSTER_SIZE = 3
-CLUSTER_EPSILON = 0.05 # Loosened for discovery
+CLUSTER_EPSILON = 0.5 # Adjusted for normalized embeddings
+COHERENCE_THRESHOLD = 0.75 # Must match matching THRESHOLD
 POSTGRES_URL = "postgresql://user:password@localhost:5432/trend_db"
 
 def calculate_realtime_score(g_vol, interactions, post_count):
     """Aligns with src.pipeline.trend_scoring heuristics"""
-    MAX_VOL = 1000000
+    MAX_VOL = 5010000
     g_score = (math.log10(g_vol + 1) / math.log10(MAX_VOL + 1)) * 100 if g_vol > 0 else 0
     g_score = min(100, g_score)
 
@@ -33,7 +34,7 @@ def calculate_realtime_score(g_vol, interactions, post_count):
     f_score = (math.log10(interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
     f_score = min(100, f_score)
 
-    MAX_ARTICLES = 5
+    MAX_ARTICLES = 20
     n_score = (math.log10(post_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if post_count > 0 else 0
     n_score = min(100, n_score)
 
@@ -136,10 +137,15 @@ def load_active_trends():
                     try: kws = json.loads(row[5])
                     except: pass
                     
+                # Normalize embedding from DB
+                emb = np.array(json.loads(row[2]))
+                norm = np.linalg.norm(emb)
+                if norm > 0: emb = emb / norm
+
                 trends.append({
                     "id": row[0],
                     "name": row[1],
-                    "embedding": np.array(json.loads(row[2])),
+                    "embedding": emb,
                     "post_count": row[3],
                     "trend_score": row[4],
                     "keywords": kws,
@@ -178,9 +184,12 @@ def process_stateful_batch(df, batch_id):
         
         # Compute only for missing
         texts_to_embed = pdf.loc[missing_mask, 'content'].tolist()
+        # Assign back and normalize
         new_embeddings = model.encode(texts_to_embed, show_progress_bar=False)
+        # Unit-normalize
+        norms = np.linalg.norm(new_embeddings, axis=1, keepdims=True)
+        new_embeddings = new_embeddings / np.where(norms > 0, norms, 1.0)
         
-        # Assign back
         pdf.loc[missing_mask, 'embedding'] = pd.Series(list(new_embeddings), index=pdf.loc[missing_mask].index)
         
     post_embeddings = np.array(pdf['embedding'].tolist())
@@ -336,7 +345,7 @@ def process_stateful_batch(df, batch_id):
                     "time": times[post_idx],
                     "similarity": match.get('similarity', 0.0)  # Include similarity score
                 }
-                updated_reps = [new_rep] + (current_reps or [])[:4]
+                updated_reps = [new_rep] + (current_reps or [])[:999]
                 
                 # Update memory state for reps so subsequent matches in same batch don't overwrite
                 t_state['representative_posts'] = updated_reps
@@ -389,15 +398,22 @@ def process_stateful_batch(df, batch_id):
                     cluster_sources = [sources[m] for m in member_indices]
                     
                     # Create New Trend (Simplified Naming)
-                    # [IMPROVED] Find closest to centroid logic
                     # 1. Compute Centroid
                     cluster_embs_array = np.array([post_embeddings[m] for m in member_indices])
                     centroid = np.mean(cluster_embs_array, axis=0).reshape(1, -1)
+                    # Normalize Centroid
+                    c_norm = np.linalg.norm(centroid)
+                    if c_norm > 0: centroid = centroid / c_norm
                     
-                    # 2. Find closest member
+                    # 2. COHERENCE CHECK: Filter out unrelated clusters
                     dists = cosine_similarity(cluster_embs_array, centroid).flatten() # Shape (N,)
-                    best_rep_idx = np.argmax(dists)
+                    mean_coherence = np.mean(dists)
                     
+                    if mean_coherence < COHERENCE_THRESHOLD:
+                        print(f"   ⚠️ Discarding incoherent cluster (Coherence: {mean_coherence:.2f} < {COHERENCE_THRESHOLD})")
+                        continue
+
+                    best_rep_idx = np.argmax(dists)
                     sample_content = cluster_contents[best_rep_idx]
                     
                     new_trend_name = "New: " + (sample_content[:40] + "..." if len(sample_content)>40 else sample_content)
@@ -416,22 +432,18 @@ def process_stateful_batch(df, batch_id):
                     
                     # Representative Posts JSON with Similarity to Centroid
                     rep_posts = []
-                    # Compute similarities for the rep candidates
-                    rep_embs = post_embeddings[member_indices[:3]]
-                    rep_sims = cosine_similarity(rep_embs, centroid).flatten()
+                    # Compute similarities for ALL members up to 1000
+                    all_member_embs = post_embeddings[member_indices[:1000]]
+                    all_member_sims = cosine_similarity(all_member_embs, centroid).flatten()
                     
-                    for k in range(min(3, len(member_indices))):
+                    for k in range(len(member_indices[:1000])):
                          idx = member_indices[k]
                          rep_posts.append({
                              "content": contents[idx],
                              "source": sources[idx],
                              "time": times[idx],
-                             "similarity": float(rep_sims[k])
+                             "similarity": float(all_member_sims[k])
                          })
-                    
-                    # Calculate Centroid
-                    centroid = np.mean(post_embeddings[member_indices], axis=0)
-                    centroid_json = json.dumps(centroid.tolist())
                     
                     # INSERT FULL SCHEMA
                     # Deduplication check
@@ -460,7 +472,7 @@ def process_stateful_batch(df, batch_id):
                         "sn": n_s,
                         "sf": f_s,
                         "now": datetime.now(),
-                        "emb": centroid_json,
+                        "emb": json.dumps(centroid.flatten().tolist()),
                         "summ": "Waiting for analysis...",
                         "cat": "Unclassified",
                         "sent": "Neutral",
@@ -468,7 +480,7 @@ def process_stateful_batch(df, batch_id):
                         "kws": json.dumps([], ensure_ascii=False)
                     })
                     new_trends += 1
-                    print(f"   🌟 DISCOVERED NEW TREND: {new_trend_name} (Size: {len(member_indices)})")
+                    print(f"   🌟 DISCOVERED NEW TREND: {new_trend_name} (Size: {len(member_indices)}, Coherence: {mean_coherence:.2f})")
                     
         except ImportError:
             print("   ⚠️ HDBSCAN missing.")

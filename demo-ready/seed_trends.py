@@ -183,7 +183,7 @@ def seed_trends(seeds=None, json_data=None):
                     summary, category, sentiment, keywords,
                     google_vol, interactions
                 )
-                VALUES (:name, :score, :vol, :vol, :rep, :type, :sn, :sf, :now, :now, :emb, :summ, :cat, :sent, :kws, :g_vol, :inter)
+                VALUES (:name, :score, :vol, 1, :rep, :type, :sn, :sf, :now, :now, :emb, :summ, :cat, :sent, :kws, :g_vol, :inter)
             """), params)
             count += 1
             console.print(f"   ✅ Seeded: [green]{t_name}[/green] (Vol: {volume})")

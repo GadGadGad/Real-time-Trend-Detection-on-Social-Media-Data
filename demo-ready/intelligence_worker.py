@@ -28,7 +28,7 @@ logger = logging.getLogger("IntelligenceWorker")
 import math
 def calculate_realtime_score(g_vol, interactions, post_count):
     """Aligns with src.pipeline.trend_scoring heuristics"""
-    MAX_VOL = 1000000
+    MAX_VOL = 5010000
     g_score = (math.log10(g_vol + 1) / math.log10(MAX_VOL + 1)) * 100 if g_vol > 0 else 0
     g_score = min(100, g_score)
 
@@ -36,7 +36,7 @@ def calculate_realtime_score(g_vol, interactions, post_count):
     f_score = (math.log10(interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
     f_score = min(100, f_score)
 
-    MAX_ARTICLES = 100
+    MAX_ARTICLES = 20
     n_score = (math.log10(post_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if post_count > 0 else 0
     n_score = min(100, n_score)
 
@@ -125,7 +125,7 @@ def update_trend_analysis(trend_id, analysis_result):
                         merged_reps.append(r)
                         seen_content.add(txt)
                 
-                merged_reps = merged_reps[:10] # Limit reps
+                merged_reps = merged_reps[:1000] # Limit reps
                 
                 # Recalculate score
                 new_score, g_s, f_s, n_s = calculate_realtime_score(merged_gvol, merged_inter, merged_pc)
