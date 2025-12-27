@@ -68,8 +68,39 @@ st.markdown("""
         margin-bottom: 8px;
     }
     .topic-tag.analyzed {
-        background: #7c3aed; /* Violet for Analyzed */
-        box-shadow: 0 0 10px rgba(124, 58, 237, 0.5);
+        background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+        box-shadow: 0 0 15px rgba(124, 58, 237, 0.4);
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+    .analyzed-card {
+        border-left: 8px solid #7c3aed !important;
+        background: linear-gradient(to right, #1e293b, #251052) !important;
+        box-shadow: 0 0 25px rgba(124, 58, 237, 0.15) inset;
+    }
+    .status-badge {
+        font-size: 0.65rem;
+        padding: 3px 8px;
+        border-radius: 20px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        margin-left: 10px;
+        text-transform: uppercase;
+    }
+    .badge-verified {
+        background: #7c3aed;
+        color: white;
+        border: 1px solid #a78bfa;
+    }
+    .badge-scanning {
+        background: #334155;
+        color: #94a3b8;
+        border: 1px solid #475569;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
     }
     .noise-tag { background: #64748b; }
     
@@ -184,21 +215,31 @@ with tab_live:
         is_analyzed = summary and len(str(summary)) > 20 and str(summary) != "Waiting for analysis..."
         
         tag_class = "topic-tag"
-        if is_noise: tag_class += " noise-tag"
-        elif is_analyzed: tag_class += " analyzed"
+        card_extra_cls = ""
+        status_html = ""
         
-        icon = "✅ " if is_analyzed else ""
+        if is_noise: 
+            tag_class += " noise-tag"
+        elif is_analyzed: 
+            tag_class += " analyzed"
+            card_extra_cls = " analyzed-card"
+            status_html = f'<span class="status-badge badge-verified">✨ AI VERIFIED</span>'
+        else:
+            status_html = f'<span class="status-badge badge-scanning">🔍 SCANNING...</span>'
+        
+        icon = "📌 " if not is_analyzed and not is_noise else ""
 
-        st.markdown(f"""
-        <div class="live-feed-item {s_cls}{type_cls}">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <span class="{tag_class}">{icon}{topic}</span>
-                <span class="time-stamp">ĐIỂM: {score:.1f}</span>
-            </div>
-            <div><span class="source-tag {s_tag_cls}">{s_name}</span></div>
-            <div class="post-content">{main_post['content'][:250]}...</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"""<div class="live-feed-item {s_cls}{type_cls}{card_extra_cls}">
+<div style="display: flex; justify-content: space-between; align-items: flex-start;">
+<div>
+<span class="{tag_class}">{icon}{topic}</span>
+{status_html}
+</div>
+<span class="time-stamp">ĐIỂM: {score:.1f}</span>
+</div>
+<div><span class="source-tag {s_tag_cls}">{s_name}</span></div>
+<div class="post-content">{main_post['content'][:250]}...</div>
+</div>""", unsafe_allow_html=True)
 
 # --- TAB 2: GRAVITY MAP ---
 with tab_map:
@@ -224,14 +265,38 @@ with tab_intel:
         show_all = st.checkbox("Xem cả các diễn biến mới (Cụm tin chưa đạt ngưỡng)")
         
         target_df = df_full if show_all else identified_df
-        trend_names = target_df['trend_name'].unique().tolist()
         
-        if trend_names:
-            selected_trend = st.selectbox(
+        # Add Status Filter
+        status_filter = st.radio(
+            "Lọc theo trạng thái:",
+            options=["Tất cả", "✨ Đã xử lý", "🔍 Chờ xử lý"],
+            horizontal=True,
+            index=0
+        )
+        
+        if status_filter == "✨ Đã xử lý":
+            target_df = target_df[target_df['summary'].str.len() > 20]
+        elif status_filter == "🔍 Chờ xử lý":
+            target_df = target_df[~(target_df['summary'].str.len() > 20)]
+        
+        if not target_df.empty:
+            # Create labels with status icons
+            def get_selector_label(row):
+                summary = row.get('summary')
+                is_analyzed = summary and len(str(summary)) > 20 and str(summary) != "Waiting for analysis..."
+                icon = "✨" if is_analyzed else "🔍"
+                return f"{icon} {row['trend_name']}"
+
+            # We need to keep track of the mapping from label to original name
+            label_to_name = {get_selector_label(r): r['trend_name'] for _, r in target_df.iterrows()}
+            options = list(label_to_name.keys())
+            
+            selected_label = st.selectbox(
                 "Chọn sự kiện hoặc cụm tin:",
-                options=trend_names,
+                options=options,
                 index=0
             )
+            selected_trend = label_to_name[selected_label]
             
             trend_data = df_full[df_full['trend_name'] == selected_trend].iloc[0]
             score = trend_data['trend_score']
@@ -287,15 +352,13 @@ with tab_intel:
                     time_str = str(post.get('time', ''))[:19]
                     border_color = '#3b82f6' if 'facebook' in source.lower() else '#f97316'
                     
-                    st.markdown(f"""
-                    <div style="background: #1e293b; padding: 15px; margin: 10px 0; border-radius: 12px; border-left: 5px solid {border_color};">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #94a3b8; font-weight: 600;">
-                            <span>{source} • {time_str}</span>
-                            <span>Độ tương đồng: {sim_display}</span>
-                        </div>
-                        <div style="margin-top: 10px; color: #e2e8f0; line-height: 1.5;">{content}...</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"""<div style="background: #1e293b; padding: 15px; margin: 10px 0; border-radius: 12px; border-left: 5px solid {border_color};">
+<div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #94a3b8; font-weight: 600;">
+<span>{source} • {time_str}</span>
+<span>Độ tương đồng: {sim_display}</span>
+</div>
+<div style="margin-top: 10px; color: #e2e8f0; line-height: 1.5;">{content}...</div>
+</div>""", unsafe_allow_html=True)
             else:
                 st.warning("Không có bài viết nào.")
     
