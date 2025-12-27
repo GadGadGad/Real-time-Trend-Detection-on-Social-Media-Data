@@ -403,10 +403,10 @@ class LLMRefiner:
             chunk_str = "\n".join([f"- {t}" for t in chunk])
             
             prompt = f"""
-                Role: Senior News Editor.
+                Vai trò: Biên tập viên Tin tức Cao cấp.
 
-                Task:
-                From the list below, identify headlines that refer to the EXACT SAME real-world event.
+                Nhiệm vụ:
+                Từ danh sách dưới đây, hãy xác định các tiêu đề cùng đề cập đến MỘT sự kiện thực tế duy nhất.
 
                 Hai tiêu đề là CÙNG MỘT SỰ KIỆN khi có ĐÚNG 3 yếu tố:
                 1. CÙNG ĐỊA ĐIỂM: "Hà Nội" vs "Hà Nội" ✓ | "Hà Nội" vs "TP.HCM" ✗
@@ -417,18 +417,18 @@ class LLMRefiner:
                 - "Tai nạn Quận 1" ≠ "Tai nạn Quận 7" (Khác địa điểm)
                 - "Giá vàng tăng hôm nay" ≠ "Giá vàng tuần trước" (Khác thời gian)
                 - "Man Utd vs Liverpool" ≠ "Arsenal vs Chelsea" (Khác đội bóng)
-                - "Bão Yagi" = "Cơn bão số 3 Yagi" (Cùng thực thể - OK to merge)
+                - "Bão Yagi" = "Cơn bão số 3 Yagi" (Cùng thực thể - OK để gộp)
 
-                STRICT OUTPUT RULES:
-                - Canonical title MUST be an EXACT COPY of one of the input lines.
-                - DO NOT create new titles.
-                - DO NOT merge if unsure.
-                - Return JSON object: {{ "Original Title": "Canonical Title" }}
+                QUY TẮC ĐẦU RA (NGHIÊM NGẶT):
+                - Tiêu đề chuẩn (Canonical Title) PHẢI là bản QUAY LẠI CHÍNH XÁC của một trong các dòng đầu vào.
+                - KHÔNG tự tạo tiêu đề mới.
+                - KHÔNG gộp nếu không chắc chắn.
+                - Trả về đối tượng JSON: {{ "Tiêu đề gốc": "Tiêu đề chuẩn" }}
 
-                Input headlines:
+                Danh sách tiêu đề đầu vào:
                 {chunk_str}
 
-                Output format (JSON object ONLY):
+                Định dạng đầu ra (Chỉ JSON object):
             """
             all_prompts.append(prompt)
             
@@ -559,28 +559,28 @@ class LLMRefiner:
         for i in track(range(0, len(trend_list), chunk_size), description="[cyan]Building filter prompts...[/cyan]", total=total_chunks):
             chunk = trend_list[i:i+chunk_size]
             prompt = f"""
-                Role: Classifier for Google Trends (Vietnam).
-                Task: Return a list of keywords that are NOISE or GENERIC.
+                Vai trò: Bộ lọc phân loại cho Google Trends (Việt Nam).
+                Nhiệm vụ: Trả về danh sách các từ khóa là RÁC (NOISE) hoặc CHUNG CHUNG (GENERIC).
 
-                DEFINITION OF NOISE (Remove these):
-                1. Weather (Thời tiết): "thời tiết hôm nay", "dự báo mưa", "aqi hà nội" (TRỪ bão có tên như "Bão Yagi")
-                2. Utilities: "giá vàng", "giá xăng", "lịch âm", "xổ số", "xsmn", "vietlott"
-                3. Betting/Gambling: "bet88", "kubet", "soi cầu", "tỷ lệ cược"
-                4. Generic Tech: "facebook", "gmail", "google", "login", "wifi"
-                5. Vague/Meaningless: "hình ảnh", "video", "clip", "full", "hd", "review", "tin tức"
-                6. Broad Concepts: "tình yêu", "cuộc sống", "học tập", "công việc"
+                ĐỊNH NGHĨA RÁC (Cần loại bỏ):
+                1. Thời tiết (Weather): "thời tiết hôm nay", "dự báo mưa", "aqi hà nội" (TRỪ bão có tên như "Bão Yagi")
+                2. Tiện ích/Dịch vụ: "giá vàng", "giá xăng", "lịch âm", "xổ số", "xsmn", "vietlott"
+                3. Cá cược/Cờ bạc: "bet88", "kubet", "soi cầu", "tỷ lệ cược"
+                4. Công nghệ chung chung: "facebook", "gmail", "google", "login", "wifi"
+                5. Mơ hồ/Vô nghĩa: "hình ảnh", "video", "clip", "full", "hd", "review", "tin tức"
+                6. Khái niệm quá rộng: "tình yêu", "cuộc sống", "học tập", "công việc"
 
-                DEFINITION OF EVENTS (KEEP these):
-                - Specific People: "Taylor Swift", "Phạm Minh Chính", "Quang Hải"
-                - Specific Incidents: "Vụ cháy chung cư mini", "Bão Yagi" (bão có tên riêng)
-                - Matches/Games: "MU vs Chelsea", "CKTG 2024"
-                - Products: "iPhone 15", "VinFast VF3"
+                ĐỊNH NGHĨA SỰ KIỆN (Cần GIỮ LẠI):
+                - Nhân vật cụ thể: "Taylor Swift", "Phạm Minh Chính", "Quang Hải"
+                - Vụ việc cụ thể: "Vụ cháy chung cư mini", "Bão Yagi" (bão có tên riêng)
+                - Trận đấu/Giải đấu: "MU vs Chelsea", "CKTG 2024"
+                - Sản phẩm: "iPhone 15", "VinFast VF3"
 
-                Input keys:
+                Danh sách đầu vào:
                 {chunk}
 
-                Output: JSON Array of strings to REMOVE.
-                Example: ["thời tiết", "xổ số miền bắc"]
+                Đầu ra: Mảng JSON chứa các chuỗi cần LOẠI BỎ.
+                Ví dụ: ["thời tiết", "xổ số miền bắc"]
                 """
 
             all_prompts.append(prompt)
@@ -603,38 +603,39 @@ class LLMRefiner:
             return cluster_name, original_category, ""
 
         instruction = custom_instruction or """
-            Define the headline and extracting structured 5W1H.
+            Xác định tiêu đề và trích xuất cấu trúc 5W1H. PHẢI TRẢ LỜI BẰNG TIẾNG VIỆT.
 
-            RULES:
-            1. Headline: Concise Vietnamese news headline (≤ 15 words).
-               - Prefer concrete facts. No sensationalism.
-            2. Summary: DETAILS ARE CRITICAL. write a LONGER, COMPREHENSIVE paragraph (4-6 sentences).
-               - Include context, specific numbers, quotes (if any), and future implications.
-               - DO NOT start with "Bài viết nói về..." or "Summary:". Just tell the story.
-            3. 5W1H:
-               - WHO: Main entities/people involved.
-               - WHAT: The core interaction or event.
-               - WHERE: Specific locations mentioned.
-               - WHEN: Timeframe/Dates.
-               - WHY: Cause or context (infer if not explicitly stated but logical).
-               - IF UNKNOWN, write "N/A" but TRY HARD TO EXTRACT.
-            4. Advice for State: Provide strategic recommendations for government agencies/authorities (e.g., communication strategy, policy adjustment, crisis management).
-            5. Advice for Business: Provide actionable insights for enterprises/businesses (e.g., market entry, risk mitigation, operational changes, capitalization).
+            QUY TẮC:
+            1. Tiêu đề (refined_title): Tiêu đề tin tức tiếng Việt súc tích (≤ 15 từ).
+               - Ưu tiên các sự kiện cụ thể. Không giật gân.
+            2. Tóm tắt (summary): CHI TIẾT LÀ CỰC KỲ QUAN TRỌNG. Viết một đoạn văn DÀI, TOÀN DIỆN (4-6 câu).
+               - Bao gồm bối cảnh, con số cụ thể, trích dẫn (nếu có) và hệ quả tương lai.
+               - KHÔNG bắt đầu bằng "Bài viết nói về..." hay "Tóm tắt:". Hãy kể câu chuyện trực tiếp.
+               - PHẢI VIẾT BẰNG TIẾNG VIỆT.
+            3. 5W1H (Trả lời bằng tiếng Việt):
+               - WHO: Các thực thể/nhân vật chính liên quan.
+               - WHAT: Tương tác hoặc sự kiện cốt lõi.
+               - WHERE: Các địa điểm cụ thể được nhắc đến.
+               - WHEN: Khung thời gian/Ngày tháng.
+               - WHY: Nguyên nhân hoặc bối cảnh.
+               - NẾU KHÔNG BIẾT, ghi "N/A" nhưng hãy CỐ GẮNG trích xuất.
+            4. Lời khuyên cho Nhà nước (advice_state): Đưa ra các kiến nghị chiến lược cho cơ quan chức năng (ví dụ: chiến lược truyền thông, điều chỉnh chính sách, quản lý khủng hoảng). PHẢI VIẾT BẰNG TIẾNG VIỆT.
+            5. Lời khuyên cho Doanh nghiệp (advice_business): Đưa ra các hiểu biết có thể hành động cho doanh nghiệp (ví dụ: thâm nhập thị trường, giảm thiểu rủi ro, thay đổi vận hành, tận dụng cơ hội). PHẢI VIẾT BẰNG TIẾNG VIỆT.
 
-            Respond STRICTLY in JSON format:
+            Phản hồi NGHIÊM NGẶT theo định dạng JSON:
             {{
                 "refined_title": "...",
                 "category": "T1/T2/.../T7",
                 "event_type": "Specific/Generic",
-                "summary": "Full detailed story of the event (approx 100-150 words).",
+                "summary": "Câu chuyện chi tiết đầy đủ về sự kiện (khoảng 100-150 từ).",
                 "overall_sentiment": "Positive/Negative/Neutral",
                 "who": "...",
                 "what": "...",
                 "where": "...",
                 "when": "...",
                 "why": "...",
-                "advice_state": "Strategic advice for authorities...",
-                "advice_business": "Actionable advice for businesses...",
+                "advice_state": "Lời khuyên chiến lược cho cơ quan chức năng...",
+                "advice_business": "Lời khuyên thực tiễn cho doanh nghiệp...",
                 "reasoning": "..."
             }}
         """
@@ -650,30 +651,32 @@ class LLMRefiner:
         kw_str = f"Keywords: {', '.join(keywords)}" if keywords else ""
 
         prompt = f"""
-            Analyze this cluster of social media/news posts from Vietnam.
-            Original Label: {cluster_name}
-            Topic Type: {topic_type}
+            Phân tích cụm bài viết mạng xã hội/tin tức này từ Việt Nam. PHẢI TRẢ LỜI BẰNG TIẾNG VIỆT.
+            Tên gốc: {cluster_name}
+            Loại chủ đề: {topic_type}
             {meta_info}
             {kw_str}
             
-            Sample Posts:
+            Bài viết mẫu:
             {context_str}
 
             {instruction}
 
-            Respond STRICTLY in JSON format:
+            Định dạng trả về NGHIÊM NGẶT là JSON:
                 {{
-                    "refined_title": "...",
+                    "refined_title": "Tiêu đề tiếng Việt",
                     "category": "T1/T2/.../T7",
                     "event_type": "Specific/Generic",
-                    "summary": "...",
+                    "summary": "Tóm tắt chi tiết bằng tiếng Việt...",
                     "overall_sentiment": "Positive/Negative/Neutral",
                     "who": "...",
                     "what": "...",
                     "where": "...",
                     "when": "...",
                     "why": "...",
-                    "reasoning": "..."
+                    "advice_state": "Lời khuyên cho Nhà nước bằng tiếng Việt...",
+                    "advice_business": "Lời khuyên cho Doanh nghiệp bằng tiếng Việt...",
+                    "reasoning": "Giải thích bằng tiếng Việt"
                 }}
         """
         try:
@@ -706,90 +709,56 @@ class LLMRefiner:
             return {}
 
         instruction = custom_instruction or """
-            Role: Senior News Editor (Vietnam).
-                Task: Rename the cluster into a single, high-quality Vietnamese headline.
+            Vai trò: Biên tập viên Tin tức Cao cấp (Việt Nam).
+            Nhiệm vụ: Đặt lại tên cho cụm tin thành một tiêu đề tiếng Việt duy nhất, chất lượng cao. PHẢI TRẢ LỜI BẰNG TIẾNG VIỆT.
 
-                Headline Rules:
-                1. Concise & Factual (≤ 15 words).
-                2. Must contain specific Entities (Who/Where/What).
-                3. Neutral Tone (No sensationalism like "kinh hoàng", "xôn xao", "cực sốc").
-                4. Use standardized Vietnamese (e.g., "TP.HCM" instead of "Sài Gòn" if formal context).
-                
-                IMPORTANT - Handling Mixed Clusters:
-                - If the posts refer to multiple UNRELATED events (e.g., "Apple iPhone" AND "Flood in Hue"):
-                  - DO NOT combine them (e.g., "Apple ra iPhone và Lũ lụt ở Huế" is WRONG).
-                  - PICK THE DOMINANT TOPIC (the one with more posts or higher news value).
-                  - Generate the title for that dominant topic ONLY.
-                  - Mention the removed topic in the 'reasoning' field.
+            Quy tắc Tiêu đề:
+            1. Súc tích & Thực tế (≤ 15 từ).
+            2. Phải chứa các Thực thể cụ thể (Who/Where/What).
+            3. Giọng văn trung tính (Không giật gân).
+            4. Sử dụng tiếng Việt chuẩn (ví dụ: "TP.HCM" thay vì "Sài Gòn" trong bối cảnh trang trọng).
+            
+            QUAN TRỌNG - Xử lý Cụm tin Hỗn hợp:
+            - Nếu các bài viết đề cập đến nhiều sự kiện KHÔNG LIÊN QUAN (ví dụ: "Apple iPhone" VÀ "Lũ lụt ở Huế"):
+              - KHÔNG kết hợp chúng (ví dụ: "Apple ra iPhone và Lũ lụt ở Huế" là SAI).
+              - CHỌN CHỦ ĐỀ THỐNG TRỊ (chủ đề có nhiều bài viết hơn hoặc giá trị tin tức cao hơn).
+              - Chỉ tạo tiêu đề cho chủ đề thống trị đó.
+              - Đề cập đến chủ đề bị loại bỏ trong trường 'reasoning'.
 
-                CRITICAL - Incoherent Clusters (STEP-BY-STEP CHECK):
-                1. Identify the CORE TOPIC from Post 1 (Anchor Post).
-                   Example Anchor: "Tai nạn giao thông Quận 1"
-                2. For each Post 2-5, ask: "Does this post describe the SAME specific event as Post 1?"
-                   - SAME: Same location AND same incident type AND same time frame.
-                   - DIFFERENT: Different location OR different incident type OR different time.
-                3. If DIFFERENT, add that post number to outlier_ids.
+            CẢNH BÁO - Cụm tin không nhất quán (KIỂM TRA TỪNG BƯỚC):
+            1. Xác định CHỦ ĐỀ CỐT LÕI từ Bài viết 1 (Bài viết neo).
+            2. Với mỗi Bài viết 2-5, hỏi: "Bài viết này có mô tả CÙNG MỘT sự kiện cụ thể như Bài viết 1 không?"
+               - CÙNG: Cùng địa điểm VÀ cùng loại sự cố VÀ cùng khung thời gian.
+               - KHÁC: Khác địa điểm HOẶC khác loại sự cố HOẶC khác thời gian.
+            3. Nếu KHÁC, thêm số thứ tự bài viết đó vào outlier_ids.
 
-                STEP-BY-STEP Reasoning Example:
-                - Post 1: "Cháy chung cư ở Hà Nội"
-                - Post 2: "Cháy chung cư ở Hà Nội" → SAME (same event)
-                - Post 3: "Chuyện tình yêu sao Việt" → DIFFERENT (unrelated topic) → outlier_ids: [3]
-                - Post 4: "Cháy rừng ở Kon Tum" → DIFFERENT (different location) → outlier_ids: [3, 4]
-                  
-                - If ALL posts are unrelated to each other:
-                  - Set refined_title to "[Incoherent] Mixed Topics"
-                  - Add ALL post IDs (2, 3, 4, 5) to outlier_ids
+            QUY TẮC TÓM TẮT (summary):
+            - VIẾT MỘT ĐOẠN TÓM TẮT DÀI, CHI TIẾT (4-6 câu, ~100 từ).
+            - Bao gồm bối cảnh, các nhân vật chính và diễn biến sự việc.
+            - PHẢI VIẾT BẰNG TIẾNG VIỆT.
 
-                Anti-Patterns (DO NOT USE):
-                - "Tin tức về..." (News about...)
-                - "Cập nhật mới nhất..." (Latest updates...)
-                - "Những điều cần biết..." (Things to know...)
-                - "Cộng đồng mạng dậy sóng..." (Netizens go wild...)
+            QUY TẮC 5W1H (Trả lời bằng tiếng Việt):
+            - Trích xuất chi tiết cụ thể cho Who/What/Where/When/Why.
 
-                Data extraction:
-                - Category: 
-                    * T1 (Crisis & Risk): Accidents, disasters, riots.
-                    * T2 (Policy Signal): Regulations, government, politics.
-                    * T3 (Reputation): Scandals, accusations, boycotts, controversies.
-                    * T4 (Market Demand): Products, travel, food trends.
-                    * T5 (Cultural Trend): Memes, viral entertainment, celebs.
-                    * T6 (Operational): Traffic, outages, public service failures.
-                    * T7 (Noise): Weather, lottery, daily routines (ignore these if possible).
-                - Event Type: 
-                    * "Specific": A concrete, one-time occurrence with clear Who/What/When/Where (e.g., "Fire at building X", "New policy A announced").
-                    * "Generic": A broad, recurring topic or routine update (e.g., "Weather outlook", "Daily gold price", "General discussions").
-                - Strategic Advice:
-                    * advice_state: Guidance for government/authorities on policy, communication, or management.
-                    * advice_business: Actionable insights for enterprises on risks or opportunities.
-                - Reasoning: explain your choice and mention if you dropped any unrelated topics from a mixed cluster.
-                
-                SUMMARY Rules:
-                - WRITE A LONG, DETAILED SUMMARY (4-6 sentences, ~100 words).
-                - Include context, key figures, and developments.
-                - Do not be brief. We need a full picture.
+            Lời khuyên Chiến lược (advice_state, advice_business):
+            - PHẢI VIẾT BẰNG TIẾNG VIỆT.
 
-                5W1H Rules:
-                - Extract specific details for Who/What/Where/When/Why.
-                - Where: Specific city/district/country.
-                - When: Specific date/time/period.
-                - Why: The cause or reason.
-                
-                Output JSON:
-                {
-                    "id": 0,
-                    "refined_title": "String",
-                    "summary": "Detailed paragraph.",
-                    "overall_sentiment": "Positive/Negative/Neutral",
-                    "who": "...",
-                    "what": "...",
-                    "where": "...",
-                    "when": "...",
-                    "why": "...",
-                    "advice_state": "...",
-                    "advice_business": "...",
-                    "outlier_ids": [id1, id2],
-                    "reasoning": "String"
-                }
+            Kết quả trả về JSON:
+            {
+                "id": 0,
+                "refined_title": "Chuỗi tiếng Việt",
+                "summary": "Đoạn văn chi tiết bằng tiếng Việt.",
+                "overall_sentiment": "Positive/Negative/Neutral",
+                "who": "...",
+                "what": "...",
+                "where": "...",
+                "when": "...",
+                "why": "...",
+                "advice_state": "...",
+                "advice_business": "...",
+                "outlier_ids": [id1, id2],
+                "reasoning": "Giải thích bằng tiếng Việt"
+            }
         """
 
         # Chunking: Small LLMs (Gemma) or large batches can exceed context limits

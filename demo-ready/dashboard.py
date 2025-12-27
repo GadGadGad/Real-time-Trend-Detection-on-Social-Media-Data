@@ -12,6 +12,16 @@ DB_URL = "postgresql://user:password@localhost:5432/trend_db"
 
 st.set_page_config(page_title="Phân tích Xu hướng", layout="wide", page_icon="🌐")
 
+TAXONOMY_MAP = {
+    "T1": "Khủng hoảng & Rủi ro",
+    "T2": "Chính sách & Quản trị",
+    "T3": "Rủi ro Uy tín",
+    "T4": "Cơ hội Thị trường",
+    "T5": "Văn hóa & Giải trí",
+    "T6": "Vận hành & Dịch vụ",
+    "T7": "Tin định kỳ"
+}
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
@@ -145,6 +155,12 @@ def get_source_class(source):
     if any(x in s for x in ['news', 'vietnamnet', 'vnexpress', 'tuoitre']): return 'source-news', 'st-news'
     return '', 'st-gen'
 
+def process_evolution(row, threshold):
+    score = row['trend_score']
+    if score < threshold:
+        return pd.Series(["DIỄN BIẾN MỚI", True])
+    return pd.Series([row['trend_name'], False])
+
 @st.cache_resource
 def get_db_engine():
     return create_engine(DB_URL)
@@ -153,6 +169,8 @@ def load_realtime_data():
     engine = get_db_engine()
     query = text("SELECT * FROM detected_trends ORDER BY created_at DESC LIMIT 100")
     return pd.read_sql(query, engine)
+
+
 
 st.sidebar.title("🌐 Bảng điều khiển")
 score_threshold = st.sidebar.slider("Ngưỡng điểm nóng", 0.0, 100.0, 30.0)
@@ -165,38 +183,51 @@ if st.sidebar.button("🗑️ Xóa dữ liệu"):
         conn.execute(text("TRUNCATE TABLE detected_trends"))
     st.rerun()
 
-df_full = load_realtime_data()
+# --- METRICS BAR (Auto-refresh using fragment) ---
+@st.fragment(run_every=refresh_rate if auto_refresh else None)
+def show_metrics():
+    df_metrics = load_realtime_data()
+    if df_metrics.empty: return
+    
+    df_metrics[['display_topic', 'is_noise']] = df_metrics.apply(process_evolution, axis=1, threshold=score_threshold)
+    id_df = df_metrics[df_metrics['is_noise'] == False]
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Cụm tin", f"{len(df_metrics):,}")
+    m2.metric("Sự kiện", f"{id_df['trend_name'].nunique():,}")
+    m3.metric("Điểm cao nhất", f"{df_metrics['trend_score'].max():.1f}")
+    m4.metric("Thời gian", datetime.now().strftime("%H:%M:%S"))
 
+show_metrics()
+
+# --- INITIAL DATA LOAD (for static components) ---
+if 'last_df' not in st.session_state:
+    st.session_state.last_df = load_realtime_data()
+
+# Manual refresh for static components
+if st.button("🔄 Cập nhật dữ liệu Chi tiết"):
+    st.session_state.last_df = load_realtime_data()
+    st.rerun()
+
+df_full = st.session_state.last_df
 if df_full.empty:
     st.info("📡 Đang chờ dữ liệu...")
-    if auto_refresh:
-        time.sleep(refresh_rate)
-        st.rerun()
     st.stop()
-
-def process_evolution(row):
-    score = row['trend_score']
-    if score < score_threshold:
-        return "DIỄN BIẾN MỚI", True
-    return row['trend_name'], False
-
-df_full[['display_topic', 'is_noise']] = df_full.apply(lambda r: pd.Series(process_evolution(r)), axis=1)
-identified_df = df_full[df_full['is_noise'] == False]
-
-# --- METRICS BAR ---
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Cụm tin", f"{len(df_full):,}")
-m2.metric("Sự kiện", f"{identified_df['trend_name'].nunique():,}")
-m3.metric("Điểm cao nhất", f"{df_full['trend_score'].max():.1f}")
-m4.metric("Thời gian", datetime.now().strftime("%H:%M:%S"))
 
 # --- TABS ---
 tab_live, tab_map, tab_intel = st.tabs(["🚀 Luồng Live", "🧩 Bản đồ Trọng lực", "🧠 Chi tiết & Phân tích"])
 
 # --- TAB 1: LIVE MONITOR ---
-with tab_live:
+@st.fragment(run_every=refresh_rate if auto_refresh else None)
+def show_tab_live():
     st.subheader("📡 Luồng tin tức thời gian thực")
-    latest_trends = df_full.head(20)
+    df_live = load_realtime_data()
+    if df_live.empty:
+        st.info("Đang chờ dữ liệu...")
+        return
+        
+    df_live[['display_topic', 'is_noise']] = df_live.apply(process_evolution, axis=1, threshold=score_threshold)
+    latest_trends = df_live.head(20)
     
     for _, row in latest_trends.iterrows():
         topic = row['display_topic']
@@ -242,10 +273,19 @@ with tab_live:
 <div class="post-content">{main_post['content'][:250]}...</div>
 </div>""", unsafe_allow_html=True)
 
+with tab_live:
+    show_tab_live()
+
 # --- TAB 2: GRAVITY MAP ---
-with tab_map:
+@st.fragment(run_every=refresh_rate if auto_refresh else None)
+def show_tab_map():
     st.subheader("🧩 Bản đồ Trọng lực (Toàn cảnh)")
-    plot_df = df_full.copy()
+    df_map = load_realtime_data()
+    if df_map.empty: return
+    
+    df_map[['display_topic', 'is_noise']] = df_map.apply(process_evolution, axis=1, threshold=score_threshold)
+    
+    plot_df = df_map.copy()
     plot_df['Size'] = plot_df['post_count'].apply(lambda x: min(x * 5, 50))
     plot_df['Legend'] = plot_df['display_topic'].apply(lambda x: "Đang theo dõi" if x == "DIỄN BIẾN MỚI" else x)
     
@@ -257,12 +297,20 @@ with tab_map:
     fig.update_layout(showlegend=True, height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
 
+with tab_map:
+    show_tab_map()
+
 # --- TAB 3: INTELLIGENCE & ANALYTICS ---
 with tab_intel:
     col_left, col_right = st.columns([2, 1])
     
     with col_left:
         st.subheader("🔍 Chi tiết Sự kiện")
+        
+        # Prepare data
+        df_full[['display_topic', 'is_noise']] = df_full.apply(process_evolution, axis=1, threshold=score_threshold)
+        identified_df = df_full[df_full['is_noise'] == False]
+        
         show_all = st.checkbox("Xem cả các diễn biến mới (Cụm tin chưa đạt ngưỡng)")
         
         target_df = df_full if show_all else identified_df
@@ -314,7 +362,12 @@ with tab_intel:
             score = trend_data['trend_score']
             is_event = score >= score_threshold
             
+            # Map Category
+            cat_code = trend_data.get('category', 'N/A') or 'N/A'
+            cat_display = TAXONOMY_MAP.get(cat_code, cat_code)
+            
             st.markdown(f"### {trend_data['trend_name']}")
+            st.markdown(f"**Loại hình:** {cat_display} ({cat_code})")
             
             # Status & Reasoning Alert
             if not is_event:
@@ -322,18 +375,22 @@ with tab_intel:
             else:
                 st.success(f"**Trạng thái:** Sự kiện chính thức (Đã đạt ngưỡng {score_threshold:.1f})")
 
-            # Metrics Row
-            cm1, cm2, cm3, cm4 = st.columns(4)
+            # Metrics Row (3 columns - Category is shown above)
+            cm1, cm2, cm3 = st.columns(3)
             cm1.metric("Điểm số", f"{score:.1f}")
             cm2.metric("Bài viết", f"{trend_data.get('post_count', 0):,}")
-            cm3.metric("Phân loại", trend_data.get('category', 'N/A') or 'N/A')
-            cm4.metric("Cảm xúc", trend_data.get('sentiment', 'N/A') or 'N/A')
+            cm3.metric("Cảm xúc", trend_data.get('sentiment', 'N/A') or 'N/A')
             
             st.markdown("---")
             
             summary = trend_data.get('summary', '')
             if summary and len(str(summary)) > 20 and str(summary) != "Waiting for analysis...":
                 st.markdown(f"**Tóm tắt:** {summary}")
+            
+            reasoning = trend_data.get('reasoning', '')
+            if reasoning and str(reasoning) != 'N/A' and str(reasoning).strip():
+                with st.expander("🧐 Giải thích từ AI (Tại sao phân loại như vậy?)"):
+                    st.write(reasoning)
             
             advice_state = trend_data.get('advice_state', '')
             if advice_state and str(advice_state) != 'N/A' and str(advice_state).strip():
@@ -416,13 +473,19 @@ with tab_intel:
             fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=40,b=0), showlegend=False)
             st.plotly_chart(fig_t, use_container_width=True)
 
-        # 2. Topic Type Bar
+        # 2. Topic Type Bar (Mapped)
         type_counts = df_full['topic_type'].value_counts().reset_index()
         type_counts.columns = ['Loại', 'Số lượng']
-        fig_s = px.bar(type_counts, x='Số lượng', y='Loại', orientation='h', template="plotly_dark", color='Loại', title="Phân loại Cụm tin")
-        fig_s.update_layout(showlegend=False, height=250, margin=dict(l=0,r=0,t=40,b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_s, use_container_width=True)
+        
+        # Also show categorized distribution if available
+        if 'category' in df_full.columns:
+            cat_counts = df_full['category'].value_counts().reset_index()
+            cat_counts.columns = ['Mã', 'Số lượng']
+            cat_counts['Loại hình'] = cat_counts['Mã'].apply(lambda x: TAXONOMY_MAP.get(x, x))
+            
+            fig_s = px.bar(cat_counts, x='Số lượng', y='Loại hình', orientation='h', 
+                           template="plotly_dark", color='Loại hình', title="Phân loại theo Mục tiêu")
+            fig_s.update_layout(showlegend=False, height=350, margin=dict(l=0,r=0,t=40,b=0), 
+                                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_s, use_container_width=True)
 
-if auto_refresh:
-    time.sleep(refresh_rate)
-    st.rerun()

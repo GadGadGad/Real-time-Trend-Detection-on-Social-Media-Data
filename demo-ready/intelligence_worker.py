@@ -136,8 +136,9 @@ def update_trend_analysis(trend_id, analysis_result):
                         volume = :vol, post_count = :pc, interactions = :inter,
                         representative_posts = :reps, trend_score = :score,
                         score_n = :sn, score_f = :sf,
-                        summary = :summ, category = :cat, sentiment = :sent,
+                         summary = :summ, category = :cat, sentiment = :sent,
                         advice_state = :as, advice_business = :ab, topic_type = :type,
+                        reasoning = :reasoning,
                         last_updated = :now
                     WHERE id = :e_id
                 """), {
@@ -146,6 +147,7 @@ def update_trend_analysis(trend_id, analysis_result):
                     "sn": n_s, "sf": f_s, "summ": analysis_result[4], "cat": analysis_result[1],
                     "sent": analysis_result[5], "as": analysis_result[6].get('advice_state', 'N/A'),
                     "ab": analysis_result[6].get('advice_business', 'N/A'), "type": analysis_result[3],
+                    "reasoning": analysis_result[2],
                     "now": datetime.now(), "e_id": e_id
                 })
                 
@@ -165,6 +167,7 @@ def update_trend_analysis(trend_id, analysis_result):
                 advice_state = :advice_state,
                 advice_business = :advice_business,
                 topic_type = :topic_type,
+                reasoning = :reasoning,
                 last_updated = :now
             WHERE id = :id
         """), {
@@ -176,6 +179,7 @@ def update_trend_analysis(trend_id, analysis_result):
             "sentiment": analysis_result[5],
             "advice_state": analysis_result[6].get('advice_state', 'N/A'),
             "advice_business": analysis_result[6].get('advice_business', 'N/A'),
+            "reasoning": analysis_result[2],
             "now": datetime.now()
         })
         logger.info(f"✅ Updated Trend {trend_id}: {analysis_result[0]}")
@@ -207,7 +211,7 @@ def main():
             
             if not trends:
                 logger.debug("💤 No suitable trends found. Sleeping...")
-                time.sleep(5)
+                time.sleep(60)
                 continue
                 
             logger.info(f"🔍 Found {len(trends)} trends to analyze.")
@@ -236,7 +240,7 @@ def main():
                 except Exception as e:
                     logger.error(f"⚠️ Error analyzing trend {t_id}: {e}")
                     
-            time.sleep(2) # Short rest between batches
+            time.sleep(60) # Rest between batches
             
         except KeyboardInterrupt:
             logger.info("🛑 Worker stopped by user.")

@@ -17,7 +17,7 @@ KAFKA_BOOTSTRAP = "localhost:29092"
 KAFKA_TOPIC = "posts-stream"
 MODEL_NAME = "dangvantuan/vietnamese-document-embedding"
 # RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
-THRESHOLD = 0.75
+THRESHOLD = 0.65
 RERANK_THRESHOLD = -2.5 # Logit threshold from notebook
 MIN_CLUSTER_SIZE = 3
 CLUSTER_EPSILON = 0.5 # Adjusted for normalized embeddings
@@ -398,23 +398,39 @@ def process_stateful_batch(df, batch_id):
                     cluster_sources = [sources[m] for m in member_indices]
                     
                     # Create New Trend (Simplified Naming)
-                    # 1. Compute Centroid
+                    # 1. Compute Initial Centroid
                     cluster_embs_array = np.array([post_embeddings[m] for m in member_indices])
                     centroid = np.mean(cluster_embs_array, axis=0).reshape(1, -1)
-                    # Normalize Centroid
+                    c_norm = np.linalg.norm(centroid)
+                    if c_norm > 0: centroid = centroid / c_norm
+
+                    # 2. Individual Member Filter: Remove outliers from this cluster
+                    dists = cosine_similarity(cluster_embs_array, centroid).flatten() # Shape (N,)
+                    valid_mask = dists >= THRESHOLD
+                    
+                    # Filter indices
+                    filtered_member_indices = [member_indices[i] for i, valid in enumerate(valid_mask) if valid]
+                    
+                    if len(filtered_member_indices) < MIN_CLUSTER_SIZE:
+                        print(f"   ⚠️ Discarding cluster: only {len(filtered_member_indices)} members above threshold {THRESHOLD}")
+                        continue
+                    
+                    # Recalculate Centroid for refined cluster
+                    cluster_embs_array = np.array([post_embeddings[m] for m in filtered_member_indices])
+                    centroid = np.mean(cluster_embs_array, axis=0).reshape(1, -1)
                     c_norm = np.linalg.norm(centroid)
                     if c_norm > 0: centroid = centroid / c_norm
                     
-                    # 2. COHERENCE CHECK: Filter out unrelated clusters
-                    dists = cosine_similarity(cluster_embs_array, centroid).flatten() # Shape (N,)
+                    # Final Coherence Check
+                    dists = cosine_similarity(cluster_embs_array, centroid).flatten()
                     mean_coherence = np.mean(dists)
                     
                     if mean_coherence < COHERENCE_THRESHOLD:
-                        print(f"   ⚠️ Discarding incoherent cluster (Coherence: {mean_coherence:.2f} < {COHERENCE_THRESHOLD})")
+                        print(f"   ⚠️ Discarding incoherent refined cluster (Coherence: {mean_coherence:.2f} < {COHERENCE_THRESHOLD})")
                         continue
 
                     best_rep_idx = np.argmax(dists)
-                    sample_content = cluster_contents[best_rep_idx]
+                    sample_content = [contents[m] for m in filtered_member_indices][best_rep_idx]
                     
                     new_trend_name = "New: " + (sample_content[:40] + "..." if len(sample_content)>40 else sample_content)
                     
@@ -433,11 +449,11 @@ def process_stateful_batch(df, batch_id):
                     # Representative Posts JSON with Similarity to Centroid
                     rep_posts = []
                     # Compute similarities for ALL members up to 1000
-                    all_member_embs = post_embeddings[member_indices[:1000]]
+                    all_member_embs = post_embeddings[filtered_member_indices[:1000]]
                     all_member_sims = cosine_similarity(all_member_embs, centroid).flatten()
                     
-                    for k in range(len(member_indices[:1000])):
-                         idx = member_indices[k]
+                    for k in range(len(filtered_member_indices[:1000])):
+                         idx = filtered_member_indices[k]
                          rep_posts.append({
                              "content": contents[idx],
                              "source": sources[idx],
@@ -451,8 +467,8 @@ def process_stateful_batch(df, batch_id):
                     if exists: continue
                     
                     # Calculate proper initial score
-                    init_inter = len(member_indices) * 10
-                    proper_score, g_s, f_s, n_s = calculate_realtime_score(0, init_inter, len(member_indices))
+                    init_inter = len(filtered_member_indices) * 10
+                    proper_score, g_s, f_s, n_s = calculate_realtime_score(0, init_inter, len(filtered_member_indices))
                     
                     # INSERT FULL SCHEMA
                     conn.execute(text("""
@@ -466,7 +482,7 @@ def process_stateful_batch(df, batch_id):
                     """), {
                         "name": new_trend_name,
                         "score": proper_score,
-                        "vol": len(member_indices),
+                        "vol": len(filtered_member_indices),
                         "rep": json.dumps(rep_posts, ensure_ascii=False),
                         "type": topic_type,
                         "sn": n_s,
@@ -480,7 +496,7 @@ def process_stateful_batch(df, batch_id):
                         "kws": json.dumps([], ensure_ascii=False)
                     })
                     new_trends += 1
-                    print(f"   🌟 DISCOVERED NEW TREND: {new_trend_name} (Size: {len(member_indices)}, Coherence: {mean_coherence:.2f})")
+                    print(f"   🌟 DISCOVERED NEW TREND: {new_trend_name} (Size: {len(filtered_member_indices)}, Coherence: {mean_coherence:.2f})")
                     
         except ImportError:
             print("   ⚠️ HDBSCAN missing.")

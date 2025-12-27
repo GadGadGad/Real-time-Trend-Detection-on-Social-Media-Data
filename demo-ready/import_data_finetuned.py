@@ -14,7 +14,7 @@ console = Console()
 
 def main():
     if not os.path.exists(INPUT_PARQUET):
-        console.print(f"[red]❌ Input file not found: {INPUT_PARQUET}[/red]")
+        console.print(f"[red]❌ Input file not found: {INPUT_PARfQUET}[/red]")
         return
 
     # 1. Load Data

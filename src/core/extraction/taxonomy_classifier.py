@@ -1,4 +1,6 @@
 import re
+import os
+import torch
 from rich.console import Console
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -36,6 +38,24 @@ CATEGORY_DESCRIPTIONS = {
     "T7": "Routine Signals: Thời tiết hàng ngày, xổ số, kết quả thể thao định kỳ."
 }
 
+# --- Model Configuration ---
+CUSTOM_MODEL_PATH = None
+_transformer_classifier = None
+_using_transformer = False
+
+def _find_custom_model():
+    """Look for trained taxonomy classifier in common locations."""
+    possible_paths = [
+        "models/taxonomy-classifier-vietnamese-v1",
+        "../models/taxonomy-classifier-vietnamese-v1",
+        "/kaggle/input/taxonomy-classifier/taxonomy-classifier-vietnamese-v1",
+    ]
+    for path in possible_paths:
+        if os.path.exists(path) and os.path.isdir(path):
+            if os.path.exists(os.path.join(path, "config.json")):
+                return path
+    return None
+
 def classify_by_keywords(text):
     """
     Classify based on keyword presence in priority order.
@@ -61,33 +81,136 @@ def classify_by_keywords(text):
             
     return None
 
+
+class TransformerTaxonomyClassifier:
+    """Transformer-based taxonomy classifier using trained VISOBert model."""
+    
+    ID2LABEL = {0: "T1", 1: "T2", 2: "T3", 3: "T4", 4: "T5", 5: "T6", 6: "T7"}
+    
+    def __init__(self, model_path=None):
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
+        
+        self.model_path = model_path or _find_custom_model()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.tokenizer = None
+        self.model = None
+        self.enabled = False
+        
+        if self.model_path and os.path.exists(self.model_path):
+            try:
+                console.print(f"[bold green]✅ Loading TRAINED Taxonomy Classifier from {self.model_path}...[/bold green]")
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+                self.model = AutoModelForSequenceClassification.from_pretrained(self.model_path).to(self.device)
+                self.model.eval()
+                self.enabled = True
+            except Exception as e:
+                console.print(f"[red]Failed to load taxonomy model: {e}[/red]")
+                self.enabled = False
+    
+    def classify(self, text):
+        """Classify a single text into T1-T7."""
+        if not self.enabled:
+            return "Unclassified", "None"
+        
+        try:
+            with torch.no_grad():
+                inputs = self.tokenizer(
+                    text, truncation=True, padding=True, 
+                    max_length=256, return_tensors="pt"
+                ).to(self.device)
+                outputs = self.model(**inputs)
+                pred = torch.argmax(outputs.logits, dim=-1).item()
+                return self.ID2LABEL[pred], "Transformer"
+        except Exception as e:
+            console.print(f"[dim red]Taxonomy classify error: {e}[/dim red]")
+            return "Unclassified", "Error"
+    
+    def batch_classify(self, texts, batch_size=64):
+        """Classify multiple texts efficiently."""
+        if not self.enabled:
+            return [("Unclassified", "None") for _ in texts]
+        
+        results = []
+        try:
+            with torch.no_grad():
+                for i in range(0, len(texts), batch_size):
+                    batch = texts[i:i+batch_size]
+                    inputs = self.tokenizer(
+                        batch, truncation=True, padding=True,
+                        max_length=256, return_tensors="pt"
+                    ).to(self.device)
+                    outputs = self.model(**inputs)
+                    preds = torch.argmax(outputs.logits, dim=-1).cpu().tolist()
+                    results.extend([(self.ID2LABEL[p], "Transformer") for p in preds])
+            return results
+        except Exception as e:
+            console.print(f"[red]Batch taxonomy error: {e}[/red]")
+            return [("Unclassified", "Error") for _ in texts]
+    
+    def clear(self):
+        """Free GPU memory."""
+        if self.model:
+            del self.model
+            self.model = None
+        if self.tokenizer:
+            del self.tokenizer
+            self.tokenizer = None
+        self.enabled = False
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
 class TaxonomyClassifier:
-    def __init__(self, embedding_model=None):
+    """
+    Hybrid Taxonomy Classifier with priority:
+    1. Transformer model (if available) - highest accuracy
+    2. Keyword matching - fast, high precision
+    3. Semantic similarity - high recall fallback
+    """
+    
+    def __init__(self, embedding_model=None, use_transformer=True):
         self.embedder = embedding_model
         self.category_embeddings = None
         self.categories = list(CATEGORY_DESCRIPTIONS.keys())
+        self.transformer_clf = None
         
-        if self.embedder:
+        # Try to load transformer model first
+        if use_transformer:
+            model_path = _find_custom_model()
+            if model_path:
+                self.transformer_clf = TransformerTaxonomyClassifier(model_path)
+                if not self.transformer_clf.enabled:
+                    self.transformer_clf = None
+        
+        # If no transformer, prepare embedding-based fallback
+        if self.embedder and not self.transformer_clf:
             self._precompute_embeddings()
             
     def _precompute_embeddings(self):
         """Pre-compute embeddings for category descriptions"""
-        console.print("[dim]🧠 Pre-computing 7-Group Taxonomy Embeddings...[/dim]")
+        console.print("[dim]🧠 Pre-computing 7-Group Taxonomy Embeddings (fallback)...[/dim]")
         descriptions = [CATEGORY_DESCRIPTIONS[c] for c in self.categories]
         self.category_embeddings = self.embedder.encode(descriptions)
         
     def classify(self, text, threshold=0.25):
         """
         Hybrid Classification:
-        1. Check Keywords (Fast, High Precision).
-        2. If None, use Semantic Similarity (High Recall).
+        1. Use Transformer if available (Best accuracy)
+        2. Check Keywords (Fast, High Precision)
+        3. If None, use Semantic Similarity (High Recall)
         """
-        # 1. Keyword Check
+        # 1. Transformer Check (Prioritized)
+        if self.transformer_clf and self.transformer_clf.enabled:
+            return self.transformer_clf.classify(text)
+        
+        # 2. Keyword Check
         cat_code = classify_by_keywords(text)
         if cat_code:
             return cat_code, "Keyword"
             
-        # 2. Semantic Check (if model available)
+        # 3. Semantic Check (if model available)
         if self.embedder and self.category_embeddings is not None:
             text_emb = self.embedder.encode([text])
             sims = cosine_similarity(text_emb, self.category_embeddings)[0]
@@ -98,3 +221,21 @@ class TaxonomyClassifier:
                 return self.categories[best_idx], "Semantic"
                 
         return "Unclassified", "None"
+    
+    def batch_classify(self, texts, threshold=0.25):
+        """Batch classification for efficiency."""
+        if self.transformer_clf and self.transformer_clf.enabled:
+            return self.transformer_clf.batch_classify(texts)
+        
+        # Fallback to individual classification
+        return [self.classify(text, threshold) for text in texts]
+    
+    def is_using_transformer(self):
+        """Check if using transformer model."""
+        return self.transformer_clf is not None and self.transformer_clf.enabled
+    
+    def clear(self):
+        """Free resources."""
+        if self.transformer_clf:
+            self.transformer_clf.clear()
+

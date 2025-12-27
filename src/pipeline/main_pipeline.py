@@ -537,7 +537,8 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         match_weights={'dense': 0.6, 'sparse': 0.4},
                         embedding_char_limit=500, summarize_refinement=True,
                         return_components=False, semantic_floor=0.35,
-                        cache_dir="embeddings_cache"):
+                        cache_dir="embeddings_cache",
+                        taxonomy_model_path=None, sentiment_model_path=None):
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -559,7 +560,19 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     
     # --- PHASE 1: EMBEDDINGS ---
     
-    taxonomy_clf = TaxonomyClassifier(embedding_model=embedder) if TaxonomyClassifier else None
+    # Initialize taxonomy classifier with optional custom model path
+    taxonomy_clf = None
+    if TaxonomyClassifier:
+        from src.core.extraction.taxonomy_classifier import TransformerTaxonomyClassifier
+        if taxonomy_model_path:
+            # Use explicit path
+            taxonomy_clf = TaxonomyClassifier(embedding_model=embedder, use_transformer=False)
+            taxonomy_clf.transformer_clf = TransformerTaxonomyClassifier(model_path=taxonomy_model_path)
+            if taxonomy_clf.transformer_clf.enabled:
+                console.print(f"[green]✅ Using taxonomy model from: {taxonomy_model_path}[/green]")
+        else:
+            # Auto-detect
+            taxonomy_clf = TaxonomyClassifier(embedding_model=embedder)
     reranker = None
     if rerank:
         ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
@@ -633,7 +646,11 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         coherence_threshold=coherence_threshold
     )
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
-    sentiments = batch_analyze_sentiment(post_contents)
+    
+    # Sentiment analysis with optional custom model path
+    sentiments = batch_analyze_sentiment(post_contents, model_path=sentiment_model_path)
+    if sentiment_model_path:
+        console.print(f"[green]✅ Using sentiment model from: {sentiment_model_path}[/green]")
 
     trend_keys = list(trends.keys())
 
