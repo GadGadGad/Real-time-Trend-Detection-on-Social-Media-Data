@@ -293,25 +293,28 @@
 %============================================================
 \section{Phương pháp thực hiện}
 
-% Frame 3.1: Kiến trúc Hybrid & Model
+% Frame 3.1: Kiến trúc Hybrid & Model (Tinh gọn)
 \begin{frame}{Kiến trúc Mô hình đề xuất (Proposed Architecture)}
-    Hệ thống sử dụng phương pháp tiếp cận \textbf{Hybrid (Lai ghép)}, kết hợp sức mạnh thống kê (Statistical NLP) và Generative AI:
+    Hệ thống áp dụng pipeline 5 tầng, kết hợp NLP thống kê và Generative AI:
 
     \begin{enumerate}
-        \item \textbf{Tiền xử lý (Denoising):} Lọc nhiễu đặc thù báo chí và tin rác.
-        \item \textbf{Vector hóa (Embedding):} Chuyển đổi văn bản sang không gian ngữ nghĩa đa ngôn ngữ.
-        \item \textbf{Phân cụm lai (SAHC):} Thuật toán ưu tiên nguồn tin cậy (News) để dẫn dắt nguồn nhiễu (Social).
-        \item \textbf{Hậu xử lý (LLM Refinement):} Sinh tri thức (Knowledge Generation) từ cụm thô.
+        \item \textbf{Preprocessing:} Chuẩn hóa văn bản và lọc nhiễu.
+        \item \textbf{Embedding:} Biểu diễn ngữ nghĩa trong không gian $\mathbb{R}^{768}$.
+        \item \textbf{SAHC Clustering:} Gom cụm lai, dùng News dẫn hướng Social.
+        \item \textbf{Multi-dimensional Analysis:} Phân tích cảm xúc và chấm điểm xu hướng.
+        \item \textbf{LLM Refinement:} Chuẩn hóa tiêu đề và trích xuất 5W1H.
     \end{enumerate}
 
-    \begin{block}{Công nghệ lõi}
+    \begin{block}{Ngăn xếp Công nghệ lõi}
         \begin{itemize}
-            \item \textbf{Embedding Model:} \texttt{dangvantuan/document-embedding}.
-            \item \textbf{Clustering:} Cơ chế SAHC tùy biến trên nền tảng HDBSCAN.
-            \item \textbf{LLM Backend:} Google Gemini (gemma-3-27b-it) cho tác vụ 5W1H.
+            \item \textbf{Embedding:} \texttt{paraphrase-multilingual-mpnet-base-v2}.
+            \item \textbf{Clustering:} HDBSCAN + Cosine Similarity (SAHC).
+            \item \textbf{Analysis:} PhoBERT (Sentiment) + Statistical Scoring.
+            \item \textbf{GenAI:} Google Gemini (Zero-shot).
         \end{itemize}
     \end{block}
 \end{frame}
+
 
 % Frame 3.2: Chi tiết Preprocessing & Embedding
 \begin{frame}{Vector hóa và Làm sạch dữ liệu}
@@ -415,6 +418,50 @@
 \end{frame}
 
 
+
+% Frame 3.5: Chấm điểm xu hướng (Trend Scoring) \begin{frame}{Thuật toán Chấm điểm Xu hướng (Multi-factor Scoring)} Hệ thống xếp hạng mức độ "Hot" của sự kiện dựa trên mô hình tổng hợp đa nguồn (Multi-source Weighted Scoring).
+\begin{frame}{Thuật toán Chấm điểm Xu hướng}
+\begin{block}{Công thức tính điểm Hot (G-Score)}
+    Điểm xu hướng $S_{trend}$ được tính bằng tổng trọng số của 3 thành phần:
+    
+    \begin{equation}
+        S_{trend} = \alpha \cdot N_{score} + \beta \cdot F_{score} + \gamma \cdot G_{score}
+    \end{equation}
+    
+    \textit{Trong đó:}
+    \begin{itemize}
+        \item $N_{score}$ (News Volume): Tần suất xuất hiện trên báo chí (Normalized).
+        \item $F_{score}$ (Social Interaction): Tổng lượng like, share, comment (Log-scale để giảm ảnh hưởng của outlier).
+        \item $G_{score}$ (Google Search): Chỉ số quan tâm tìm kiếm (0-100).
+        \item $\alpha, \beta, \gamma$: Các trọng số thực nghiệm (Ví dụ: 0.3, 0.5, 0.2).
+    \end{itemize}
+\end{block}
+
+\textbf{Ứng dụng:} Chỉ những cụm có $S_{trend} > Threshold$ mới được đẩy lên Dashboard và gửi cảnh báo.
+
+\end{frame}
+
+\begin{frame}{Phân tích Cảm xúc (Sentiment Analysis)} Để đánh giá thái độ dư luận, hệ thống sử dụng mô hình ngôn ngữ tiền huấn luyện (Pre-trained Language Model) chuyên biệt cho tiếng Việt.
+
+    \begin{block}{Mô hình: PhoBERT (Fine-tuned)}
+        \begin{itemize}
+            \item \textbf{Backbone:} \texttt{vinai/phobert-base}.
+            \item \textbf{Task:} Phân loại chuỗi (Sequence Classification) vào 3 nhãn: \textcolor{green}{Positive}, \textcolor{red}{Negative}, \textcolor{gray}{Neutral}.
+        \end{itemize}
+    \end{block}
+    
+    \textbf{Công thức xác suất (Softmax Probability):}
+    Với vector đại diện văn bản $h_{CLS}$ từ tầng cuối cùng của PhoBERT, xác suất của nhãn $k$ được tính:
+    
+    \begin{equation}
+        P(y=k | x) = \text{softmax}(W \cdot h_{CLS} + b)_k = \frac{e^{z_k}}{\sum_{j=1}^{C} e^{z_j}}
+    \end{equation}
+    
+    \begin{itemize}
+        \item Hệ thống tính \textbf{Average Sentiment Score} cho cả cụm bằng cách trung bình hóa điểm số của top 20 bài viết tiêu biểu nhất.
+    \end{itemize}
+    
+    \end{frame}
 %============================================================
 % CHI TIẾT LLM & TAXONOMY (Đã tách thành 2 frame)
 %============================================================
