@@ -106,31 +106,3 @@ print(f"Using transformer taxonomy: {clf.is_using_transformer()}")
 | Sentiment | `wonrax/phobert-base-vietnamese-sentiment` |
 
 Cả hai fallback đều hoạt động tốt, chỉ là **trained models có accuracy cao hơn**.
-
----
-
-## Truyền Model Path thủ công
-
-Nếu bạn muốn chỉ định path cụ thể thay vì auto-detect:
-
-```python
-from src.pipeline.main_pipeline import find_matches_hybrid
-
-matches, components = find_matches_hybrid(
-    posts=posts,
-    trends=trends,
-    use_llm=True,
-    gemini_api_key=GEMINI_API_KEY,
-    # ... other params ...
-    
-    # Truyền model paths trực tiếp
-    taxonomy_model_path="/kaggle/input/taxonomy-classifier/taxonomy-classifier-vietnamese-v1",
-    sentiment_model_path="/kaggle/input/sentiment-classifier/sentiment-classifier-vietnamese-v1",
-)
-```
-
-Khi sử dụng cách này, bạn sẽ thấy:
-```
-✅ Using taxonomy model from: /kaggle/input/taxonomy-classifier/...
-✅ Using sentiment model from: /kaggle/input/sentiment-classifier/...
-```

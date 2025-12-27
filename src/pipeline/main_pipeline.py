@@ -538,7 +538,27 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         embedding_char_limit=500, summarize_refinement=True,
                         return_components=False, semantic_floor=0.35,
                         cache_dir="embeddings_cache",
-                        taxonomy_model_path=None, sentiment_model_path=None):
+                        # === NEW: Classification Method Options ===
+                        taxonomy_method='auto',  # 'trained', 'llm', 'keyword', 'auto'
+                        sentiment_method='auto',  # 'trained', 'llm', 'phobert', 'auto'
+                        taxonomy_model_path=None,  # Custom path to trained taxonomy model
+                        sentiment_model_path=None):  # Custom path to trained sentiment model
+    """
+    Main hybrid pipeline for trend detection.
+    
+    Classification Options:
+        taxonomy_method: How to classify topics into T1-T7 categories
+            - 'trained': Use fine-tuned VISOBert from taxonomy_model_path
+            - 'llm': Use LLM response from refine_batch
+            - 'keyword': Use keyword matching + semantic similarity
+            - 'auto': Try trained -> keyword (default)
+        
+        sentiment_method: How to analyze sentiment
+            - 'trained': Use fine-tuned VISOBert from sentiment_model_path
+            - 'llm': Use LLM response from refine_batch
+            - 'phobert': Use default PhoBERT model
+            - 'auto': Try trained -> phobert (default)
+    """
     if not posts: return []
     
     # KeywordExtractor is already imported at top level
@@ -560,19 +580,49 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     
     # --- PHASE 1: EMBEDDINGS ---
     
-    # Initialize taxonomy classifier with optional custom model path
+    # === TAXONOMY CLASSIFIER SETUP (based on taxonomy_method) ===
     taxonomy_clf = None
-    if TaxonomyClassifier:
-        from src.core.extraction.taxonomy_classifier import TransformerTaxonomyClassifier
+    use_llm_taxonomy = False
+    if taxonomy_method == 'llm':
+        use_llm_taxonomy = True  # Will use LLM output later
+        console.print("[cyan]📋 Taxonomy: Using LLM classification[/cyan]")
+    elif taxonomy_method == 'keyword':
+        taxonomy_clf = TaxonomyClassifier(embedding_model=embedder, use_transformer=False)
+        console.print("[cyan]📋 Taxonomy: Using keyword + semantic[/cyan]")
+    elif taxonomy_method == 'trained':
+        taxonomy_clf = TaxonomyClassifier(embedding_model=embedder, use_transformer=True)
         if taxonomy_model_path:
-            # Use explicit path
-            taxonomy_clf = TaxonomyClassifier(embedding_model=embedder, use_transformer=False)
-            taxonomy_clf.transformer_clf = TransformerTaxonomyClassifier(model_path=taxonomy_model_path)
-            if taxonomy_clf.transformer_clf.enabled:
-                console.print(f"[green]✅ Using taxonomy model from: {taxonomy_model_path}[/green]")
+            from src.core.extraction.taxonomy_classifier import TransformerTaxonomyClassifier
+            taxonomy_clf.transformer_clf = TransformerTaxonomyClassifier(taxonomy_model_path)
+        console.print(f"[cyan]📋 Taxonomy: Using trained model[/cyan]")
+    else:  # 'auto' - try trained first, fallback to keyword
+        taxonomy_clf = TaxonomyClassifier(embedding_model=embedder, use_transformer=True)
+        if taxonomy_clf.is_using_transformer():
+            console.print("[green]📋 Taxonomy: Auto-detected trained model[/green]")
         else:
-            # Auto-detect
-            taxonomy_clf = TaxonomyClassifier(embedding_model=embedder)
+            console.print("[yellow]📋 Taxonomy: Using keyword fallback (no trained model found)[/yellow]")
+    
+    # === SENTIMENT ANALYZER SETUP (based on sentiment_method) ===
+    use_llm_sentiment = False
+    if sentiment_method == 'llm':
+        use_llm_sentiment = True  # Will use LLM output later
+        sentiments = ['Neutral'] * len(posts)  # Placeholder, LLM will override
+        console.print("[cyan]😊 Sentiment: Using LLM classification[/cyan]")
+    elif sentiment_method == 'phobert':
+        # Force PhoBERT (ignore custom model)
+        from src.core.analysis.sentiment import clear_sentiment_analyzer
+        clear_sentiment_analyzer()  # Reset to ensure default
+        console.print("[cyan]😊 Sentiment: Using PhoBERT[/cyan]")
+    elif sentiment_method == 'trained':
+        # Will auto-load trained model if available
+        console.print("[cyan]😊 Sentiment: Using trained model[/cyan]")
+    else:  # 'auto'
+        from src.core.analysis.sentiment import is_using_custom_model, _find_custom_model
+        if _find_custom_model():
+            console.print("[green]😊 Sentiment: Auto-detected trained model[/green]")
+        else:
+            console.print("[yellow]😊 Sentiment: Using PhoBERT fallback[/yellow]")
+    
     reranker = None
     if rerank:
         ce_model = reranker_model_name or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
@@ -647,10 +697,10 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
     )
     unique_labels = sorted([l for l in set(cluster_labels) if l != -1])
     
-    # Sentiment analysis with optional custom model path
-    sentiments = batch_analyze_sentiment(post_contents, model_path=sentiment_model_path)
-    if sentiment_model_path:
-        console.print(f"[green]✅ Using sentiment model from: {sentiment_model_path}[/green]")
+    # Run sentiment analysis unless using LLM method (which provides it later)
+    if not use_llm_sentiment:
+        sentiments = batch_analyze_sentiment(post_contents, model_path=sentiment_model_path)
+    # else: sentiments already set to placeholder in setup
 
     trend_keys = list(trends.keys())
 
@@ -759,7 +809,14 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
         t_time = parser.parse(t_time_str) if t_time_str else None
         
         unified_score, components = calculate_unified_score(trend_data, cluster_posts, trend_time=t_time)
-        category, category_method = taxonomy_clf.classify(cluster_query + " " + assigned_trend) if taxonomy_clf else ("Unclassified", "None")
+        
+        # Taxonomy classification (skip if using LLM - will be overridden later)
+        if use_llm_taxonomy:
+            category, category_method = "Pending", "LLM"  # Placeholder
+        elif taxonomy_clf:
+            category, category_method = taxonomy_clf.classify(cluster_query + " " + assigned_trend)
+        else:
+            category, category_method = "Unclassified", "None"
         
         llm_reasoning = ""
         final_topic_name = assigned_trend if assigned_trend != "Discovery" else f"New: {cluster_query}"
@@ -768,7 +825,9 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
             "final_topic": final_topic_name, "topic_type": topic_type, "cluster_name": cluster_query,
             "category": category, "category_method": category_method, "match_score": best_match_score,
             "trend_score": unified_score, "score_components": components, "llm_reasoning": "",
-            "posts": cluster_posts # Temporary for LLM
+            "posts": cluster_posts, # Temporary for LLM
+            "_use_llm_taxonomy": use_llm_taxonomy,  # Flag for later processing
+            "_use_llm_sentiment": use_llm_sentiment,  # Flag for later processing
         }
 
     # --- PHASE 2: SEQUENTIAL GPU CLEANUP ---
@@ -862,7 +921,32 @@ def find_matches_hybrid(posts, trends, model_name=None, threshold=0.5,
                         m["final_topic"] = f"New: {res['refined_title']}"
                     m["llm_reasoning"] = res["reasoning"]
                     m["summary"] = res.get("summary", "")
-                    m["sentiment"] = res.get("overall_sentiment", m.get("sentiment", "Neutral"))
+                    
+                    # === LLM-based Sentiment Override ===
+                    if m.get("_use_llm_sentiment"):
+                        m["sentiment"] = res.get("overall_sentiment", "Neutral")
+                        m["sentiment_method"] = "LLM"
+                    else:
+                        m["sentiment"] = res.get("overall_sentiment", m.get("sentiment", "Neutral"))
+                    
+                    # === LLM-based Taxonomy Override ===
+                    if m.get("_use_llm_taxonomy"):
+                        llm_category = res.get("category", "T5")  # Default to T5 if not provided
+                        # Normalize category format
+                        if llm_category and not llm_category.startswith("T"):
+                            # Try to map common names
+                            category_map = {
+                                "crisis": "T1", "khủng hoảng": "T1",
+                                "policy": "T2", "chính sách": "T2", 
+                                "reputation": "T3", "danh tiếng": "T3",
+                                "market": "T4", "thị trường": "T4",
+                                "culture": "T5", "văn hóa": "T5",
+                                "operational": "T6", "vận hành": "T6",
+                                "routine": "T7", "thường nhật": "T7",
+                            }
+                            llm_category = category_map.get(llm_category.lower(), "T5")
+                        m["category"] = llm_category
+                        m["category_method"] = "LLM"
                     
                     # [NEW] Handle Outlier Separation
                     outliers = res.get("outlier_ids", [])
