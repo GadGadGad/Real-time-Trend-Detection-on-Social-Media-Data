@@ -56,3 +56,5 @@ stream_test/crawlers/__pycache__/
 # demo
 .env
 demo/
+
+trend-analysis-streaming/.env
