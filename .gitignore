@@ -56,3 +56,4 @@ stream_test/crawlers/__pycache__/
 # demo
 .env
 demo/
+demo-ready/
