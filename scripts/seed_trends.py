@@ -18,7 +18,7 @@ POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://user:password@localhost:5
 DEMO_STATE_DIR = os.path.join(PROJECT_ROOT, "demo", "demo_data_taxonomy_trained")
 TRENDS_DIR = os.path.join(PROJECT_ROOT, "data", "trendings")
 if not os.path.exists(TRENDS_DIR):
-    TRENDS_DIR = os.path.join(PROJECT_ROOT, "demo-ready", "data")
+    TRENDS_DIR = os.path.join(PROJECT_ROOT, "streaming", "data")
 
 
 import math

@@ -619,8 +619,18 @@ class LLMRefiner:
                - WHEN: Khung thời gian/Ngày tháng.
                - WHY: Nguyên nhân hoặc bối cảnh.
                - NẾU KHÔNG BIẾT, ghi "N/A" nhưng hãy CỐ GẮNG trích xuất.
-            4. Lời khuyên cho Nhà nước (advice_state): Đưa ra các kiến nghị chiến lược cho cơ quan chức năng (ví dụ: chiến lược truyền thông, điều chỉnh chính sách, quản lý khủng hoảng). PHẢI VIẾT BẰNG TIẾNG VIỆT.
-            5. Lời khuyên cho Doanh nghiệp (advice_business): Đưa ra các hiểu biết có thể hành động cho doanh nghiệp (ví dụ: thâm nhập thị trường, giảm thiểu rủi ro, thay đổi vận hành, tận dụng cơ hội). PHẢI VIẾT BẰNG TIẾNG VIỆT.
+            4. Lời khuyên cho Nhà nước (advice_state): Viết 3-5 câu chi tiết về các kiến nghị chiến lược cho cơ quan chức năng. Bao gồm:
+               - Hành động cụ thể cần thực hiện ngay
+               - Chiến lược dài hạn (nếu có)
+               - Cảnh báo rủi ro cần lưu ý
+               Ví dụ: "Cần thành lập ban chỉ đạo khẩn cấp để... Đồng thời, triển khai chiến dịch truyền thông để... Lưu ý theo dõi sát tình hình vì..."
+               PHẢI VIẾT BẰNG TIẾNG VIỆT, ĐẦY ĐỦ VÀ CỤ THỂ.
+            5. Lời khuyên cho Doanh nghiệp (advice_business): Viết 3-5 câu chi tiết về các hiểu biết có thể hành động cho doanh nghiệp. Bao gồm:
+               - Cơ hội kinh doanh có thể khai thác
+               - Rủi ro cần phòng tránh
+               - Bước đi cụ thể để thực hiện
+               Ví dụ: "Đây là cơ hội để thâm nhập thị trường... Tuy nhiên, cần lưu ý rủi ro... Các doanh nghiệp nên chuẩn bị..."
+               PHẢI VIẾT BẰNG TIẾNG VIỆT, ĐẦY ĐỦ VÀ CỤ THỂ.
             
             6. PHÂN LOẠI DANH MỤC (category) - CHỌN ĐÚNG MỘT TRONG 7 LOẠI:
                - T1: Khủng hoảng & Rủi ro - Thiên tai, dịch bệnh, tai nạn thảm khốc, khủng bố, chiến tranh
@@ -650,8 +660,8 @@ class LLMRefiner:
                 "where": "...",
                 "when": "...",
                 "why": "...",
-                "advice_state": "Lời khuyên chiến lược cho cơ quan chức năng...",
-                "advice_business": "Lời khuyên thực tiễn cho doanh nghiệp...",
+                "advice_state": "3-5 câu lời khuyên chi tiết cho cơ quan chức năng, bao gồm hành động cần làm ngay và chiến lược dài hạn...",
+                "advice_business": "3-5 câu lời khuyên chi tiết cho doanh nghiệp, bao gồm cơ hội, rủi ro và bước đi cụ thể...",
                 "reasoning": "Giải thích tại sao chọn category này..."
             }}
         """

@@ -138,7 +138,7 @@ def calculate_realtime_score(g_vol, interactions, post_count):
 
     base_score = (0.4 * g_score) + (0.35 * f_score) + (0.25 * n_score)
     final_score = min(100, base_score * synergy_mult)
-    return round(final_score, 1), round(g_score, 1), round(f_score, 1), round(n_score, 1)
+    return round(final_score, 1), 0.0, 0.0
 
 def process_batch(posts_batch, active_trends, model):
     """Process a batch of posts - prioritize pre-assigned topics from producer"""
@@ -288,7 +288,7 @@ def _update_trend_in_db(trend, post, similarity):
     with db_engine.begin() as conn:
         new_post_count = trend['post_count'] + 1
         new_interactions = trend['interactions'] + 10
-        new_score, g_s, f_s, n_s = calculate_realtime_score(
+        new_score, _, _ = calculate_realtime_score(
             trend['google_vol'], new_interactions, new_post_count
         )
         
@@ -322,8 +322,8 @@ def _update_trend_in_db(trend, post, similarity):
             "vol": trend['google_vol'] + new_post_count,
             "inter": new_interactions,
             "score": new_score,
-            "sn": n_s,
-            "sf": f_s,
+            "sn": 0.0,
+            "sf": 0.0,
             "reps": json.dumps(reps, ensure_ascii=False),
             "now": datetime.now(),
             "id": trend['id']
@@ -353,7 +353,7 @@ def _insert_new_trend(name, rep_posts, centroid, sources):
         topic_type = 'News' if is_news else 'Social'
         
         init_inter = len(rep_posts) * 10
-        proper_score, g_s, f_s, n_s = calculate_realtime_score(0, init_inter, len(rep_posts))
+        proper_score, _, _ = calculate_realtime_score(0, init_inter, len(rep_posts))
         
         conn.execute(text("""
             INSERT INTO detected_trends (
@@ -369,8 +369,8 @@ def _insert_new_trend(name, rep_posts, centroid, sources):
             "vol": len(rep_posts),
             "rep": json.dumps(rep_posts, ensure_ascii=False),
             "type": topic_type,
-            "sn": n_s,
-            "sf": f_s,
+            "sn": 0.0,
+            "sf": 0.0,
             "now": datetime.now(),
             "emb": json.dumps(centroid),
             "summ": "Waiting for analysis...",
@@ -390,7 +390,7 @@ def run_consumer(max_messages=None, timeout=None):
             KAFKA_TOPIC,
             bootstrap_servers=BOOTSTRAP_SERVERS,
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            auto_offset_reset='latest',
+            auto_offset_reset='earliest',
             consumer_timeout_ms=timeout * 1000 if timeout else float('inf')
         )
         print(f"✅ Connected to Kafka topic '{KAFKA_TOPIC}'!")

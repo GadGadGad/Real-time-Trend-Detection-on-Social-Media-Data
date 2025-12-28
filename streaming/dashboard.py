@@ -161,7 +161,7 @@ def process_evolution(row, threshold):
         return pd.Series(["DIỄN BIẾN MỚI", True])
     return pd.Series([row['trend_name'], False])
 
-@st.cache_resource
+# Removed cache to ensure fresh connections for real-time demo
 def get_db_engine():
     return create_engine(DB_URL)
 
@@ -175,7 +175,7 @@ def load_realtime_data():
 st.sidebar.title("🌐 Bảng điều khiển")
 score_threshold = st.sidebar.slider("Ngưỡng điểm nóng", 0.0, 100.0, 30.0)
 auto_refresh = st.sidebar.toggle("Tự động cập nhật", value=True)
-refresh_rate = st.sidebar.select_slider("Tần suất (giây)", options=[2, 5, 10, 30], value=5)
+refresh_rate = st.sidebar.select_slider("Tần suất (giây)", options=[2, 5, 10, 30], value=2)
 sim_threshold = st.sidebar.slider("Độ tương đồng tối thiểu", 0.0, 1.0, 0.4, 0.05)
 
 if st.sidebar.button("🗑️ Xóa dữ liệu"):
@@ -187,7 +187,14 @@ if st.sidebar.button("🗑️ Xóa dữ liệu"):
 @st.fragment(run_every=refresh_rate if auto_refresh else None)
 def show_metrics():
     df_metrics = load_realtime_data()
-    if df_metrics.empty: return
+    # Ensure columns exist even if empty
+    if 'display_topic' not in df_metrics.columns:
+        df_metrics['display_topic'] = ""
+        df_metrics['is_noise'] = False
+
+    if df_metrics.empty: 
+        st.caption("⏳ Đang chờ dữ liệu...")
+        return
     
     df_metrics[['display_topic', 'is_noise']] = df_metrics.apply(process_evolution, axis=1, threshold=score_threshold)
     id_df = df_metrics[df_metrics['is_noise'] == False]
@@ -211,11 +218,11 @@ if st.button("🔄 Cập nhật dữ liệu Chi tiết"):
 
 df_full = st.session_state.last_df
 if df_full.empty:
-    st.info("📡 Đang chờ dữ liệu...")
-    st.stop()
+    st.warning("📡 Hệ thống đang khởi động... Dữ liệu sẽ tự động xuất hiện tại luồng Live.")
+    # Do NOT stop here so fragments and tabs can render and poll for data
 
 # --- TABS ---
-tab_live, tab_map, tab_intel, tab_sys = st.tabs(["🚀 Luồng Live", "🧩 Bản đồ Trọng lực", "🧠 Chi tiết & Phân tích", "📈 Hiệu suất Hệ thống"])
+tab_live, tab_intel, tab_sys = st.tabs(["🚀 Luồng Live", "🧠 Chi tiết & Phân tích", "📈 Hiệu suất Hệ thống"])
 
 # --- TAB 1: LIVE MONITOR ---
 @st.fragment(run_every=refresh_rate if auto_refresh else None)
@@ -255,7 +262,7 @@ def show_tab_live():
         elif is_analyzed: 
             tag_class += " analyzed"
             card_extra_cls = " analyzed-card"
-            status_html = f'<span class="status-badge badge-verified">✨ AI VERIFIED</span>'
+            status_html = f'<span class="status-badge badge-verified">🤖 ANALYZED</span>'
         else:
             status_html = f'<span class="status-badge badge-scanning">🔍 SCANNING...</span>'
         
@@ -276,29 +283,6 @@ def show_tab_live():
 with tab_live:
     show_tab_live()
 
-# --- TAB 2: GRAVITY MAP ---
-@st.fragment(run_every=refresh_rate if auto_refresh else None)
-def show_tab_map():
-    st.subheader("🧩 Bản đồ Trọng lực (Toàn cảnh)")
-    df_map = load_realtime_data()
-    if df_map.empty: return
-    
-    df_map[['display_topic', 'is_noise']] = df_map.apply(process_evolution, axis=1, threshold=score_threshold)
-    
-    plot_df = df_map.copy()
-    plot_df['Size'] = plot_df['post_count'].apply(lambda x: min(x * 5, 50))
-    plot_df['Legend'] = plot_df['display_topic'].apply(lambda x: "Đang theo dõi" if x == "DIỄN BIẾN MỚI" else x)
-    
-    fig = px.scatter(
-        plot_df, x='score_n', y='score_f', size='Size', color='Legend',
-        hover_name='trend_name', template="plotly_dark",
-        labels={'score_n': 'Báo chí', 'score_f': 'Mạng xã hội'}
-    )
-    fig.update_layout(showlegend=True, height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab_map:
-    show_tab_map()
 
 # --- TAB 3: INTELLIGENCE & ANALYTICS ---
 with tab_intel:
@@ -308,8 +292,11 @@ with tab_intel:
         st.subheader("🔍 Chi tiết Sự kiện")
         
         # Prepare data
-        df_full[['display_topic', 'is_noise']] = df_full.apply(process_evolution, axis=1, threshold=score_threshold)
-        identified_df = df_full[df_full['is_noise'] == False]
+        if not df_full.empty:
+            df_full[['display_topic', 'is_noise']] = df_full.apply(process_evolution, axis=1, threshold=score_threshold)
+            identified_df = df_full[df_full['is_noise'] == False]
+        else:
+            identified_df = pd.DataFrame(columns=df_full.columns)
         
         show_all = st.checkbox("Xem cả các diễn biến mới (Cụm tin chưa đạt ngưỡng)")
         
@@ -383,22 +370,47 @@ with tab_intel:
             
             st.markdown("---")
             
+            # === COMPREHENSIVE AI ANALYSIS SECTION ===
             summary = trend_data.get('summary', '')
-            if summary and len(str(summary)) > 20 and str(summary) != "Waiting for analysis...":
-                st.markdown(f"**Tóm tắt:** {summary}")
-            
-            reasoning = trend_data.get('reasoning', '')
-            if reasoning and str(reasoning) != 'N/A' and str(reasoning).strip():
-                with st.expander("🧐 Giải thích từ AI (Tại sao phân loại như vậy?)"):
-                    st.write(reasoning)
-            
             advice_state = trend_data.get('advice_state', '')
-            if advice_state and str(advice_state) != 'N/A' and str(advice_state).strip():
-                st.info(f"**💡 Lời khuyên (Nhà nước):** {advice_state}")
-            
             advice_biz = trend_data.get('advice_business', '')
-            if advice_biz and str(advice_biz) != 'N/A' and str(advice_biz).strip():
-                st.success(f"**💼 Lời khuyên (Doanh nghiệp):** {advice_biz}")
+            reasoning = trend_data.get('reasoning', '')
+            
+            has_summary = summary and len(str(summary)) > 20 and str(summary) != "Waiting for analysis..."
+            has_advice = (advice_state and str(advice_state).strip() and str(advice_state) != 'N/A') or \
+                         (advice_biz and str(advice_biz).strip() and str(advice_biz) != 'N/A')
+            
+            if has_summary or has_advice:
+                st.markdown("### 🤖 Phân tích AI")
+                
+                # Main Summary Box
+                if has_summary:
+                    with st.container():
+                        st.markdown("**📋 Tóm tắt sự kiện:**")
+                        # Replace \n with markdown line breaks for proper rendering
+                        formatted_summary = str(summary).replace('\n', '  \n')
+                        st.markdown(formatted_summary)
+                
+                st.markdown("")  # Spacer
+                
+                # Advice Section in columns
+                if has_advice:
+                    adv_col1, adv_col2 = st.columns(2)
+                    
+                    with adv_col1:
+                        if advice_state and str(advice_state).strip() and str(advice_state) != 'N/A':
+                            st.info(f"**💡 Khuyến nghị cho Nhà nước:**\n\n{advice_state}")
+                    
+                    with adv_col2:
+                        if advice_biz and str(advice_biz).strip() and str(advice_biz) != 'N/A':
+                            st.success(f"**💼 Khuyến nghị cho Doanh nghiệp:**\n\n{advice_biz}")
+                
+                # AI Reasoning (Expandable)
+                if reasoning and str(reasoning) != 'N/A' and str(reasoning).strip():
+                    with st.expander("🧐 Xem lý do phân loại từ AI"):
+                        st.caption(reasoning)
+            else:
+                st.warning("⏳ Đang chờ phân tích từ AI...")
             
             st.markdown("#### 📰 Các bài viết liên quan")
             raw_posts = trend_data.get('representative_posts', '[]')
@@ -466,11 +478,20 @@ with tab_intel:
         st.subheader("📊 Thống kê")
         
         # 1. Top Trends Pie
-        if not identified_df.empty:
-            top_t = identified_df['trend_name'].value_counts().head(5).reset_index()
-            top_t.columns = ['Chủ đề', 'Số lượng']
-            fig_t = px.pie(top_t, values='Số lượng', names='Chủ đề', hole=0.5, template="plotly_dark", title="Top 5 Sự kiện")
-            fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=40,b=0), showlegend=False)
+        # 1. Classification Percentage Pie (Replaces Top 5 Events)
+        if 'category' in identified_df.columns and not identified_df.empty:
+            cat_counts = identified_df['category'].value_counts().reset_index()
+            cat_counts.columns = ['Mã', 'Số lượng']
+            
+            # Use TAXONOMY_MAP if available, otherwise fallback to code
+            if 'TAXONOMY_MAP' in globals():
+                cat_counts['Loại hình'] = cat_counts['Mã'].apply(lambda x: TAXONOMY_MAP.get(x, x))
+            else:
+                 cat_counts['Loại hình'] = cat_counts['Mã']
+            
+            fig_t = px.pie(cat_counts, values='Số lượng', names='Loại hình', hole=0.5, 
+                           template="plotly_dark", title="Tỷ lệ Phân loại Sự kiện")
+            fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=40,b=0), showlegend=True)
             st.plotly_chart(fig_t, use_container_width=True)
 
         # 2. Topic Type Bar (Mapped)

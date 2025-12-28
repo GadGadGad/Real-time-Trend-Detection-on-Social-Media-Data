@@ -23,30 +23,26 @@ default_args = {
 def decide_mode(**context):
     """
     Decide which task(s) to run based on 'mode' in dag_run.conf.
-    Options: 'demo', 'live', 'hybrid' (default: 'demo')
+    Options: 'fast-demo' (instant), 'demo' (kafka), 'live', 'hybrid'
+    Default: 'fast-demo' for instant demo experience
     """
     conf = context.get('dag_run').conf or {}
-    mode = conf.get('mode', 'demo').lower()
+    mode = conf.get('mode', 'fast-demo').lower()
     
     print(f"🔀 Branching Decision: Mode = {mode}")
     
-    if mode == 'live':
+    if mode == 'fast-demo':
+        return ['load_precomputed_data']
+    elif mode == 'live':
         return ['trigger_live_ingest']
     elif mode == 'hybrid':
         return ['trigger_demo_ingest', 'trigger_live_ingest']
-    else:
-        # Default to demo
+    elif mode == 'demo':
         return ['trigger_demo_ingest']
+    else:
+        # Default to fast-demo
+        return ['load_precomputed_data']
 
-def run_demo_ingest(**context):
-    """Refers to the logic in demo_streaming_pipeline.py"""
-    # Import locally to avoid top-level import errors if missing deps
-    from dags.demo_streaming_pipeline import load_data, produce_to_kafka
-    
-    print("🎬 Starting Demo Data Ingestion...")
-    load_data(**context)
-    produce_to_kafka(**context)
-    print("✅ Demo Data Ingestion Complete.")
 
 def decide_engine(**context):
     """
@@ -66,11 +62,11 @@ def decide_engine(**context):
 with DAG(
     dag_id='unified_pipeline',
     default_args=default_args,
-    description='Unified Pipeline: Run Demo, Live, or Hybrid Data Ingestion',
+    description='Unified Pipeline: Run Fast-Demo, Demo, Live, or Hybrid Data Ingestion',
     schedule=None, # Trigger manually
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['unified', 'demo', 'live', 'hybrid', 'spark'],
+    tags=['unified', 'fast-demo', 'demo', 'live', 'hybrid', 'spark'],
 ) as dag:
 
     # 0. Seeding Task (New Robustness Step)
@@ -85,10 +81,16 @@ with DAG(
         python_callable=decide_mode
     )
 
-    # 2. Demo Task (Wrapped Python Function)
-    demo_task = PythonOperator(
+    # 2a. Fast Demo Task - Load pre-computed data instantly (RECOMMENDED for demos)
+    fast_demo_task = BashOperator(
+        task_id='load_precomputed_data',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/load_demo_data.py',
+    )
+
+    # 2b. Demo Task (Kafka-based, slower but shows real streaming)
+    demo_task = BashOperator(
         task_id='trigger_demo_ingest',
-        python_callable=run_demo_ingest
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_producer.py',
     )
 
     # 3. Live Task (Bash Script Wrapper)
@@ -97,7 +99,7 @@ with DAG(
         bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_producer_live.py --categories thoi-su kinh-doanh --pages 1',
     )
 
-    # 3.5. Branching Task for Engine
+    # 3.5. Branching Task for Engine (only for Kafka-based modes)
     engine_branch = BranchPythonOperator(
         task_id='check_engine',
         python_callable=decide_engine,
@@ -107,20 +109,19 @@ with DAG(
     # 4a. Standard Python Consumer Task
     consumer_task = BashOperator(
         task_id='run_consumer_processing',
-        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 30',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 60',
     )
 
     # 4b. New Spark Consumer Task
     spark_task = BashOperator(
         task_id='run_spark_processing',
-        # In production, this would be a long-running job, here we use finite execution sim or spark-submit
         bash_command=f'cd "{PROJECT_ROOT}" && spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 streaming/spark_consumer.py',
     )
 
-    # 5. Intelligence Task (Refine Trends)
+    # 5. Intelligence Task (Refine Trends) - Skip for fast-demo since AI is pre-computed
     intelligence_task = BashOperator(
         task_id='run_ai_analysis',
-        bash_command=f'cd "{PROJECT_ROOT}" && source .env && {PYTHON_BIN} demo-ready/intelligence_worker.py --max-cycles 5',
+        bash_command=f'cd "{PROJECT_ROOT}" && source .env && {PYTHON_BIN} streaming/intelligence_worker.py --max-cycles 5',
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS
     )
 
@@ -128,16 +129,18 @@ with DAG(
     verify_task = BashOperator(
         task_id='verify_pipeline_health',
         bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} scripts/verify_pipeline.py',
-        trigger_rule=TriggerRule.ALL_SUCCESS
+        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS
     )
 
-    # Graph
-    seed_task >> branch_task >> [demo_task, live_task]
+    # Graph - Two parallel paths:
+    # Path 1 (Fast Demo): seed -> check_mode -> load_precomputed_data -> verify
+    # Path 2 (Kafka modes): seed -> check_mode -> [demo/live] -> check_engine -> [consumer/spark] -> ai -> verify
+    
+    seed_task >> branch_task >> [fast_demo_task, demo_task, live_task]
+    
+    # Kafka path continues to engine selection
     [demo_task, live_task] >> engine_branch >> [consumer_task, spark_task]
     [consumer_task, spark_task] >> intelligence_task >> verify_task
-
-if __name__ == "__main__":
-    print("🚀 Testing content availability...")
-    # Basic check
-    from dags.demo_streaming_pipeline import load_data
-    print("✅ Imports successful.")
+    
+    # Fast demo path goes directly to verify
+    fast_demo_task >> verify_task

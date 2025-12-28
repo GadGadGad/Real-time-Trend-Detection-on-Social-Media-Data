@@ -14,6 +14,7 @@ CUSTOM_MODEL_PATH = None  # Will be set dynamically
 def _find_custom_model():
     """Look for trained sentiment classifier in common locations."""
     possible_paths = [
+        "demo/models/models/sentiment-classifier-vietnamese-v1", # Local Demo Path
         "models/sentiment-classifier-vietnamese-v1",
         "../models/sentiment-classifier-vietnamese-v1",
         "/kaggle/input/sentiment-classifier/sentiment-classifier-vietnamese-v1",

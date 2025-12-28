@@ -14,8 +14,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
     from src.core.llm.llm_refiner import LLMRefiner
+    from src.core.extraction.taxonomy_classifier import TaxonomyClassifier
+    from src.core.analysis.sentiment import batch_analyze_sentiment, get_analyzer
 except ImportError:
-    print("❌ Could not import LLMRefiner. Make sure you are in the correct directory.")
+    print("❌ Could not import core modules. Make sure you are in the correct directory.")
     sys.exit(1)
 
 # Configure Logging
@@ -215,6 +217,20 @@ def main(max_cycles=None):
     except Exception as e:
         logger.error(f"⚠️ Failed to load embedding model: {e}")
 
+    # --- CLASSIFIERS SETUP (Local Mode vs LLM Mode) ---
+    use_llm_only = os.getenv("USE_LLM_ONLY", "false").lower() == "true"
+    tax_clf = None
+    if not use_llm_only:
+        try:
+            logger.info("🧠 Loading Local Classifiers (Taxonomy & Sentiment)...")
+            tax_clf = TaxonomyClassifier(embedding_model=model) # Uses model from above
+            get_analyzer() # Pre-load sentiment
+        except Exception as e:
+            logger.error(f"⚠️ Failed to load local classifiers: {e}")
+            tax_clf = None
+    else:
+        logger.info("🤖 Running in LLM-ONLY Mode (Skipping local BERT classifiers)")
+
     try:
         # Initialize Refiner (High Capacity mode for demo speed)
         refiner = LLMRefiner(provider="gemini", api_key=api_key, debug=True)
@@ -281,13 +297,43 @@ def main(max_cycles=None):
                          continue
                     # -----------------------------------------------------------
 
+                    
+                    # --- LOCAL CLASSIFICATION (Optionally Override LLM) ---
+                    local_cat = "Unclassified"
+                    local_sent = "Neutral"
+                    
+                    if not use_llm_only and tax_clf:
+                        try:
+                            # Taxonomy on Name
+                            local_cat, _ = tax_clf.classify(t_name)
+                            
+                            # Sentiment on Posts (Batch)
+                            if posts:
+                                contents = [p.get('content', '') for p in posts[:10]]
+                                sents = batch_analyze_sentiment(contents)
+                                from collections import Counter
+                                if sents:
+                                    local_sent = Counter(sents).most_common(1)[0][0]
+                        except Exception as e:
+                            logger.error(f"⚠️ Local classification failed: {e}")
+
                     # Call LLM
+                    # We pass the local category as a hint/constraint
                     analysis_result = refiner.refine_cluster(
                         cluster_name=t_name,
                         posts=posts,
-                        original_category="Unclassified",
+                        original_category=local_cat if local_cat != "Unclassified" else "Unclassified",
                         topic_type="Discovery"
                     )
+                    
+                    # Override if Local Models used (User Requirement)
+                    if not use_llm_only and tax_clf:
+                        # Unpack tuple to list
+                        res_list = list(analysis_result)
+                        # 1: Category, 5: Sentiment
+                        if local_cat != "Unclassified": res_list[1] = local_cat
+                        res_list[5] = local_sent
+                        analysis_result = tuple(res_list)
                     
                     # Update DB (with model for embeddings)
                     update_trend_analysis(t_id, analysis_result, model=model)

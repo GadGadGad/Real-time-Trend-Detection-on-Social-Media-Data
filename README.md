@@ -37,12 +37,12 @@ pip install -r requirements.txt
 ```bash
 # Starts the background worker for Clustering & LLM
 python streaming/kafka_consumer.py &
-python demo-ready/intelligence_worker.py
+python streaming/intelligence_worker.py
 ```
 
 **Terminal 2: Dashboard**
 ```bash
-streamlit run demo-ready/dashboard.py
+streamlit run streaming/dashboard.py
 ```
 
 **Terminal 3: Trigger Data**
@@ -54,7 +54,7 @@ python dags/unified_pipeline_dag.py
 ## 📂 Project Structure
 ```
 ├── dags/                  # Airflow DAGs (Unified, Live, Demo)
-├── demo-ready/            # Dashboard & Intelligence Worker
+├── streaming/            # Dashboard & Intelligence Worker
 ├── streaming/             # Kafka Producers & Consumers
 ├── slides/                # LaTeX Presentation
 ├── scripts/               # Training & Evaluation Scripts

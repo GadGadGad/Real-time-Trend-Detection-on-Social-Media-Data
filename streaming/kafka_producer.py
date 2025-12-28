@@ -40,23 +40,23 @@ def create_producer():
         return None
 
 def load_kaggle_data():
-    """Load posts from demo-ready/data CSVs or demo_state folder"""
+    """Load posts from streaming/data CSVs or demo_state folder"""
     try:
         from src.utils.demo_state import load_demo_state
         import pandas as pd
         import glob
         
-        # 1. Try demo-ready/data CSV files (New Source for E2E Simulation)
+        # 1. Try streaming/data CSV files (New Source for E2E Simulation)
         demo_ready_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "demo-ready", "data"
+            "streaming", "data"
         )
         
         if os.path.exists(demo_ready_dir):
             csv_files = glob.glob(os.path.join(demo_ready_dir, "*.csv"))
             if csv_files:
                 all_posts = []
-                print(f"📂 Loading data from demo-ready/data: {len(csv_files)} files found")
+                print(f"📂 Loading data from streaming/data: {len(csv_files)} files found")
                 
                 for f in csv_files:
                     try:
@@ -86,7 +86,7 @@ def load_kaggle_data():
                         print(f"⚠️ Warning: Failed to load {f}: {e}")
                 
                 if all_posts:
-                    print(f"✅ Loaded {len(all_posts)} posts from demo-ready CSVs")
+                    print(f"✅ Loaded {len(all_posts)} posts from streaming CSVs")
                     # Return as DataFrame for consistency
                     return pd.DataFrame(all_posts)
 

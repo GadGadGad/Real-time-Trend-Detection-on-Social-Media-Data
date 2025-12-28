@@ -46,6 +46,7 @@ _using_transformer = False
 def _find_custom_model():
     """Look for trained taxonomy classifier in common locations."""
     possible_paths = [
+        "demo/models/models/taxonomy-classifier-vietnamese-v1", # Local Demo Path
         "models/taxonomy-classifier-vietnamese-v1",
         "../models/taxonomy-classifier-vietnamese-v1",
         "/kaggle/input/taxonomy-classifier/taxonomy-classifier-vietnamese-v1",

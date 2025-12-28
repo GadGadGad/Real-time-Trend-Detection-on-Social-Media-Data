@@ -438,13 +438,8 @@ def process_stateful_batch(df, batch_id):
                     is_news = any(s.lower() in ['vnexpress', 'tuoitre', 'thanhnien', 'news'] for s in cluster_sources)
                     topic_type = 'News' if is_news else 'Social'
                     
-                    # Add jitter for visual scatter on Gravity Map
-                    import random
-                    jitter_n = random.uniform(-8.0, 8.0)
-                    jitter_f = random.uniform(-8.0, 8.0)
-                    
-                    score_n = max(0, min(100, (60.0 if is_news else 20.0) + jitter_n))
-                    score_f = max(0, min(100, (60.0 if not is_news else 20.0) + jitter_f))
+                    score_n = 0.0
+                    score_f = 0.0
                     
                     # Representative Posts JSON with Similarity to Centroid
                     rep_posts = []

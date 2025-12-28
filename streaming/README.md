@@ -74,10 +74,10 @@ spark-submit spark_consumer.py
 
 ## Fallback
 
-Original demo-ready setup is still available in `demo-ready/` folder.
+Original streaming setup is still available in `streaming/` folder.
 
 ```bash
-cd demo-ready
+cd streaming
 python consumer.py &
 python intelligence_worker.py &
 streamlit run dashboard.py
