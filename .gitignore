@@ -29,6 +29,7 @@ trendings/
 facebook/
 fb_data.json
 *.jsonl
+*.pkl
 debug_*.html
 geckodriver.log
 *.csv
