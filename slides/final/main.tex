@@ -391,7 +391,7 @@
         \item \textbf{Cross-Encoder (Reranker):} So sánh trực tiếp cặp [Post, Trend] để tính toán điểm tương quan sâu (Interaction-based).
     \end{itemize}
 
-    \begin{block}{Chiến lược Reranking}enri
+    \begin{block}{Chiến lược Reranking}
         Hệ thống chỉ gọi Reranker cho top 5 ứng viên từ Bi-Encoder để tối ưu hiệu năng.
     \end{block}
 \end{frame}
@@ -471,6 +471,7 @@
               \begin{itemize}
                   \item Mở rộng từ khóa mỏ neo bằng các thực thể liên quan: $Query = Trend + Keywords$.
                   \item \textit{Mục tiêu:} Tăng độ phủ (recall) khi so khớp với dữ liệu bài viết dài.
+                  \item \textbf{Ví dụ:} "sea games 33" $\rightarrow$ "sea games 33 lich bong da seagame việt nam đấu với đội tuyển bóng đá nữ quốc gia malaysia..."
               \end{itemize}
         \item \textbf{Stage 3: Semantic Deduplication (LLM)}
               \begin{itemize}
@@ -532,10 +533,10 @@
                 \toprule
                 \textbf{Model}                          & \textbf{Avg Gap} & \textbf{Storm} & \textbf{Domain} & \textbf{Category} & \textbf{Slang} & \textbf{Abbrev} \\
                 \midrule
-                \textbf{vietnamese-document-embedding*} & \textbf{0.265}   & 0.239          & 0.224           & 0.162             & \textbf{0.283} & \textbf{0.419}  \\
+                \textbf{vietnamese-document-embedding*} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
                 vietnamese-bi-encoder                   & 0.193            & 0.155          & 0.213           & 0.107             & 0.108          & 0.381           \\
-                vietnamese-sbert                        & 0.188            & 0.355          & 0.172           & 0.033             & \alert{-0.005} & 0.386           \\
-                bge-m3                                  & 0.160            & \alert{-0.003} & 0.269           & 0.070             & 0.192          & 0.273           \\
+                vietnamese-sbert                        & 0.188            & \textbf{0.355} & 0.172           & 0.033             & \alert{-0.005} & 0.386           \\
+                bge-m3                                  & 0.160            & \alert{-0.003} & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
                 multilingual-e5-large                   & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
                 \bottomrule
             \end{tabular}%
@@ -595,7 +596,6 @@
             Taxonomy Classifier           & T1-T7 (7 classes)           & 89.2\%            & 14 ms/sample     \\
             \bottomrule
         \end{tabular}%
-        }
     \end{table}
 
 \end{frame}
@@ -811,7 +811,7 @@
         \item \textbf{1. Sentiment Analysis (4,630 samples):}
               \begin{itemize}
                   \item Crawl bình luận từ Fanpages lớn (Beatvn, Theanh28).
-                  \item Pseudo-labeling bằng GPT-4o, sau đó **Human Review** các trường hợp có độ tin cậy thấp.
+                  \item Pseudo-labeling bằng Gemini-3-Pro, sau đó **Human Review** các trường hợp có độ tin cậy thấp.
               \end{itemize}
         \item \textbf{2. Taxonomy Classification (3,687 samples):}
               \begin{itemize}
@@ -919,10 +919,9 @@
             Sạt lở đất gây hậu quả nghiêm trọng      & 0.67              & Thiên tai \& Bão lũ     & 1.00                 \\
             \midrule
             Việt kiều kiện tụng \& xung đột lãnh thổ & \alert{0.00}      & Tin tức quốc tế (Mixed) & \alert{0.64}         \\
-            [Noise] Không đủ thông tin tạo tiêu đề   & 0.00              & Rác / Lỗi thu thập      & N/A                  \\
+            {[Noise]} Không đủ thông tin tạo tiêu đề & 0.00              & Rác / Lỗi thu thập      & N/A                  \\
             \bottomrule
         \end{tabular}%
-        }
     \end{table}
 
     \vspace{-0.2cm}
@@ -938,6 +937,34 @@
 % SECTION 6: KẾT QUẢ THỰC NGHIỆM
 %============================================================
 \section{Kết quả thực nghiệm}
+\begin{frame}{Lựa chọn Thuật toán Clustering (Method Selection)}
+    So sánh hiệu năng giữa các thuật toán phổ biến trên tập dữ liệu mẫu:
+
+    \begin{table}[]
+        \centering
+        \resizebox{\textwidth}{!}{%
+            \begin{tabular}{l c c c c c l}
+                \toprule
+                \textbf{Method}         & \textbf{k}   & \textbf{Noise} & \textbf{Silh (Cos)} & \textbf{DB Index} & \textbf{Time (s)} & \textbf{Note}                                                         \\
+                \midrule
+                KMEANS                  & 253          & 0              & 0.024               & 3.177             & \textbf{8.45}     & Chất lượng cụm kém + Số lượng cụm cố định(Không phù hợp với bài toán) \\
+                \textbf{HDBSCAN}        & \textbf{460} & 1,984          & 0.109               & \textbf{2.094}    & 16.00             & \textbf{Balanced (Chọn làm baseline)}                                 \\
+                BERTOPIC                & 223          & 1,801          & \textbf{0.112}      & 2.363             & 55.72             & Quá chậm (Slow)                                                       \\
+                \midrule
+                \textbf{Our clustering} & 455          & \textbf{1,754} & 0.111               & 2.115             & 35.77             & Của nhóm                                                              \\
+                \bottomrule
+            \end{tabular}%
+        }
+    \end{table}
+
+    \textbf{Lý do chọn HDBSCAN:}
+    \begin{itemize}
+        \item \textbf{High Quality:} Silhouette Score (0.109) và DB Index (2.094) tốt nhất trong nhóm thuật toán nhanh.
+        \item \textbf{Noise Handling:} Tự động loại bỏ nhiễu (1,984 noise points), rất quan trọng với dữ liệu MXH.
+        \item \textbf{Speed:} Nhanh hơn BERTOPIC gấp 3 lần, phù hợp Streaming.
+    \end{itemize}
+\end{frame}
+
 
 \begin{frame}{Các Chỉ số Đánh giá Clustering được sử dụng}
 
@@ -985,22 +1012,11 @@
 \begin{frame}{Trực quan hóa Cụm sự kiện (t-SNE Projection)}
     Dữ liệu embedding 768 chiều được chiếu xuống không gian 2D để quan sát:
 
-    \begin{columns}
-        \column{0.55\textwidth}
-        \begin{figure}
-            \centering
-            \includegraphics[width=\textwidth]{../../crawlers/results/trend_tsne.png}
-            \caption{\scriptsize Biểu đồ gom cụm ngữ nghĩa thực tế}
-        \end{figure}
-
-        \column{0.45\textwidth}
-        \textbf{Phân tích:}
-        \begin{itemize}
-            \item Các điểm cùng màu tạo thành các cụm tập trung (Chặt chẽ).
-            \item Khoảng cách giữa các cụm xa nhau (Tách biệt rõ ràng).
-            \item Các điểm lẻ tẻ (Xám) được HDBSCAN phân loại là \textbf{Nhiễu (Noise)}.
-        \end{itemize}
-    \end{columns}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.85\textwidth]{../../crawlers/results/trend_tsne.png}
+        \caption{\scriptsize Biểu đồ gom cụm ngữ nghĩa thực tế}
+    \end{figure}
 \end{frame}
 
 
@@ -1079,7 +1095,7 @@
 
 % Frame 6.3: Đánh giá định lượng (Metrics)
 \begin{frame}{Đánh giá định lượng (Quantitative Metrics)}
-    Kết quả đánh giá trên tập dữ liệu 7,605 bài đăng:
+    Kết quả đánh giá trên tập dữ liệu 300 bài đăng Mini-Ground Truth:
 
     \begin{table}[]
         \centering
