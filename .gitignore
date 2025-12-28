@@ -28,6 +28,7 @@ news*/
 trendings/
 facebook/
 fb_data.json
+*.jsonl
 debug_*.html
 geckodriver.log
 *.csv
