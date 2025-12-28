@@ -21,7 +21,7 @@ from kafka import KafkaProducer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- CONFIG ---
-KAFKA_TOPIC = 'batch-stream'  # Different topic from demo_ready
+KAFKA_TOPIC = 'posts_stream_v1'  # Different topic from demo_ready
 BOOTSTRAP_SERVERS = ['localhost:29092']
 MAX_POSTS = 500  # Limit for demo speed
 

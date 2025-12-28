@@ -48,6 +48,21 @@ def run_demo_ingest(**context):
     produce_to_kafka(**context)
     print("✅ Demo Data Ingestion Complete.")
 
+def decide_engine(**context):
+    """
+    Decide whether to use standard 'python' or 'spark' engine for processing.
+    (default: 'python')
+    """
+    conf = context.get('dag_run').conf or {}
+    engine = conf.get('engine', 'python').lower()
+    
+    print(f"⚙️  Engine Decision: {engine}")
+    
+    if engine == 'spark':
+        return 'run_spark_processing'
+    else:
+        return 'run_consumer_processing'
+
 with DAG(
     dag_id='unified_pipeline',
     default_args=default_args,
@@ -55,10 +70,16 @@ with DAG(
     schedule=None, # Trigger manually
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['unified', 'demo', 'live', 'hybrid'],
+    tags=['unified', 'demo', 'live', 'hybrid', 'spark'],
 ) as dag:
 
-    # 1. Branching Task
+    # 0. Seeding Task (New Robustness Step)
+    seed_task = BashOperator(
+        task_id='seed_initial_trends',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} scripts/seed_trends.py',
+    )
+
+    # 1. Branching Task for Mode
     branch_task = BranchPythonOperator(
         task_id='check_mode',
         python_callable=decide_mode
@@ -71,23 +92,49 @@ with DAG(
     )
 
     # 3. Live Task (Bash Script Wrapper)
-    # Using BashOperator is safer for long-running crawler processes and env isolation
     live_task = BashOperator(
         task_id='trigger_live_ingest',
         bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_producer_live.py --categories thoi-su kinh-doanh --pages 1',
     )
 
-    # 4. Join Task (Optional, just to have a clean end state)
-    join_task = PythonOperator(
-        task_id='pipeline_finished',
-        python_callable=lambda: print("🎉 Pipeline Execution Finished"),
-        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS # Runs if at least one branch succeeds
+    # 3.5. Branching Task for Engine
+    engine_branch = BranchPythonOperator(
+        task_id='check_engine',
+        python_callable=decide_engine,
+        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS
+    )
+
+    # 4a. Standard Python Consumer Task
+    consumer_task = BashOperator(
+        task_id='run_consumer_processing',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 30',
+    )
+
+    # 4b. New Spark Consumer Task
+    spark_task = BashOperator(
+        task_id='run_spark_processing',
+        # In production, this would be a long-running job, here we use finite execution sim or spark-submit
+        bash_command=f'cd "{PROJECT_ROOT}" && spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 streaming/spark_consumer.py',
+    )
+
+    # 5. Intelligence Task (Refine Trends)
+    intelligence_task = BashOperator(
+        task_id='run_ai_analysis',
+        bash_command=f'cd "{PROJECT_ROOT}" && source .env && {PYTHON_BIN} demo-ready/intelligence_worker.py --max-cycles 5',
+        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS
+    )
+
+    # 6. Verification Task
+    verify_task = BashOperator(
+        task_id='verify_pipeline_health',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} scripts/verify_pipeline.py',
+        trigger_rule=TriggerRule.ALL_SUCCESS
     )
 
     # Graph
-    branch_task >> [demo_task, live_task]
-    demo_task >> join_task
-    live_task >> join_task
+    seed_task >> branch_task >> [demo_task, live_task]
+    [demo_task, live_task] >> engine_branch >> [consumer_task, spark_task]
+    [consumer_task, spark_task] >> intelligence_task >> verify_task
 
 if __name__ == "__main__":
     print("🚀 Testing content availability...")

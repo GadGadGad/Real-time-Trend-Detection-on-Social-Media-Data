@@ -4,6 +4,7 @@ import sys
 import time
 import json
 import logging
+import argparse # Added for finite execution
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -36,7 +37,7 @@ def calculate_realtime_score(g_vol, interactions, post_count):
     f_score = (math.log10(interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
     f_score = min(100, f_score)
 
-    MAX_ARTICLES = 20
+    MAX_ARTICLES = 10
     n_score = (math.log10(post_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if post_count > 0 else 0
     n_score = min(100, n_score)
 
@@ -195,7 +196,7 @@ def update_trend_analysis(trend_id, analysis_result, model=None):
         conn.execute(text(update_query), params)
         logger.info(f"✅ Updated Trend {trend_id}: {analysis_result[0]}")
 
-def main():
+def main(max_cycles=None):
     load_dotenv()
     
     # Check API Key
@@ -226,6 +227,7 @@ def main():
 
     logger.info("🚀 Worker Started. Polling for unanalyzed trends...")
     
+    cycles = 0
     while True:
         try:
             trends = get_unanalyzed_trends()
@@ -233,6 +235,12 @@ def main():
             if not trends:
                 logger.debug("💤 No suitable trends found. Sleeping...")
                 time.sleep(60)
+                # Still count as a cycle? Maybe only count active cycles? 
+                # Let's count every loop to be safe if user wants strictly limited time.
+                cycles += 1
+                if max_cycles and cycles >= max_cycles:
+                    logger.info(f"🛑 Reached limit of {max_cycles} cycles.")
+                    break
                 continue
                 
             logger.info(f"🔍 Found {len(trends)} trends to analyze.")
@@ -247,6 +255,32 @@ def main():
                         
                     logger.info(f"⚡ Analyzing Trend {t_id}: {t_name} ({len(posts)} posts)...")
                     
+                    # --- PRE-FILTER: Cheaper Heuristics before Expensive LLM ---
+                    # Define inline instead of importing (main_pipeline uses local vars)
+                    import re
+                    import unicodedata
+                    _garbage_list = {'cf', 'fo4', 'sou', 'scl', 'hit', 'vic', 'xoi', 'vck'}
+                    def _normalize_text(t): return unicodedata.normalize('NFC', t.lower().strip())
+                    def _mostly_numeric(t): return sum(c.isdigit() for c in t) / max(len(t), 1) > 0.6
+                    def _too_many_symbols(t): return sum(not c.isalnum() and not c.isspace() for c in t) / max(len(t), 1) > 0.4
+                    def _bad_vs_pattern(t): return bool(re.match(r'^[a-z]{2,4}\s+vs\s+[a-z]{2,4}$', t, re.I))
+                    
+                    norm_name = _normalize_text(t_name)
+                    is_garbage = False
+                    
+                    if norm_name in _garbage_list: is_garbage = True
+                    elif _mostly_numeric(norm_name): is_garbage = True
+                    elif _too_many_symbols(t_name): is_garbage = True
+                    elif _bad_vs_pattern(norm_name): is_garbage = True
+                    
+                    if is_garbage:
+                         logger.warning(f"🗑️ Skipping Garbage Trend: '{t_name}'")
+                         # Mark as ignored in DB so we don't pick it up again
+                         with db_engine.begin() as conn:
+                             conn.execute(text("UPDATE detected_trends SET summary = 'Ignored: Garbage Filter', category = 'Ignored' WHERE id = :id"), {"id": t_id})
+                         continue
+                    # -----------------------------------------------------------
+
                     # Call LLM
                     analysis_result = refiner.refine_cluster(
                         cluster_name=t_name,
@@ -261,6 +295,11 @@ def main():
                 except Exception as e:
                     logger.error(f"⚠️ Error analyzing trend {t_id}: {e}")
                     
+            cycles += 1
+            if max_cycles and cycles >= max_cycles:
+                logger.info(f"🛑 Reached limit of {max_cycles} cycles.")
+                break
+
             time.sleep(60) # Rest between batches
             
         except KeyboardInterrupt:
@@ -271,4 +310,8 @@ def main():
             time.sleep(5)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="AI Worker for Trend Analysis")
+    parser.add_argument("--max-cycles", type=int, help="Stop after N polling cycles", default=None)
+    args = parser.parse_args()
+    
+    main(max_cycles=args.max_cycles)

@@ -20,7 +20,7 @@ with DAG(
     dag_id='live_data_ingestion',
     default_args=default_args,
     description='Fetches live news from VnExpress and streams to Kafka',
-    schedule_interval='*/30 * * * *', # Every 30 minutes
+    schedule='*/30 * * * *', # Every 30 minutes
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=['live', 'ingestion', 'kafka'],

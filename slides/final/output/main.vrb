@@ -1,0 +1,30 @@
+\frametitle{Nguồn dữ liệu 2: Tin tức}
+\justifying
+
+  \begin{block}{Vai trò trong hệ thống}
+    \begin{itemize}
+      \item \textbf{Nguồn xác thực:} Chuẩn ngữ pháp, độ tin cậy cao $\rightarrow$ kiểm chứng sự kiện.
+      \item \textbf{Nguồn:} VnExpress, Tuổi Trẻ, Thanh Niên, Người Lao Động, ...
+      \item \textbf{Thách thức:} Thông tin thường dài dòng, khó tóm tắt.
+    \end{itemize}
+  \end{block}
+
+  \begin{exampleblock}{Các trường chính trong dữ liệu báo chí}
+    {\scriptsize
+      \begin{table}
+        \centering
+        \begin{tabular}{p{1.1cm} p{1.8cm} p{1.8cm} p{2.5cm} p{1.1cm}}
+          \toprule
+          \textbf{ID}                                                                            & \textbf{URL} & \textbf{Tiêu đề} & \textbf{Nội dung} & \textbf{Thời gian} \\
+          \midrule
+          7287b...                                                                               &
+          vietnamnet.vn/...                                                                      &
+          Nhật Bản đau đầu với ngân sách                                                         &
+          Ngân khố của chính phủ Nhật Bản đã nhận được 129 tỷ Yen từ các nguồn thu bất thường... &
+          09/12/2025 10:37                                                                                                                                                  \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+    }
+  \end{exampleblock}
+

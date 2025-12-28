@@ -108,6 +108,11 @@ def load_google_trends(csv_files):
                     volume = int(num_parts[0]) * multiplier if num_parts else 0
                     
                     keywords = [k.strip() for k in row[4].split(',') if k.strip()]
+                    
+                    # FIX: If main_trend is a hash (long, no spaces), use the first keyword as the name
+                    if len(main_trend) > 30 and ' ' not in main_trend and keywords:
+                        main_trend = keywords[0]
+                    
                     if main_trend not in keywords: keywords.insert(0, main_trend)
                     trends[main_trend] = {
                         "keywords": keywords, 

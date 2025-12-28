@@ -195,12 +195,75 @@ def filter_obvious_noise(trends):
     ]
 
 
+    # === PORTED NOTEBOOK LOGIC: ROBUST FILTERING ===
+    
+    # 0. Noise / Garbage Lists (From Notebook)
+    garbage_list = {'cf', 'fo4', 'sou', 'scl', 'hit', 'vic', 'xoi', 'vck'}
+    allow_short = {'t1', 'tga', 'nba', 'c1'} 
+    
+    def mostly_numeric(s: str) -> bool:
+        s = s.strip()
+        if not s: return True
+        digits = sum(ch.isdigit() for ch in s)
+        letters = sum(ch.isalpha() for ch in s)
+        # Mostly number + symbols with very few letters
+        return (digits >= max(1, int(0.6 * len(s)))) and letters <= 1
+
+    def too_many_symbols(s: str) -> bool:
+        if not s: return True
+        # Ratio of allowed chars (alnum + space)
+        allowed = sum(ch.isalnum() or ch.isspace() for ch in s)
+        return (1 - allowed / max(1, len(s))) > 0.30
+
+    def bad_vs_pattern(s: str) -> bool:
+        if s.endswith("vs") or s.endswith("vs "): return True
+        if " vs " in s:
+            left, right = s.split(" vs ", 1)
+            if len(left.strip()) < 3 or len(right.strip()) < 3:
+                return True
+        return False
+        
+    date_pat = re.compile(
+        r'(\bngay\s*\d{1,2}\b)|(\b\d{1,2}\s*thang\s*\d{1,2}\b)|(\b\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\b)',
+        flags=re.IGNORECASE
+    )
+
     filtered_trends = {}
     for k, v in trends.items():
+        raw_k = str(k).strip()
         norm_k = normalize_text(k)
+        
+        # --- NOTEBOOK LOGIC CHECKS ---
+        
+        # 1. Length Filter (Keep whitelist)
+        if len(norm_k) < 4 and norm_k not in allow_short:
+             continue
+             
+        # 2. Garbage List
+        if norm_k in garbage_list:
+             continue
+             
+        # 3. Bad 'vs' Pattern
+        if bad_vs_pattern(norm_k):
+             continue
+             
+        # 4. Mostly Numeric
+        if mostly_numeric(norm_k) and len(norm_k) <= 6:
+             continue
+             
+        # 5. Too Many Symbols
+        if too_many_symbols(raw_k):
+             continue
+
+        # 6. Date Pattern (Optional, but usually noise in trends)
+        if date_pat.search(norm_k):
+             continue
+
+        # --- END NOTEBOOK LOGIC ---
+
         if any(nk in norm_k for nk in noise_keywords):
             continue
-        # Remove standalone numbers or pure date patterns
+        # Remove standalone numbers or pure date patterns (Existing Check)
         if re.match(r'^\d+$', norm_k.replace(' ', '')):
             continue
             
@@ -230,7 +293,7 @@ def filter_obvious_noise(trends):
     
     removed = len(trends) - len(filtered_trends)
     if removed > 0:
-        console.print(f"   🧹 Pre-Filter: Removed {removed} noise terms (including club sports).")
+        console.print(f"   🧹 Pre-Filter: Removed {removed} noise terms (Garbage + Sports + Date Patterns).")
     return filtered_trends
 
 def normalize_sports_matches(text):
@@ -308,57 +371,10 @@ def load_json(filepath):
         console.print(f"[red]Error loading JSON {filepath}: {e}[/red]")
         return []
 
-def load_trends(csv_files):
-    trends = {}
-    for filepath in csv_files:
-        # Extract timestamp from filename (e.g., 20251208-1452)
-        file_time = None
-        match = re.search(r'(\d{8}-\d{4})', os.path.basename(filepath))
-        if match:
-            try:
-                file_time = datetime.strptime(match.group(1), "%Y%m%d-%H%M")
-            except: pass
-            
-        # Support pre-refined JSON
-        if filepath.endswith('.json'):
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    loaded = json.load(f)
-                    # If loaded items don't have time, add file_time
-                    for k, v in loaded.items():
-                        if 'time' not in v and file_time:
-                            v['time'] = file_time.isoformat()
-                    trends.update(loaded)
-                    console.print(f"[dim]📦 Loaded {len(loaded)} pre-refined trends from {filepath}[/dim]")
-                    continue
-            except Exception as e:
-                console.print(f"[red]Error loading JSON {filepath}: {e}[/red]")
-                continue
-        
-        # Original CSV parsing
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                next(reader) 
-                for row in reader:
-                    if len(row) < 5: continue
-                    main_trend = row[0].strip()
-                    vol_str = row[1].strip()
-                    # Parse volume
-                    clean_vol = vol_str.upper().replace(',', '').replace('.', '')
-                    multiplier = 1000 if 'N' in clean_vol or 'K' in clean_vol else (1000000 if 'M' in clean_vol or 'TR' in clean_vol else 1)
-                    num_parts = re.findall(r'\d+', clean_vol)
-                    volume = int(num_parts[0]) * multiplier if num_parts else 0
-                    
-                    keywords = [k.strip() for k in row[4].split(',') if k.strip()]
-                    if main_trend not in keywords: keywords.insert(0, main_trend)
-                    trends[main_trend] = {
-                        "keywords": keywords, 
-                        "volume": volume,
-                        "time": file_time.isoformat() if file_time else None
-                    }
-        except Exception: pass
-    return trends
+# Renamed to avoid Import Error if using 'from src.utils.data_loader import load_google_trends as load_trends' at top
+# But since we are replacing the function definition entirely:
+
+from src.utils.data_loader import load_google_trends as load_trends
 
 def refine_trends_preprocessing(trends, llm_provider, gemini_api_key, llm_model_path, debug_llm, source_files=None, cache_path=None, use_llm=True):
     """

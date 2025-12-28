@@ -172,7 +172,7 @@ def analyze_with_llm(**context):
         f_score = (math.log10(interactions + 1) / math.log10(MAX_INTERACTIONS + 1)) * 100
         f_score = min(100, f_score)
         
-        MAX_ARTICLES = 20
+        MAX_ARTICLES = 10
         n_score = (math.log10(post_count + 1) / math.log10(MAX_ARTICLES + 1)) * 100 if post_count > 0 else 0
         n_score = min(100, n_score)
         

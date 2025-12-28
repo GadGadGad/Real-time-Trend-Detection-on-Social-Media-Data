@@ -20,7 +20,7 @@ except ImportError:
 
 # Kafka Config
 KAFKA_BROKER = os.environ.get("KAFKA_BROKER_URL", "localhost:29092")
-KAFKA_TOPIC = "batch-stream"
+KAFKA_TOPIC = "posts_stream_v1"
 
 def json_serializer(data):
     return json.dumps(data).encode("utf-8")
@@ -74,7 +74,6 @@ def run_live_producer(categories=['thoi-su', 'kinh-doanh'], pages=1):
         post = {
             "content": f"{row.get('title', '')} . {row.get('short_description', '')} . {row.get('content', '')}",
             "source": "VnExpress Live",
-            "url": row.get('url', ''),
             "url": row.get('url', ''),
             "time": datetime.now().isoformat(), # Use current time for "live" feel
             "final_topic": row.get('category', 'General'), # Provide a suggestion

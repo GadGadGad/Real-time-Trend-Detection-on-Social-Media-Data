@@ -1,135 +1,62 @@
-# Multi-Source Trend Detection and ANalysis System
+# 🚀 Hybrid Real-time Trend Detection System
 
-Real-time trend detection từ multiple sources: Google Trends, Facebook, News sites.
+A production-grade system detecting social trends by fusing **Social Media (Kafka Stream)** and **Mainstream News (Crawlers)**, powered by **LLM Refinement (Gemini)**.
 
-## 📁 Project Structure
+![Architecture](docs/flow.mmd)
 
-```
-├── src/                        # Core analysis modules
-│   ├── pipeline/               # Pipeline orchestration
-│   │   ├── main_pipeline.py    # Main trend discovery pipeline
-│   │   ├── pipeline_stages.py  # SAHC clustering & matching stages
-│   │   └── trend_scoring.py    # G/F/N score calculator
-│   ├── core/                   # NLP & Analysis engines
-│   │   ├── analysis/           # Clustering & Summarization
-│   │   ├── extraction/         # NER & Taxonomy classification
-│   │   └── llm/                # LLM Refinement logic
-│   └── utils/                  # Shared utilities
-│
-├── crawlers/                   # Data collection crawlers
-│   ├── vnexpress_crawler.py    # VNExpress news crawler
-│   ├── thanhnien_crawler.py    # Thanh Nien news crawler
-│   └── facebook/               # Facebook page crawler
-│
-├── results/                    # Output files (gitignored)
-│   ├── results.json            # Matched trends data
-│   ├── trend_analysis.png      # Top trends chart
-│   └── trend_tsne.png          # t-SNE visualization
-│
-├── notebooks/                  # Jupyter notebooks
-│   └── kaggle_trend_analysis.ipynb  # Kaggle-ready notebook
-│
-├── data/                       # Crawled data storage
-├── flow.mmd                    # Pipeline flow diagram
-├── requirements.txt            # Python dependencies
-└── run_crawlers.py             # Crawler orchestration
-```
+## 🔥 Key Features
 
-## Results Output
+- **Unified Ingestion Layer:** Hybrid support for **Live Crawling** (Real-time) and **Historical Replay** (Demo Mode).
+- **SAHC Clustering:** Specialized Soft-Alignment Hierarchical Clustering for noisy short texts.
+- **LLM Intelligence:** 
+  - **Reasoning:** Explains *why* something is trending.
+  - **Strategic Advice:** Generates actionable insights for State ("Quản lý") and Business ("Thương mại").
+  - **Noise Filtering:** Semantic guardrails to remove spam/generic topics.
+- **Real-time Dashboard:** Streamlit UI with pulse animations and live updates.
 
-## Quick Start
+## 🛠 Tech Stack
 
-### 1. Install Dependencies
+- **Ingestion:** Apache Kafka, VnExpress Crawler
+- **Orchestration:** Apache Airflow (`unified_pipeline_dag.py`)
+- **Processing:** Spark-like Micro-batching (`kafka_consumer.py`)
+- **AI/ML:** 
+  - **Embedding:** `sentence-transformers` (Fine-tuned `visobert`)
+  - **LLM:** Gemini Pro 1.5 (via Google GenAI SDK)
+- **Serving:** PostgreSQL + Streamlit
 
+## 🚀 Quick Start (Demo)
+
+### 1. Setup
 ```bash
 pip install -r requirements.txt
-playwright install firefox
+# Set GEMINI_API_KEY and POSTGRES_URL in .env
 ```
 
-### 2. Run Trend Analysis
-
+### 2. Run Components
+**Terminal 1: Consumer & Intelligence**
 ```bash
-# Basic usage (Search-Social-News integration)
-python src/pipeline/main_pipeline.py --social crawlers/facebook/*.json --trends crawlers/trendings/*.csv --output results.json
-
-# Advanced: Enable LLM refinement & Summarization
-python src/pipeline/main_pipeline.py --social crawlers/facebook/*.json --trends crawlers/trendings/*.csv --llm --summarize-all --output results.json
+# Starts the background worker for Clustering & LLM
+python streaming/kafka_consumer.py &
+python demo-ready/intelligence_worker.py
 ```
 
-### 3. Evaluate & Visualize
-
+**Terminal 2: Dashboard**
 ```bash
-# Default: Direct trend assignment (recommended)
-python crawlers/evaluate_trends.py --input results.json
-
-# Experimental: HDBSCAN clustering
-python crawlers/evaluate_trends.py --input results.json --use-hdbscan
-
-# Filter routine trends (weather, prices, etc.)
-python crawlers/evaluate_trends.py --input results.json --filter-routine
+streamlit run demo-ready/dashboard.py
 ```
 
-## Pipeline Flow
-
-```mermaid
-Google Trends CSV → Build Aliases → Normalize Texts
-                                         ↓
-News + FB Posts → Normalize → Embed → Match → Valid Trends → Score → Classify
+**Terminal 3: Trigger Data**
+```bash
+# Run one-off ingestion batch (Hybrid Mode)
+python dags/unified_pipeline_dag.py
 ```
 
-## Options
-
-### main_pipeline.py
-
-| Option | Description |
-| :--- | :--- |
-| `--social` | Path to social/FB JSON files (supports globs) |
-| `--trends` | Path to Google Trends CSV files |
-| `--news` | Path to News CSV files |
-| `--llm` | Enable LLM Refinement for naming and classification |
-| `--refine-trends` | Use LLM to clean Google Trends noise before matching |
-| `--save-all` | Include unmatched posts in the output JSON |
-| `--output` | Save results to specified JSON file |
-
-### evaluate_trends.py
-
-### evaluate_trends.py
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--min-posts` | `3` | Minimum posts for valid trend |
-| `--use-hdbscan` | `False` | Use HDBSCAN clustering (experimental) |
-| `--filter-routine` | `False` | Filter weather/price trends |
-
-## Output
-
-Each trend is scored and classified:
-
-```json
-{
-  "trend": "Công Phượng",
-  "Class": "Social-Driven",
-  "Composite": 67.5,
-  "G": 45, "F": 82, "N": 30,
-  "posts": 156
-}
+## 📂 Project Structure
 ```
-
-**Classifications:**
-- `Strong Multi-source`: High G + F + N
-- `Social & News`: High F + N
-- `Social-Driven`: High Facebook engagement
-- `News-Driven`: High news coverage
-- `Emerging`: Low scores across all
-
-## Technical Notes
-
-### Why Alias Normalization > NER?
-- NER (underthesea) không nhận các tên quốc tế (e.g., "Yagi")
-- Alias uses Google Trends keywords → higher match accuracy
-- Test showed +16% improvement with aliases
-
-### Why Direct Assignment > HDBSCAN?
-- Data has 652+ small topics with no density peaks
-- HDBSCAN classifies 84% as noise
-- Direct trend assignment already provides meaningful clusters
+├── dags/                  # Airflow DAGs (Unified, Live, Demo)
+├── demo-ready/            # Dashboard & Intelligence Worker
+├── streaming/             # Kafka Producers & Consumers
+├── slides/                # LaTeX Presentation
+├── scripts/               # Training & Evaluation Scripts
+└── src/                   # Core Logic (LLM, NLP utils)
+```

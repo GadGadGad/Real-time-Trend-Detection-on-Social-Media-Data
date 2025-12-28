@@ -65,30 +65,36 @@ def main():
     print("\n\n📊 CHECKING RESULTS...")
     
     # Inspect DB
-    # Note: kafka_consumer.py is assumed to be running!
     try:
         engine = create_engine(DB_URL)
         with engine.connect() as conn:
-            # We check raw counts. 
-            # Note: Demo Producer sends 'source'='Facebook'/'News'. Live sends 'source'='VnExpress Live'.
-            res = conn.execute(text("SELECT source, COUNT(*) FROM detected_trends GROUP BY source")).fetchall()
+            # Source is inside representative_posts JSON
+            # We fetch all reps and inspect python-side
+            res = conn.execute(text("SELECT representative_posts FROM detected_trends")).fetchall()
             
             print("\nDatabase Content by Source:")
-            found_live = False
-            found_demo = False
+            found_live = 0
+            found_demo = 0
             
+            import json
             for row in res:
-                s = row[0]
-                c = row[1]
-                print(f" - {s}: {c}")
-                if "VnExpress Live" in str(s): found_live = True
-                if "Facebook" in str(s) or "News" in str(s): found_demo = True
+                reps_json = row[0]
+                try:
+                    reps = json.loads(reps_json)
+                    for post in reps:
+                        s = post.get('source', '')
+                        if "VnExpress Live" in s: found_live += 1
+                        if "Facebook" in s or "News" in s: found_demo += 1
+                except: pass
             
-            if found_live and found_demo:
+            print(f" - VnExpress Live Posts: {found_live}")
+            print(f" - Demo (FB/News) Posts: {found_demo}")
+            
+            if found_live > 0 and found_demo > 0:
                 print("\n✅ SUCCESS: Found both LIVE and DEMO data trends!")
-            elif found_live:
+            elif found_live > 0:
                 print("\n⚠️ PARTIAL: Only found LIVE data.")
-            elif found_demo:
+            elif found_demo > 0:
                 print("\n⚠️ PARTIAL: Only found DEMO data.")
             else:
                 print("\n❌ FAILURE: No data found.")

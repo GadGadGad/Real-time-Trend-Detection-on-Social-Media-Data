@@ -621,11 +621,27 @@ class LLMRefiner:
                - NẾU KHÔNG BIẾT, ghi "N/A" nhưng hãy CỐ GẮNG trích xuất.
             4. Lời khuyên cho Nhà nước (advice_state): Đưa ra các kiến nghị chiến lược cho cơ quan chức năng (ví dụ: chiến lược truyền thông, điều chỉnh chính sách, quản lý khủng hoảng). PHẢI VIẾT BẰNG TIẾNG VIỆT.
             5. Lời khuyên cho Doanh nghiệp (advice_business): Đưa ra các hiểu biết có thể hành động cho doanh nghiệp (ví dụ: thâm nhập thị trường, giảm thiểu rủi ro, thay đổi vận hành, tận dụng cơ hội). PHẢI VIẾT BẰNG TIẾNG VIỆT.
+            
+            6. PHÂN LOẠI DANH MỤC (category) - CHỌN ĐÚNG MỘT TRONG 7 LOẠI:
+               - T1: Khủng hoảng & Rủi ro - Thiên tai, dịch bệnh, tai nạn thảm khốc, khủng bố, chiến tranh
+                     VÍ DỤ: Động đất Nhật Bản, Dịch Covid, Cháy rừng, Xung đột Ukraine-Nga
+               - T2: Chính sách & Quản trị - Luật mới, quyết định chính phủ, bầu cử, ngoại giao
+                     VÍ DỤ: Quốc hội thông qua luật, Thủ tướng thăm nước ngoài, Chính sách thuế mới
+               - T3: Rủi ro Uy tín - Scandal, bê bối, tham nhũng, lừa đảo, kiện tụng
+                     VÍ DỤ: Quan chức bị bắt, Công ty bị phạt, Nghệ sĩ dính scandal
+               - T4: Cơ hội Thị trường - Kinh tế, tài chính, bất động sản, đầu tư, startup
+                     VÍ DỤ: VN-Index tăng, Nông nghiệp công nghệ cao, Khởi nghiệp thành công
+               - T5: Văn hóa & Giải trí - Thể thao, phim ảnh, âm nhạc, lễ hội, du lịch
+                     VÍ DỤ: SEA Games, Phim Việt đoạt giải, Lễ hội Xuân, Vietnam Idol
+               - T6: Vận hành & Dịch vụ - Giao thông, y tế, giáo dục, tiện ích công
+                     VÍ DỤ: Cao tốc kẹt xe, Bệnh viện quá tải, Trường học mở cửa, Mất điện
+               - T7: Tin định kỳ - Thời tiết, dự báo, thống kê thường nhật
+                     VÍ DỤ: Dự báo thời tiết, Giá vàng hôm nay, Tỷ giá USD
 
             Phản hồi NGHIÊM NGẶT theo định dạng JSON:
             {{
                 "refined_title": "...",
-                "category": "T1/T2/.../T7",
+                "category": "T1 hoặc T2 hoặc T3 hoặc T4 hoặc T5 hoặc T6 hoặc T7",
                 "event_type": "Specific/Generic",
                 "summary": "Câu chuyện chi tiết đầy đủ về sự kiện (khoảng 100-150 từ).",
                 "overall_sentiment": "Positive/Negative/Neutral",
@@ -636,7 +652,7 @@ class LLMRefiner:
                 "why": "...",
                 "advice_state": "Lời khuyên chiến lược cho cơ quan chức năng...",
                 "advice_business": "Lời khuyên thực tiễn cho doanh nghiệp...",
-                "reasoning": "..."
+                "reasoning": "Giải thích tại sao chọn category này..."
             }}
         """
 

@@ -92,12 +92,24 @@ def load_data(**context):
                             text = str(row.get('summary', row.get('content', '')))
                             source = 'News'
                             
+                        # Extract metrics safely (default to 0)
+                        def get_metric(val):
+                            try: return int(float(val)) if pd.notnull(val) else 0
+                            except: return 0
+
+                        likes = get_metric(row.get('likes', 0))
+                        comments = get_metric(row.get('comments', 0))
+                        shares = get_metric(row.get('shares', 0))
+                            
                         if len(text) > 10:
                             all_posts.append({
                                 'content': text,
                                 'source': source,
                                 'time': str(row.get('published_at', row.get('timestamp', row.get('time', datetime.now().isoformat())))),
                                 'final_topic': str(row.get('final_topic', 'Unknown')),
+                                'likes': likes,
+                                'comments': comments,
+                                'shares': shares,
                                 'topic_type': str(row.get('topic_type', 'Trending' if row.get('final_topic') else 'Discovery')),
                                 'score': float(row.get('score', 0.8)),
                                 'category': str(row.get('category', 'T7'))
@@ -141,7 +153,7 @@ def produce_to_kafka(**context):
     from datetime import datetime
     
     # Config
-    KAFKA_TOPIC = 'batch-stream'
+    KAFKA_TOPIC = 'posts_stream_v1'
     BOOTSTRAP_SERVERS = ['localhost:29092']
     
     temp_file = os.path.join(PROJECT_ROOT, "output/.streaming_temp.parquet")
