@@ -345,8 +345,6 @@ def main():
                 "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
                 "org.postgresql:postgresql:42.7.1") \
         .config("spark.sql.streaming.checkpointLocation", CHECKPOINT_DIR) \
-        .config("spark.executor.memory", "4g") \
-        .config("spark.driver.memory", "2g") \
         .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
@@ -354,12 +352,13 @@ def main():
     print(f"✅ Spark Session created: {spark.sparkContext.applicationId}")
     print(f"📡 Connecting to Kafka: {KAFKA_BOOTSTRAP}")
     
-    # Read from Kafka
+    # Read from Kafka (Throttled for stability in Lite Mode)
     kafka_df = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP) \
         .option("subscribe", KAFKA_TOPIC) \
-        .option("startingOffsets", "latest") \
+        .option("startingOffsets", "earliest") \
+        .option("maxOffsetsPerTrigger", 500) \
         .load()
     
     # Parse JSON

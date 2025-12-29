@@ -11,23 +11,28 @@ from datetime import datetime
 from kafka import KafkaProducer
 
 # --- CONFIG ---
-KAFKA_TOPIC = 'posts-stream'
+KAFKA_TOPIC = 'posts_stream_v1'
 BOOTSTRAP_SERVERS = ['localhost:29092']
-DATA_DIR = 'data'
-CACHE_FILE = 'embeddings_cache.pkl'
+DATA_DIR = '../data/demo-ready_archieve'
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'embeddings_cache.pkl')
 
-def create_producer():
+def create_producer(retries=20):
     print(f"🔄 Connecting to Kafka at {BOOTSTRAP_SERVERS}...")
-    try:
-        producer = KafkaProducer(
-            bootstrap_servers=BOOTSTRAP_SERVERS,
-            value_serializer=lambda x: json.dumps(x).encode('utf-8')
-        )
-        print(f"✅ Connected to Kafka!")
-        return producer
-    except Exception as e:
-        print(f"❌ Failed to connect to Kafka: {e}")
-        return None
+    for i in range(retries):
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=BOOTSTRAP_SERVERS,
+                value_serializer=lambda x: json.dumps(x).encode('utf-8'),
+                request_timeout_ms=10000
+            )
+            print(f"✅ Connected to Kafka!")
+            return producer
+        except Exception as e:
+            print(f"⚠️ Attempt {i+1}/{retries} failed: {e}")
+            if i < retries - 1:
+                time.sleep(5)
+    print("❌ All Kafka connection attempts failed.")
+    return None
 
 def clean_text(text):
     import re
@@ -113,24 +118,27 @@ def run_replay():
 
     print(f"🚀 Starting Stream Replay ({len(posts)} items, cache={'YES' if use_cache else 'NO'})...")
     try:
-        for i, idx in enumerate(indices):
-            post = posts[idx].copy()
+        while True:
+            # Shuffle in each loop for variety
+            random.shuffle(indices)
+            for i, idx in enumerate(indices):
+                post = posts[idx].copy()
+                
+                # Include embedding if cached
+                if use_cache and embeddings is not None:
+                    post['embedding'] = embeddings[idx].tolist()
+                
+                producer.send(KAFKA_TOPIC, value=post)
+                
+                if i % 20 == 0:
+                    sys.stdout.write(f"\r📤 Sent {i}/{len(posts)} (Loop)...")
+                    sys.stdout.flush()
+                
+                # Faster replay for demo (0.01s - 0.05s)
+                time.sleep(random.uniform(0.01, 0.05))
             
-            # Include embedding if cached
-            if use_cache and embeddings is not None:
-                post['embedding'] = embeddings[idx].tolist()
-            
-            producer.send(KAFKA_TOPIC, value=post)
-            
-            if i % 20 == 0:
-                sys.stdout.write(f"\r📤 Sent {i}/{len(posts)}...")
-                sys.stdout.flush()
-            
-            # Faster replay for demo (0.01s - 0.05s)
-            time.sleep(random.uniform(0.01, 0.05))
-            
-        producer.flush()
-        print("\n✅ Replay Complete.")
+            print("\n🔄 Replay Loop Complete. Restarting...")
+            time.sleep(1) # Brief pause between loops
     except KeyboardInterrupt:
         print("\n🛑 Stopped.")
     finally:

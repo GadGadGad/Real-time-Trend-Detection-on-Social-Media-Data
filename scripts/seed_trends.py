@@ -81,6 +81,7 @@ def seed_database():
     # Ensure table exists (idempotent)
     with engine.connect() as conn:
         conn.execute(text("""
+            DROP TABLE IF EXISTS detected_trends;
             CREATE TABLE IF NOT EXISTS detected_trends (
                 id SERIAL PRIMARY KEY,
                 trend_name TEXT,
@@ -98,6 +99,7 @@ def seed_database():
                 sentiment TEXT,
                 advice_state TEXT,
                 advice_business TEXT,
+                reasoning TEXT,
                 keywords TEXT,
                 embedding TEXT,
                 google_vol INT DEFAULT 0,

@@ -16,7 +16,8 @@ from rich.progress import Progress
 console = Console()
 
 # Config
-DATA_DIR = 'data'
+# Config
+DATA_DIR = '../data/demo-ready_archieve' # Relative to streaming/
 MODEL_NAME = os.getenv("MODEL_NAME", "dangvantuan/vietnamese-document-embedding")
 CACHE_FILE = 'embeddings_cache.pkl'
 
@@ -28,41 +29,87 @@ def clean_text(text):
 def load_all_posts(data_dir):
     """Load all posts from data directory"""
     posts = []
+    
+    # Resolve absolute path for robustness
+    if not os.path.isabs(data_dir):
+        data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir))
+        
     console.print(f"📂 Scanning data in: {data_dir}...")
     
+    if not os.path.exists(data_dir):
+        console.print(f"[red]Directory {data_dir} does not exist![/red]")
+        return []
+
     # Load CSVs
     csv_files = glob.glob(os.path.join(data_dir, "**/*.csv"), recursive=True)
+    csv_files.extend(glob.glob(os.path.join(data_dir, "*.csv"))) 
+    csv_files = list(set(csv_files))
+    
     for f in csv_files:
         try:
+            filename = os.path.basename(f).lower()
             with open(f, 'r', encoding='utf-8') as file:
-                reader = csv.DictReader(file)
-                for row in reader:
-                    content = f"{row.get('title', '')} {row.get('content', '')}"
-                    if len(content) < 20: continue
-                    
-                    fname_lower = os.path.basename(f).lower()
-                    if 'fb' in fname_lower or 'facebook' in fname_lower:
-                        source = 'Social'
-                    elif 'news' in fname_lower:
+                # Basic check for header
+                has_header = True
+                try:
+                    sample = file.read(4096)
+                    file.seek(0)
+                    has_header = csv.Sniffer().has_header(sample)
+                except:
+                    # Sniffer failed, likely complex csv with header
+                    has_header = True 
+                    file.seek(0)
+                
+                if 'fb_' in filename and not has_header:
+                     # Force read as list for Facebook headless
+                     reader = csv.reader(file)
+                     for row in reader:
+                         if not row: continue
+                         # Assume last column is summary/content
+                         content = row[-1]
+                         if len(content) < 20: continue
+                         posts.append({
+                            "content": clean_text(content),
+                            "source": "Facebook",
+                            "time": datetime.now().isoformat(), # Mock time for headless
+                            "stats": {"likes": 0, "comments": 0, "shares": 0}
+                         })
+                else:
+                    # Standard DictReader
+                    reader = csv.DictReader(file)
+                    for row in reader:
+                        # Try various summary keys
+                        summary = row.get('summary') or row.get('refine_summary') or row.get('short_description')
+                        content_raw = row.get('content') or row.get('title') or ""
+                        
+                        final_content = f"{row.get('title', '')} {summary or content_raw}".strip()
+                        if len(final_content) < 20: 
+                             # Fallback to direct content if title/summary not enough
+                             final_content = content_raw
+
+                        if len(final_content) < 20: continue
+                        
                         source = 'News'
-                    else:
-                        source = 'Unknown'
-                    
-                    posts.append({
-                        "content": clean_text(content),
-                        "source": source,
-                        "time": row.get('publish_date', row.get('created_time', datetime.now().isoformat())),
-                        "stats": {
-                            "likes": int(row.get('likes', 0) or 0),
-                            "comments": int(row.get('comments', 0) or 0),
-                            "shares": int(row.get('shares', 0) or 0)
-                        }
-                    })
+                        if 'fb' in filename or 'facebook' in filename: source = 'Social'
+
+                        posts.append({
+                            "content": clean_text(final_content),
+                            "source": source,
+                            "time": row.get('published_at') or row.get('time') or datetime.now().isoformat(),
+                            "stats": {
+                                "likes": int(row.get('likes', 0) or 0),
+                                "comments": int(row.get('comments', 0) or 0),
+                                "shares": int(row.get('shares', 0) or 0)
+                            }
+                        })
         except Exception as e:
             console.print(f"[red]Error loading {f}: {e}[/red]")
     
     # Load JSONs
     json_files = glob.glob(os.path.join(data_dir, "**/*.json"), recursive=True)
+    json_files.extend(glob.glob(os.path.join(data_dir, "*.json")))
+    json_files = list(set(json_files))
+    
     for f in json_files:
         if 'trend_refine' in f or 'embeddings_cache' in f:
             continue  # Skip trend seed files and cache

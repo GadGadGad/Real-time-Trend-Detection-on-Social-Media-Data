@@ -88,9 +88,10 @@ with DAG(
     )
 
     # 2b. Demo Task (Kafka-based, slower but shows real streaming)
+    # 2b. Demo Task (Kafka-based, slower but shows real streaming)
     demo_task = BashOperator(
         task_id='trigger_demo_ingest',
-        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_producer.py',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/producer_simple.py',
     )
 
     # 3. Live Task (Bash Script Wrapper)
@@ -109,7 +110,7 @@ with DAG(
     # 4a. Standard Python Consumer Task
     consumer_task = BashOperator(
         task_id='run_consumer_processing',
-        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 60',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 300',
     )
 
     # 4b. New Spark Consumer Task
@@ -132,15 +133,25 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS
     )
 
-    # Graph - Two parallel paths:
+    # Graph - Two paths:
     # Path 1 (Fast Demo): seed -> check_mode -> load_precomputed_data -> verify
-    # Path 2 (Kafka modes): seed -> check_mode -> [demo/live] -> check_engine -> [consumer/spark] -> ai -> verify
+    # Path 2 (Kafka modes): 
+    #   - seed -> check_mode -> [demo, live]
+    #   - IF demo/live: Run Producer, Consumer, AI in PARALLEL
     
     seed_task >> branch_task >> [fast_demo_task, demo_task, live_task]
-    
-    # Kafka path continues to engine selection
-    [demo_task, live_task] >> engine_branch >> [consumer_task, spark_task]
-    [consumer_task, spark_task] >> intelligence_task >> verify_task
-    
-    # Fast demo path goes directly to verify
     fast_demo_task >> verify_task
+
+    # For Kafka modes, we want components to run in parallel
+    # Note: In a real orchestrated batch DAG, they are sequential. 
+    # But for a "Long Running Service" demo, we start them all.
+    
+    # Connect engine/AI to branch_task so they are triggered if mode != fast-demo
+    [demo_task, live_task] >> engine_branch 
+    engine_branch >> [consumer_task, spark_task]
+    
+    # Remove dependency of intelligence on consumer (Parallelize)
+    engine_branch >> intelligence_task
+    
+    # Verification runs after everything (theoretically - for streams it might never run)
+    [consumer_task, spark_task, intelligence_task] >> verify_task
