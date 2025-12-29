@@ -502,103 +502,6 @@
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Phân tích Cảm xúc (Sentiment Analysis)} Để đánh giá thái độ dư luận, hệ thống sử dụng mô hình ngôn ngữ tiền huấn luyện (Pre-trained Language Model) chuyên biệt cho tiếng Việt.
-
-    \begin{block}{Mô hình: ViSoBERT (Fine-tuned)}
-        \begin{itemize}
-            \item \textbf{Backbone:} \texttt{uitnlp/visobert}.
-            \item \textbf{Task:} Phân loại chuỗi (Sequence Classification) vào 3 nhãn: \textbf{\textcolor{forestgreen}{Positive}}, \textcolor{red}{Negative}, \textcolor{gray}{Neutral}.
-        \end{itemize}
-    \end{block}
-
-    \textbf{Công thức xác suất (Softmax Probability):}
-    Với vector đại diện văn bản $h_{CLS}$ từ tầng cuối cùng của ViSoBERT, xác suất của nhãn $k$ được tính:
-
-    \begin{equation}
-        P(y=k | x) = \text{softmax}(W \cdot h_{CLS} + b)_k = \frac{e^{z_k}}{\sum_{j=1}^{C} e^{z_j}}
-    \end{equation}
-
-    \begin{itemize}
-        \item Hệ thống tính \textbf{Average Sentiment Score} cho cả cụm bằng cách trung bình hóa điểm số của top 20 bài viết tiêu biểu nhất.
-    \end{itemize}
-
-\end{frame}
-
-\begin{frame}{Thử nghiệm \& Lựa chọn Mô hình (Benchmarking)}
-    Hệ thống đã trải qua đánh giá chéo trên 5 kịch bản khó (Edge Cases) để chọn ra Backbone tối ưu:
-
-    \begin{table}[]
-        \resizebox{\textwidth}{!}{%
-            \begin{tabular}{l c c c c c c}
-                \toprule
-                \textbf{Model}                          & \textbf{Avg Gap} & \textbf{Storm} & \textbf{Domain} & \textbf{Category} & \textbf{Slang} & \textbf{Abbrev} \\
-                \midrule
-                \textbf{vietnamese-document-embedding*} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
-                vietnamese-bi-encoder                   & 0.193            & 0.155          & 0.213           & 0.107             & 0.108          & 0.381           \\
-                vietnamese-sbert                        & 0.188            & \textbf{0.355} & 0.172           & 0.033             & \alert{-0.005} & 0.386           \\
-                bge-m3                                  & 0.160            & \alert{-0.003} & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
-                multilingual-e5-large                   & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
-                \bottomrule
-            \end{tabular}%
-        }
-    \end{table}
-\end{frame}
-
-\begin{frame}{Kết quả Benchmarking (Biểu đồ trực quan)}
-    \begin{center}
-        \includegraphics[width=1.0\textwidth]{figures/embedding_benchmark.png}
-    \end{center}
-\end{frame}
-\begin{frame}{Phương pháp Đánh giá Fine-tuned Models}
-    \begin{columns}[t]
-        \column{0.5\textwidth}
-        \begin{block}{Thiết kế Test Set}
-            \begin{itemize}
-                \item \textbf{20 mẫu/model}, bao phủ tất cả các lớp.
-                \item \textbf{Kịch bản khó} (Edge Cases):
-                      \begin{itemize}
-                          \item Storm Synonyms (Bão Yagi = Bão số 3)
-                          \item Domain Overlap (Cùng địa điểm, khác sự kiện)
-                          \item Social Slang (Ngôn ngữ mạng xã hội)
-                      \end{itemize}
-                \item Dữ liệu được gán nhãn thủ công bởi nhóm.
-            \end{itemize}
-        \end{block}
-
-        \column{0.5\textwidth}
-        \begin{block}{Metrics Sử dụng}
-            \begin{itemize}
-                \item \textbf{Accuracy}: Tỷ lệ dự đoán đúng.
-                \item \textbf{Latency}: Thời gian inference (ms).
-                \item \textbf{Stability Gap} (Reranker):
-                      \begin{equation*}
-                          Gap = Sim(q, pos) - Sim(q, neg)
-                      \end{equation*}
-                \item Gap > 0: Phân biệt đúng. Gap < 0: Nhầm lẫn.
-            \end{itemize}
-        \end{block}
-    \end{columns}
-\end{frame}
-
-% Frame: Fine-tuned Models Benchmark Results
-\begin{frame}{Đánh giá Fine-tuned Models (Kết quả Thực nghiệm)}
-    Các mô hình đã được fine-tune trên tập dữ liệu tiếng Việt và đánh giá trên 20 test cases:
-
-    \begin{table}[]
-        \centering
-        \footnotesize
-        \begin{tabular}{l l c c c}
-            \toprule
-            \textbf{Model}                & \textbf{Task}               & \textbf{Accuracy} & \textbf{Latency} \\
-            \midrule
-            \textbf{Sentiment Classifier} & Pos/Neg/Neutral (3 classes) & \textbf{93.5\%}   & 12 ms/sample     \\
-            Bi-CrossEncoder Reranker      & Query-Doc Relevance         & 91.0\%            & 45 ms/pair       \\
-            Taxonomy Classifier           & T1-T7 (7 classes)           & 89.2\%            & 14 ms/sample     \\
-            \bottomrule
-        \end{tabular}%
-    \end{table}
-
-\end{frame}
 
 %============================================================
 % CHI TIẾT LLM & TAXONOMY (Đã tách thành 2 frame)
@@ -803,22 +706,60 @@
 % SECTION 5: HUẤN LUYỆN & TINH CHỈNH (New)
 %============================================================
 \section{Huấn luyện \& Tinh chỉnh Mô hình}
+\begin{frame}{Thử nghiệm \& Lựa chọn Mô hình (Benchmarking)}
+    Hệ thống đã trải qua đánh giá chéo trên 5 kịch bản khó (Edge Cases) để chọn ra Backbone tối ưu:
 
-\begin{frame}{Chiến lược xây dựng dữ liệu (Data Construction)}
-    Hệ thống sử dụng kỹ thuật \textbf{Self-Supervised Learning} và \textbf{Active Learning} để tối ưu hóa chi phí gán nhãn:
+    \begin{table}[]
+        \resizebox{\textwidth}{!}{%
+            \begin{tabular}{l c c c c c c}
+                \toprule
+                \textbf{Model}                          & \textbf{Avg Gap} & \textbf{Storm} & \textbf{Domain} & \textbf{Category} & \textbf{Slang} & \textbf{Abbrev} \\
+                \midrule
+                \textbf{vietnamese-document-embedding*} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
+                vietnamese-bi-encoder                   & 0.193            & 0.155          & 0.213           & 0.107             & 0.108          & 0.381           \\
+                vietnamese-sbert                        & 0.188            & \textbf{0.355} & 0.172           & 0.033             & \alert{-0.005} & 0.386           \\
+                bge-m3                                  & 0.160            & \alert{-0.003} & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
+                multilingual-e5-large                   & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
+                \bottomrule
+            \end{tabular}%
+        }
+    \end{table}
+\end{frame}
 
-    \begin{itemize}
-        \item \textbf{1. Sentiment Analysis (4,630 samples):}
-              \begin{itemize}
-                  \item Crawl bình luận từ Fanpages lớn (Beatvn, Theanh28).
-                  \item Pseudo-labeling bằng Gemini-3-Pro, sau đó **Human Review** các trường hợp có độ tin cậy thấp.
-              \end{itemize}
-        \item \textbf{2. Taxonomy Classification (3,687 samples):}
-              \begin{itemize}
-                  \item Sử dụng bộ Keyword Dictionary để lọc ứng viên tiềm năng.
-                  \item Tập trung vào các lớp khó (T1 Crisis, T3 Reputation) để cân bằng dữ liệu.
-              \end{itemize}
-    \end{itemize}
+\begin{frame}{Kết quả Benchmarking (Biểu đồ trực quan)}
+    \begin{center}
+        \includegraphics[width=1.0\textwidth]{figures/embedding_benchmark.png}
+    \end{center}
+\end{frame}
+\begin{frame}{Phương pháp Đánh giá Fine-tuned Models}
+    \begin{columns}[t]
+        \column{0.5\textwidth}
+        \begin{block}{Thiết kế Test Set}
+            \begin{itemize}
+                \item \textbf{20 mẫu/model}, bao phủ tất cả các lớp.
+                \item \textbf{Kịch bản khó} (Edge Cases):
+                      \begin{itemize}
+                          \item Storm Synonyms (Bão Yagi = Bão số 3)
+                          \item Domain Overlap (Cùng địa điểm, khác sự kiện)
+                          \item Social Slang (Ngôn ngữ mạng xã hội)
+                      \end{itemize}
+                \item Dữ liệu được gán nhãn thủ công bởi nhóm.
+            \end{itemize}
+        \end{block}
+
+        \column{0.5\textwidth}
+        \begin{block}{Metrics Sử dụng}
+            \begin{itemize}
+                \item \textbf{Accuracy}: Tỷ lệ dự đoán đúng.
+                \item \textbf{Latency}: Thời gian inference (ms).
+                \item \textbf{Stability Gap} (Reranker):
+                      \begin{equation*}
+                          Gap = Sim(q, pos) - Sim(q, neg)
+                      \end{equation*}
+                \item Gap > 0: Phân biệt đúng. Gap < 0: Nhầm lẫn.
+            \end{itemize}
+        \end{block}
+    \end{columns}
 \end{frame}
 
 \begin{frame}{Chi tiết Huấn luyện \& Fine-tuning}
@@ -838,7 +779,23 @@
     \end{table}
 
 
-    \textbf{Chiến lược Reranker:} Tuy số lượng ít (877 cặp) nhưng đây là dữ liệu **"Gold Standard"** chất lượng cao, tập trung vào các câu query khó (Hard Negatives) để model học được ranh giới quyết định tốt nhất.
+    \textbf{Chiến lược Reranker:} Tuy số lượng ít (877 cặp) nhưng đây là dữ liệu chất lượng cao, tập trung vào các câu query khó (Hard Negatives) để model học được ranh giới quyết định tốt nhất.
+\end{frame}
+\begin{frame}{Chiến lược xây dựng dữ liệu (Data Construction)}
+    Hệ thống sử dụng kỹ thuật \textbf{Self-Supervised Learning} và \textbf{Active Learning} để tối ưu hóa chi phí gán nhãn:
+
+    \begin{itemize}
+        \item \textbf{1. Sentiment Analysis (4,630 samples):}
+              \begin{itemize}
+                  \item Crawl bình luận từ Fanpages lớn (Beatvn, Theanh28).
+                  \item Pseudo-labeling bằng Gemini-3-Pro, sau đó **Human Review** các trường hợp có độ tin cậy thấp.
+              \end{itemize}
+        \item \textbf{2. Taxonomy Classification (3,687 samples):}
+              \begin{itemize}
+                  \item Sử dụng bộ Keyword Dictionary để lọc ứng viên tiềm năng.
+                  \item Tập trung vào các lớp khó (T1 Crisis, T3 Reputation) để cân bằng dữ liệu.
+              \end{itemize}
+    \end{itemize}
 \end{frame}
 
 \begin{frame}{Ví dụ Dữ liệu Huấn luyện (Dataset Examples)}
@@ -869,6 +826,26 @@
     \textit{*Dữ liệu bao gồm cả văn bản dài (Long-text) và câu hỏi ngắn (Query) để mô phỏng ngữ cảnh thực tế.}
 \end{frame}
 % ------------------------------------------
+% Frame: Fine-tuned Models Benchmark Results
+\begin{frame}{Đánh giá Fine-tuned Models (Kết quả Thực nghiệm)}
+    Các mô hình đã được fine-tune trên tập dữ liệu tiếng Việt và đánh giá trên 20 test cases:
+
+    \begin{table}[]
+        \centering
+        \footnotesize
+        \begin{tabular}{l l c c c}
+            \toprule
+            \textbf{Model}                & \textbf{Task}               & \textbf{Accuracy} & \textbf{Latency} \\
+            \midrule
+            \textbf{Sentiment Classifier} & Pos/Neg/Neutral (3 classes) & \textbf{93.5\%}   & 12 ms/sample     \\
+            Bi-CrossEncoder Reranker      & Query-Doc Relevance         & 91.0\%            & 45 ms/pair       \\
+            Taxonomy Classifier           & T1-T7 (7 classes)           & 89.2\%            & 14 ms/sample     \\
+            \bottomrule
+        \end{tabular}%
+    \end{table}
+
+\end{frame}
+
 
 % Frame 5.2: LLM-as-a-Judge Protocol
 \begin{frame}{Đánh giá Chất lượng Phân cụm (Clustering Quality Assessment)}
@@ -937,13 +914,13 @@
         \resizebox{\textwidth}{!}{%
             \begin{tabular}{l c c c c c l}
                 \toprule
-                \textbf{Method}         & \textbf{k}   & \textbf{Noise} & \textbf{Silh (Cos)} & \textbf{DB Index} & \textbf{Time (s)} & \textbf{Note}                                                         \\
+                \textbf{Method}         & \textbf{k}   & \textbf{Noise} & \textbf{Silh (Cos)} & \textbf{DB Index} & \textbf{Time (s)} & \textbf{Note}                         \\
                 \midrule
-                KMEANS                  & 253          & 0              & 0.024               & 3.177             & \textbf{8.45}     & Chất lượng cụm kém + Số lượng cụm cố định(Không phù hợp với bài toán) \\
-                \textbf{HDBSCAN}        & \textbf{460} & 1,984          & 0.109               & \textbf{2.094}    & 16.00             & \textbf{Balanced (Chọn làm baseline)}                                 \\
-                BERTOPIC                & 223          & 1,801          & \textbf{0.112}      & 2.363             & 55.72             & Quá chậm (Slow)                                                       \\
+                KMEANS                  & 253          & 0              & 0.024               & 3.177             & \textbf{8.45}     & Không phù hợp với bài toán            \\
+                \textbf{HDBSCAN}        & \textbf{460} & 1,984          & 0.109               & \textbf{2.094}    & 16.00             & \textbf{Balanced (Chọn làm baseline)} \\
+                BERTOPIC                & 223          & 1,801          & \textbf{0.112}      & 2.363             & 55.72             & Quá chậm (Slow)                       \\
                 \midrule
-                \textbf{Our clustering} & 455          & \textbf{1,754} & 0.111               & 2.115             & 35.77             & Của nhóm                                                              \\
+                \textbf{Our clustering} & 455          & \textbf{1,754} & 0.111               & 2.115             & 35.77             & Của nhóm                              \\
                 \bottomrule
             \end{tabular}%
         }
