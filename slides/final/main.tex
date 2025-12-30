@@ -301,7 +301,7 @@
         \item \textbf{Cơ chế Streaming:} Apache Kafka, Zookeeper, Apache Spark Structured Streaming (High-performance Inference w/ \texttt{pandas\_udf}).
         \item \textbf{Orchestration:} Apache Airflow (Quản lý luồng pipelines).
         \item \textbf{Storage:} \textbf{PostgreSQL} (Unified Embedding \& Event Store).
-        \item \textbf{Generative AI:} Google Gemini Pro / Gemma 2 (Hybrid Reasoning Strategy).
+        \item \textbf{Generative AI:} Google Gemini Pro / Gemma 3 (Hybrid Reasoning Strategy).
         \item \textbf{Model Fine-tuning (Hybrid AI Strategy):}
               \begin{itemize}
                   \item \textbf{Sentiment Analysis:} Fine-tuned \texttt{uitnlp/visobert} (\textit{sentiment-classifier-vietnamese-v1}) trên 30k bình luận.
@@ -563,9 +563,14 @@
         Không chỉ tóm tắt, LLM đóng vai trò là bộ lọc cuối cùng (Semantic Guard) để loại bỏ các cụm vô nghĩa mà thuật toán Clustering thống kê chưa xử lý được.
     \end{alertblock}
 \end{frame}
-
+\begin{frame}{Quy trình tinh chỉnh tri thức (Visualization)}
+    \centering\includegraphics[width=0.8\textwidth]{figures/llm.png}
+\end{frame}
+\begin{frame}{Quy trình tinh chỉnh tri thức (Visualization)}
+    \centering\includegraphics[width=0.6\textwidth]{figures/llm_finetuned(1).png}
+\end{frame}
 % Frame 3.6: Cơ chế Intelligence Worker (Asynchronous)
-\begin{frame}{Cơ chế Intelligence Worker (Asynchronous)}
+\begin{frame}{Cơ chế Intelligence Worker}
     Để đảm bảo pipeline streaming không bao giờ bị nghẽn (Non-blocking):
 
     \begin{itemize}
@@ -651,38 +656,6 @@
         \end{block}
     \end{columns}
 \end{frame}
-
-% Frame 4.2b: Phân biệt vai trò Airflow và Zookeeper
-\begin{frame}{Phân biệt vai trò: Airflow vs Zookeeper}
-    Hệ thống sử dụng hai cơ chế điều phối chuyên biệt để đảm bảo tính ổn định:
-
-    \begin{columns}[t]
-        \column{0.5\textwidth}
-        \begin{exampleblock}{Airflow}
-            \textbf{Tầng điều phối nghiệp vụ (Logical Level)}
-            \begin{itemize}
-                \item Quản lý và lập lịch các tác vụ (\textit{Task Scheduling}).
-                \item Điều phối luồng dữ liệu thông qua định nghĩa DAG.
-                \item Giám sát (\textit{Monitoring}) và xử lý lỗi tự động (\textit{Retry mechanism}).
-            \end{itemize}
-        \end{exampleblock}
-
-        \column{0.5\textwidth}
-        \begin{block}{Zookeeper}
-            \textbf{Tầng điều phối hạ tầng (Infrastructure Level)}
-            \begin{itemize}
-                \item Quản lý cấu hình cụm **Kafka** (\textit{Cluster Configuration}).
-                \item Thực hiện bầu chọn Leader (\textit{Leader Election}) cho các partitions.
-                \item Đồng bộ trạng thái và phát hiện lỗi node (\textit{Failure Detection}).
-            \end{itemize}
-        \end{block}
-    \end{columns}
-
-    \vspace{0.3cm}
-    \centering
-    \textit{$\Rightarrow$ Airflow quản trị **Luồng nghiệp vụ**, Zookeeper quản trị **Hạ tầng phân tán**.}
-\end{frame}
-
 % Frame 4.3: Thành phần chính - Processing
 \begin{frame}{Các thành phần chính: Processing Layer (Spark)}
     \begin{block}{Spark Structured Streaming (Consumer)}
@@ -788,7 +761,7 @@
         \item \textbf{1. Sentiment Analysis (4,630 samples):}
               \begin{itemize}
                   \item Crawl bình luận từ Fanpages lớn (Beatvn, Theanh28).
-                  \item Pseudo-labeling bằng Gemini-3-Pro, sau đó **Human Review** các trường hợp có độ tin cậy thấp.
+                  \item Pseudo-labeling bằng Gemini-3-Pro, sau đó \textbf{Human Review} các trường hợp có độ tin cậy thấp.
               \end{itemize}
         \item \textbf{2. Taxonomy Classification (3,687 samples):}
               \begin{itemize}
@@ -1179,7 +1152,7 @@
 % Frame cuối: Cảm ơn
 \begin{frame}[plain]
     \centering
-    \Huge \textcolor{blue}{CẢM ƠN THẦY VÀ CÁC BẠN ĐÃ LẮNG NGHE!}
+    \Huge \textcolor{blue}{CẢM ƠN CÁC THẦY ĐÃ LẮNG NGHE!}
 
     \vspace{1cm}
     \large \textbf{Q \& A}
@@ -1189,30 +1162,5 @@
 % SECTION 6: DEMO
 %============================================================
 \section{Demo}
-
-% Frame 6.1: Kịch bản Demo - Cập nhật theo luồng Streaming thực tế
-\begin{frame}{Kịch bản Demo}
-    Quy trình demo mô phỏng luồng xử lý dữ liệu thời gian thực trên hệ thống:
-
-    \begin{enumerate}
-        \item \textbf{Hybrid Stream Mode:} Kích hoạt module \texttt{Unified Pipeline} để chạy song song:
-              \begin{itemize}
-                  \item \textbf{Historical Replay:} Giả lập dữ liệu quá khứ (Velocity cao).
-                  \item \textbf{Live Crawler:} Thu thập tin tức thực tế từ VNExpress/Social (Real-time).
-              \end{itemize}
-        \item \textbf{Real-time Processing:}
-              \begin{itemize}
-                  \item Engine \textbf{Spark Structured Streaming} tiếp nhận dữ liệu theo Micro-batch.
-                  \item Chạy \textbf{Vectorized Embedding} trên Spark Executors.
-                  \item Tự động kích hoạt thuật toán đề xuất và gọi LLM để gán nhãn xu hướng ngay trên luồng.
-              \end{itemize}
-        \item \textbf{Monitoring:} Quan sát sự xuất hiện và biến đổi nhiệt độ của các xu hướng trên \textbf{Streamlit Dashboard} (Cơ chế Auto-refresh).
-        \item \textbf{Intelligence Analysis:} Sử dụng tính năng \textit{"Xem chi tiết"} để kiểm tra:
-              \begin{itemize}
-                  \item Tóm tắt nội dung, Lời khuyên hành động (State/Business) và Giải thích từ AI.
-              \end{itemize}
-        \item \textbf{System Audit:} Theo dõi hiệu suất xử lý Micro-batch và tỉ lệ AI Analysis (Deep vs Fast Path).
-    \end{enumerate}
-\end{frame}
 
 \end{document}
