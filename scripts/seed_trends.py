@@ -81,6 +81,18 @@ def seed_database():
     # Ensure table exists (idempotent)
     with engine.connect() as conn:
         conn.execute(text("""
+            DROP TABLE IF EXISTS processed_posts;
+            CREATE TABLE IF NOT EXISTS processed_posts (
+                id SERIAL PRIMARY KEY,
+                content TEXT,
+                source TEXT,
+                processed_at TIMESTAMP,
+                final_topic TEXT,
+                embedding TEXT,
+                sentiment TEXT,
+                category TEXT
+            );
+            
             DROP TABLE IF EXISTS detected_trends;
             CREATE TABLE IF NOT EXISTS detected_trends (
                 id SERIAL PRIMARY KEY,
@@ -115,7 +127,6 @@ def seed_database():
         print(f"📄 [Seeder] Found primary JSON source: {json_path}")
         trend_files = [json_path]
     else:
-        # Fallback to CSVs
         trend_files = glob.glob(os.path.join(TRENDS_DIR, "*.csv"))
         if not trend_files:
             trend_files = glob.glob(os.path.join(PROJECT_ROOT, "input", "se363-final-dataset", "trendings", "*.csv"))
@@ -126,16 +137,14 @@ def seed_database():
 
     print(f"📦 [Seeder] using sources: {trend_files}")
     
-    # Load and Refine
-    # Note: We disable expensive LLM refinement for seeding to be fast, relying on the robust Regex/Heuristics we added.
     raw_trends = load_trends(trend_files)
     refined_trends = refine_trends_preprocessing(
         raw_trends, 
-        llm_provider="gemini", # Unused if refine=False/Use_LLM=False? 
+        llm_provider="gemini", 
         gemini_api_key=None, 
         llm_model_path=None, 
         debug_llm=False,
-        use_llm=False # KEY: Fast seeding, only regex filtering
+        use_llm=False
     )
     
     print(f"✨ [Seeder] Loaded {len(raw_trends)} raw -> {len(refined_trends)} refined trends.")
@@ -153,13 +162,11 @@ def seed_database():
             if exists:
                 continue
             
-            # FIX: Ensure name is readable. If it looks like a hash (len > 30, no spaces), use first keyword
             display_name = name
             if len(name) > 30 and ' ' not in name:
                 kws = data.get('keywords', [])
                 if kws: display_name = kws[0]
 
-            # FIX: Generate a "System" representative post so Dashboard doesn't show "No Content"
             kws_list = data.get('keywords', [])[:5]
             kws_str = ", ".join(kws_list)
             synth_post = {

@@ -27,21 +27,23 @@ def decide_mode(**context):
     Default: 'fast-demo' for instant demo experience
     """
     conf = context.get('dag_run').conf or {}
-    mode = conf.get('mode', 'fast-demo').lower()
+    mode = conf.get('mode', 'demo').lower()
     
     print(f"🔀 Branching Decision: Mode = {mode}")
     
     if mode == 'fast-demo':
         return ['load_precomputed_data']
-    elif mode == 'live':
-        return ['trigger_live_ingest']
-    elif mode == 'hybrid':
-        return ['trigger_demo_ingest', 'trigger_live_ingest']
-    elif mode == 'demo':
-        return ['trigger_demo_ingest']
-    else:
-        # Default to fast-demo
-        return ['load_precomputed_data']
+    
+    # For streaming modes, we start multiple tasks in parallel
+    tasks_to_run = []
+    if mode in ['demo', 'hybrid']:
+        tasks_to_run.append('trigger_demo_ingest')
+    if mode in ['live', 'hybrid']:
+        tasks_to_run.append('trigger_live_ingest')
+    
+    # Engine and AI should also start in parallel with ingestion
+    tasks_to_run.extend(['check_engine', 'run_ai_analysis'])
+    return tasks_to_run
 
 
 def decide_engine(**context):
@@ -136,22 +138,14 @@ with DAG(
     # Graph - Two paths:
     # Path 1 (Fast Demo): seed -> check_mode -> load_precomputed_data -> verify
     # Path 2 (Kafka modes): 
-    #   - seed -> check_mode -> [demo, live]
-    #   - IF demo/live: Run Producer, Consumer, AI in PARALLEL
+    #   - seed -> check_mode -> [demo, live, engine_branch, intelligence] IN PARALLEL
+    #   - engine_branch -> [consumer, spark]
     
-    seed_task >> branch_task >> [fast_demo_task, demo_task, live_task]
+    seed_task >> branch_task >> [fast_demo_task, demo_task, live_task, engine_branch, intelligence_task]
     fast_demo_task >> verify_task
 
-    # For Kafka modes, we want components to run in parallel
-    # Note: In a real orchestrated batch DAG, they are sequential. 
-    # But for a "Long Running Service" demo, we start them all.
-    
-    # Connect engine/AI to branch_task so they are triggered if mode != fast-demo
-    [demo_task, live_task] >> engine_branch 
+    # Connect engine branch to its targets
     engine_branch >> [consumer_task, spark_task]
-    
-    # Remove dependency of intelligence on consumer (Parallelize)
-    engine_branch >> intelligence_task
     
     # Verification runs after everything (theoretically - for streams it might never run)
     [consumer_task, spark_task, intelligence_task] >> verify_task

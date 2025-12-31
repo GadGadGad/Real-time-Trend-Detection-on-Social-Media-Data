@@ -1,33 +1,57 @@
 #!/bin/bash
 
-# Configuration
-PROJECT_ROOT="/home/gad/My Study/Code Storages/University/HK7/SE363/Final Project"
-AIRFLOW_BIN="/home/gad/miniforge3/envs/SE363Final/bin/airflow"
-PYTHON_BIN="/home/gad/miniforge3/envs/SE363Final/bin/python"
+# Auto-detect Project Root
+PROJECT_ROOT="$(cd "$(dirname "$0")"; pwd)"
+# Auto-detect Binaries (Assuming active conda env or standard PATH)
+AIRFLOW_BIN="$(which airflow)"
+PYTHON_BIN="$(which python)"
+
+if [[ -z "$AIRFLOW_BIN" || -z "$PYTHON_BIN" ]]; then
+    echo "❌ Error: Could not find 'airflow' or 'python' in PATH."
+    echo "👉 Please activate your conda environment before running this script."
+    exit 1
+fi
 MODE=${1:-demo} # Default to demo if no argument provided
 
 echo "🚀 INITIALIZING UNIFIED DEMO SYSTEM"
 echo "---------------------------------------------------"
 
+# 0. Clean up any existing background processes
+echo "🧹 Cleaning up existing background processes..."
+pkill -f "producer_simple.py" || true
+pkill -f "intelligence_worker.py" || true
+pkill -f "spark_consumer.py" || true
+pkill -f "airflow" || true
+pkill -f "streamlit" || true
+sleep 2
+
 # 1. Infrastructure Check (Docker)
 echo "🐳 Checking Infrastructure (Postgres & Kafka)..."
-if ! docker ps | grep -q "postgres_demo" || ! docker ps | grep -q "kafka"; then
-    echo "⚠️  Infrastructure services are down. Starting them now..."
-    cd "$PROJECT_ROOT/streaming"
-    docker-compose up -d
-    echo "⏳ Waiting for services to stabilize (10s)..."
-    sleep 10
-else
-    echo "✅ Infrastructure services are running."
-fi
+cd "$PROJECT_ROOT/streaming"
+docker-compose up -d
+
+echo "⏳ Waiting for services to be healthy..."
+wait_for_container() {
+    local container_name=$1
+    echo -n "   - Waiting for $container_name... "
+    while [ "$(docker inspect --format='{{json .State.Health.Status}}' $container_name 2>/dev/null)" != "\"healthy\"" ]; do
+        echo -n "."
+        sleep 2
+    done
+    echo " ✅"
+}
+
+wait_for_container "postgres_demo"
+wait_for_container "kafka"
+cd "$PROJECT_ROOT"
 
 # 2. Environment Setup
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 export AIRFLOW__CORE__DAGS_FOLDER="$PROJECT_ROOT/dags"
 # Add Airflow bin to PATH so 'airflow standalone' subprocesses can find it
 export PATH="$(dirname "$AIRFLOW_BIN"):$PATH"
-# Force SPARK_HOME to the standard miniforge location where pyspark is installed
-export SPARK_HOME="/home/gad/miniforge3/lib/python3.12/site-packages/pyspark"
+# Detect SPARK_HOME from the active pyspark installation
+export SPARK_HOME="$("$PYTHON_BIN" -c "import pyspark; import os; print(os.path.dirname(pyspark.__file__))")"
 
 # 2.5 Initialize Database (Prevent Dashboard Crash)
 echo "🌱 Seeding Database Trends..."
@@ -66,9 +90,6 @@ echo "🌪️  Starting Airflow Standalone..."
 "$AIRFLOW_BIN" standalone > airflow_standalone.log 2>&1 &
 STANDALONE_PID=$!
 
-echo "⏳ Waiting 15s for Airflow to Initialize..."
-sleep 15
-
 # Extract Credentials
 echo "🔑 Airflow Credentials:"
 grep "User" airflow_standalone.log || echo "User: admin (check log)"
@@ -95,16 +116,10 @@ spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.pos
     streaming/spark_consumer.py > consumer.log 2>&1 &
 CONSUMER_PID=$!
 
-# Trigger the DAG
-if [ -f "$AIRFLOW_BIN" ]; then
-    "$AIRFLOW_BIN" dags trigger unified_pipeline -c "{\"mode\": \"$MODE\"}"
-else
-    airflow dags trigger unified_pipeline -c "{\"mode\": \"$MODE\"}"
-fi
 
 echo "---------------------------------------------------"
-echo "✅ Pipeline triggered in Airflow!"
-echo "👉 Open http://localhost:8080 to view the DAG Graph."
+echo "✅ System initialized! Airflow is ready."
+echo "👉 Open http://localhost:8080 to trigger the 'unified_pipeline' DAG manually."
 echo "👉 Dashboard is at http://localhost:8501"
 echo "💡 Services are running. Press Ctrl+C to stop Dashboard."
 

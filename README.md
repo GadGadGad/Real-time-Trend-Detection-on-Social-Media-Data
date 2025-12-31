@@ -1,62 +1,87 @@
-# 🚀 Hybrid Real-time Trend Detection System
+# 🚀 Real-time Event Detection on Social Media Data
 
-A production-grade system detecting social trends by fusing **Social Media (Kafka Stream)** and **Mainstream News (Crawlers)**, powered by **LLM Refinement (Gemini)**.
+A production-grade system for detecting and analyzing social trends by fusing **Real-time Social Media Streams (Kafka)** and **Mainstream News (Crawlers)**, enhanced by **LLM Intelligence (Gemini)**.
 
-![Architecture](docs/flow.mmd)
+## 🏗 Architecture
+
+```mermaid
+graph TD
+    A[Social Media / News Sources] --> B[Kafka Producer]
+    B --> C[Apache Kafka]
+    C --> D[Spark Structured Streaming]
+    D --> E[(PostgreSQL)]
+    E --> F[Intelligence Worker]
+    F -- LLM Refinement --> E
+    E --> G[Streamlit Dashboard]
+    H[Airflow Orchestrator] -- Pipeline Control --> D
+    H -- Ingestion Control --> B
+```
 
 ## 🔥 Key Features
 
-- **Unified Ingestion Layer:** Hybrid support for **Live Crawling** (Real-time) and **Historical Replay** (Demo Mode).
-- **SAHC Clustering:** Specialized Soft-Alignment Hierarchical Clustering for noisy short texts.
-- **LLM Intelligence:** 
-  - **Reasoning:** Explains *why* something is trending.
-  - **Strategic Advice:** Generates actionable insights for State ("Quản lý") and Business ("Thương mại").
-  - **Noise Filtering:** Semantic guardrails to remove spam/generic topics.
-- **Real-time Dashboard:** Streamlit UI with pulse animations and live updates.
+- **Hybrid Data Fusion:** Combines high-velocity social signals with authoritative news sources.
+- **Distributed Processing:** Uses **PySpark Structured Streaming** for scalable event clustering.
+- **AI-Powered Insights:** 
+  - **Automated Summary:** Generates concise event descriptions in Vietnamese.
+  - **Strategic Advice:** Actionable recommendations for Authorities and Businesses.
+  - **Taxonomy Classification:** Categorizes events into standard Vietnamese social monitoring topics (T1-T7).
+- **Unified Launch Script:** Start the entire stack (Database, Kafka, Spark, Worker, Dashboard) with a single command.
 
 ## 🛠 Tech Stack
 
-- **Ingestion:** Apache Kafka, VnExpress Crawler
-- **Orchestration:** Apache Airflow (`unified_pipeline_dag.py`)
-- **Processing:** Spark-like Micro-batching (`kafka_consumer.py`)
-- **AI/ML:** 
-  - **Embedding:** `sentence-transformers` (Fine-tuned `visobert`)
-  - **LLM:** Gemini Pro 1.5 (via Google GenAI SDK)
-- **Serving:** PostgreSQL + Streamlit
+- **Streaming:** Apache Kafka, PySpark
+- **Orchestration:** Apache Airflow
+- **Database:** PostgreSQL (with SQLAlchemy)
+- **AI/LLM:** Google Gemini Pro 1.5, Sentence-Transformers
+- **Frontend:** Streamlit
 
-## 🚀 Quick Start (Demo)
+## 🚀 Quick Start
 
-### 1. Setup
+### 1. Prerequisites
+
+- Docker & Docker Compose
+- Conda or Python 3.10+
+- Gemini API Key
+
+### 2. Setup
+
 ```bash
+# Clone the repository
+git clone [repository-url]
+cd [repository-name]
+
+# Install dependencies
 pip install -r requirements.txt
-# Set GEMINI_API_KEY and POSTGRES_URL in .env
+
+# Configure environment
+cp .env.example .env
+# Edit .env and add your GEMINI_API_KEY
 ```
 
-### 2. Run Components
-**Terminal 1: Consumer & Intelligence**
+### 3. Launch System
+
+The system includes a unified bootstrap script that handles infrastructure checks, database seeding, and background services.
+
 ```bash
-# Starts the background worker for Clustering & LLM
-python streaming/kafka_consumer.py &
-python streaming/intelligence_worker.py
+chmod +x run_full_system.sh
+./run_full_system.sh demo
 ```
 
-**Terminal 2: Dashboard**
-```bash
-streamlit run streaming/dashboard.py
-```
-
-**Terminal 3: Trigger Data**
-```bash
-# Run one-off ingestion batch (Hybrid Mode)
-python dags/unified_pipeline_dag.py
-```
+*Note: The `demo` mode uses local simulations to showcase system capabilities without requiring live crawler credentials.*
 
 ## 📂 Project Structure
+
+```text
+├── airflow_home/      # Airflow configuration and local DB
+├── dags/              # Orchestration logic (Unified Pipeline)
+├── scripts/           # Training, Seeding, and Utility scripts
+├── src/               # Core business logic (NLP, AI, DB models)
+├── streaming/         # Real-time components (Dashboard, Producer, Worker)
+└── run_full_system.sh # Main entry point for the demo system
 ```
-├── dags/                  # Airflow DAGs (Unified, Live, Demo)
-├── streaming/            # Dashboard & Intelligence Worker
-├── streaming/             # Kafka Producers & Consumers
-├── slides/                # LaTeX Presentation
-├── scripts/               # Training & Evaluation Scripts
-└── src/                   # Core Logic (LLM, NLP utils)
-```
+
+## 📈 Monitoring
+
+- **Dashboard:** [http://localhost:8501](http://localhost:8501)
+- **Airflow UI:** [http://localhost:8080](http://localhost:8080)
+- **Kafka / Postgres:** Managed via Docker Compose in `streaming/docker-compose.yml`

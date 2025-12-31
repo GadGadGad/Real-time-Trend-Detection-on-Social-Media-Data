@@ -1,26 +1,32 @@
 # Python
-__pycache__
-*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
 .ipynb_checkpoints/
+.pytest_cache/
 
-# IDE
-.idea
-.vscode
-
-# Virtual Environment
-venv
-env
-
-# System
+# IDE & OS
+.idea/
+.vscode/
 .DS_Store
 Thumbs.db
 
-# Other
-*.log
-*.lock
+# Virtual Environment
+venv/
+env/
+.venv/
 
-# Data
+# Project Logs
+*.log
+airflow_standalone.log
+consumer.log
+producer.log
+worker.log
+geckodriver.log
+
+# Data & Cache
 data/
+demo/
 results/
 my_firefox_profile/
 old_facebook/
@@ -31,14 +37,21 @@ fb_data.json
 *.jsonl
 *.pkl
 debug_*.html
-geckodriver.log
 *.csv
+stream_test/data/*
 
-# latex
+# Distribution / Build
+dist/
+build/
+*.egg-info/
 
-# --- LaTeX ---
+# Secret & Local Config
+.env
+.env.local
+airflow_home/
+
+# LaTeX
 *.aux
-*.log
 *.out
 *.toc
 *.synctex.gz
@@ -47,16 +60,8 @@ geckodriver.log
 *.bbl
 *.blg
 *.snm
+*.vrb
 *.run.xml
 *.bcf
 *.nav
 *.pdf
-
-stream_test/data/*
-stream_test/crawlers/__pycache__/
-
-# demo
-.env
-demo/
-
-trend-analysis-streaming/.env

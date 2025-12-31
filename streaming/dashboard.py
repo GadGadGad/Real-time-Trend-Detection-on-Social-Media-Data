@@ -161,7 +161,6 @@ def process_evolution(row, threshold):
         return pd.Series(["DIỄN BIẾN MỚI", True])
     return pd.Series([row['trend_name'], False])
 
-# Removed cache to ensure fresh connections for real-time demo
 def get_db_engine():
     return create_engine(DB_URL)
 
@@ -183,7 +182,6 @@ if st.sidebar.button("🗑️ Xóa dữ liệu"):
         conn.execute(text("TRUNCATE TABLE detected_trends"))
     st.rerun()
 
-# --- METRICS BAR (Auto-refresh using fragment) ---
 @st.fragment(run_every=refresh_rate if auto_refresh else None)
 def show_metrics():
     df_metrics = load_realtime_data()
@@ -207,7 +205,6 @@ def show_metrics():
 
 show_metrics()
 
-# --- INITIAL DATA LOAD (for static components) ---
 if 'last_df' not in st.session_state:
     st.session_state.last_df = load_realtime_data()
 
@@ -221,7 +218,6 @@ if df_full.empty:
     st.warning("📡 Hệ thống đang khởi động... Dữ liệu sẽ tự động xuất hiện tại luồng Live.")
     # Do NOT stop here so fragments and tabs can render and poll for data
 
-# --- TABS ---
 tab_live, tab_intel, tab_sys = st.tabs(["🚀 Luồng Live", "🧠 Chi tiết & Phân tích", "📈 Hiệu suất Hệ thống"])
 
 # --- TAB 1: LIVE MONITOR ---
@@ -283,8 +279,6 @@ def show_tab_live():
 with tab_live:
     show_tab_live()
 
-
-# --- TAB 3: INTELLIGENCE & ANALYTICS ---
 with tab_intel:
     col_left, col_right = st.columns([2, 1])
     
@@ -370,7 +364,6 @@ with tab_intel:
             
             st.markdown("---")
             
-            # === COMPREHENSIVE AI ANALYSIS SECTION ===
             summary = trend_data.get('summary', '')
             advice_state = trend_data.get('advice_state', '')
             advice_biz = trend_data.get('advice_business', '')
@@ -477,8 +470,6 @@ with tab_intel:
     with col_right:
         st.subheader("📊 Thống kê")
         
-        # 1. Top Trends Pie
-        # 1. Classification Percentage Pie (Replaces Top 5 Events)
         if 'category' in identified_df.columns and not identified_df.empty:
             cat_counts = identified_df['category'].value_counts().reset_index()
             cat_counts.columns = ['Mã', 'Số lượng']
@@ -492,7 +483,7 @@ with tab_intel:
             fig_t = px.pie(cat_counts, values='Số lượng', names='Loại hình', hole=0.5, 
                            template="plotly_dark", title="Tỷ lệ Phân loại Sự kiện")
             fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=40,b=0), showlegend=True)
-            st.plotly_chart(fig_t, use_container_width=True)
+            st.plotly_chart(fig_t, width="stretch")
 
         # 2. Topic Type Bar (Mapped)
         type_counts = df_full['topic_type'].value_counts().reset_index()
@@ -508,9 +499,8 @@ with tab_intel:
                            template="plotly_dark", color='Loại hình', title="Phân loại theo Mục tiêu")
             fig_s.update_layout(showlegend=False, height=350, margin=dict(l=0,r=0,t=40,b=0), 
                                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_s, use_container_width=True)
+            st.plotly_chart(fig_s, width="stretch")
 
-# --- TAB 4: SYSTEM PERFORMANCE ---
 with tab_sys:
     @st.fragment(run_every=refresh_rate if auto_refresh else None)
     def show_system_stats():
@@ -555,7 +545,7 @@ with tab_sys:
                 color_continuous_scale="Viridis"
             )
             fig_bar.update_layout(height=400, margin=dict(l=0,r=0,t=20,b=0))
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width="stretch")
 
         with col_plot2:
             st.markdown("#### ⏳ Trạng thái Xử lý (LLM)")
@@ -577,7 +567,7 @@ with tab_sys:
                 template="plotly_dark"
             )
             fig_pie.update_layout(height=400, margin=dict(l=0,r=0,t=20,b=0))
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width="stretch")
 
         # System Health Note
         st.success(f"✅ Hệ thống đang chạy ở chế độ **Real-time Injection** (Simulation).")

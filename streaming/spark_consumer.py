@@ -128,8 +128,6 @@ def process_micro_batch(batch_df, batch_id, spark):
     count = batch_df.count()
     print(f"📦 Batch {batch_id}: Processing {count} posts...")
     
-    # Phase 1: Use pre-assigned final_topic if available
-    matched_count = 0
     unmatched_df = batch_df.filter(
         (col("final_topic").isNull()) | 
         (col("final_topic").isin("Unknown", "Unassigned", "N/A", ""))
@@ -141,23 +139,18 @@ def process_micro_batch(batch_df, batch_id, spark):
     )
     
     if pre_assigned_df.count() > 0:
-        # Write pre-assigned directly (update existing trends)
         pre_assigned_count = pre_assigned_df.count()
         print(f"   ✅ Pre-assigned: {pre_assigned_count} posts")
         matched_count += pre_assigned_count
         
-        # Collect and update DB
         for row in pre_assigned_df.collect():
             update_trend_with_post(row.final_topic, row, spark)
     
-    # Phase 2: Embedding matching for unmatched
     if unmatched_df.count() >= MIN_CLUSTER_SIZE:
         print(f"   🔄 Embedding matching for {unmatched_df.count()} unmatched posts...")
         
-        # Add embeddings
         with_emb = unmatched_df.withColumn("embedding", embed_texts(col("content")))
         
-        # Load trends
         trends_df = load_trends_from_db(spark)
         
         if trends_df is not None and trends_df.count() > 0:
@@ -190,7 +183,6 @@ def process_micro_batch(batch_df, batch_id, spark):
             print(f"   ✅ Matched via embedding: {new_matches}")
             matched_count += new_matches
             
-            # Phase 3: HDBSCAN for remaining unmatched
             if len(still_unmatched) >= MIN_CLUSTER_SIZE:
                 discover_new_trends(still_unmatched, spark)
         else:
