@@ -10,6 +10,14 @@ import math
 
 DB_URL = "postgresql://user:password@localhost:5432/trend_db"
 
+# Lazy load RAG Helper
+try:
+    from src.utils.rag_helper import RAGHelper
+    rag_helper = RAGHelper()
+except Exception as e:
+    rag_helper = None
+    print(f"RAG Helper disabled: {e}")
+
 st.set_page_config(page_title="Phân tích Xu hướng", layout="wide", page_icon="🌐")
 
 TAXONOMY_MAP = {
@@ -218,7 +226,14 @@ if df_full.empty:
     st.warning("📡 Hệ thống đang khởi động... Dữ liệu sẽ tự động xuất hiện tại luồng Live.")
     # Do NOT stop here so fragments and tabs can render and poll for data
 
-tab_live, tab_intel, tab_sys = st.tabs(["🚀 Luồng Live", "🧠 Chi tiết & Phân tích", "📈 Hiệu suất Hệ thống"])
+tab_live, tab_intel, tab_map, tab_rag, tab_report, tab_sys = st.tabs([
+    "🚀 Luồng Live", 
+    "🧠 Chi tiết & Phân tích", 
+    "🛸 Bản đồ AI",
+    "💬 Hỏi đáp AI (RAG)", 
+    "📜 Báo cáo Chiến lược",
+    "📈 Hiệu suất Hệ thống"
+])
 
 # --- TAB 1: LIVE MONITOR ---
 @st.fragment(run_every=refresh_rate if auto_refresh else None)
@@ -468,22 +483,48 @@ with tab_intel:
                     st.warning("Không có bài viết nào thỏa mãn ngưỡng tương đồng.")
     
     with col_right:
-        st.subheader("📊 Thống kê")
+        st.subheader("📊 Thổng kê & Nguồn")
         
-        if 'category' in identified_df.columns and not identified_df.empty:
-            cat_counts = identified_df['category'].value_counts().reset_index()
-            cat_counts.columns = ['Mã', 'Số lượng']
+        if not target_df.empty:
+            # 1. Source Distribution (Pie Chart) - NEW
+            raw_posts = trend_data.get('representative_posts', '[]')
+            all_posts = json.loads(raw_posts) if isinstance(raw_posts, str) else (raw_posts or [])
             
-            # Use TAXONOMY_MAP if available, otherwise fallback to code
-            if 'TAXONOMY_MAP' in globals():
-                cat_counts['Loại hình'] = cat_counts['Mã'].apply(lambda x: TAXONOMY_MAP.get(x, x))
-            else:
-                 cat_counts['Loại hình'] = cat_counts['Mã']
-            
-            fig_t = px.pie(cat_counts, values='Số lượng', names='Loại hình', hole=0.5, 
-                           template="plotly_dark", title="Tỷ lệ Phân loại Sự kiện")
-            fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=40,b=0), showlegend=True)
-            st.plotly_chart(fig_t, width="stretch")
+            if all_posts:
+                sources = [normalize_source(p.get('source', 'Unknown')) for p in all_posts]
+                src_df = pd.DataFrame(sources, columns=['Nguồn']).value_counts().reset_index()
+                src_df.columns = ['Nguồn', 'Số lượng']
+                
+                fig_src = px.pie(src_df, values='Số lượng', names='Nguồn', 
+                                 title="Phân bổ Nguồn tin (Social vs News)",
+                                 hole=0.4, template="plotly_dark",
+                                 color_discrete_map={'FACEBOOK': '#3b82f6', 'NEWS': '#f97316', 'VNEXPRESS': '#f97316'})
+                fig_src.update_layout(height=280, margin=dict(l=0,r=0,t=40,b=0))
+                st.plotly_chart(fig_src, width="stretch")
+                
+                # Gap Analysis Note
+                fb_count = sum(1 for s in sources if 'FACEBOOK' in s)
+                news_count = len(sources) - fb_count
+                if fb_count > news_count * 2 and news_count > 0:
+                    st.info("⚠️ **Cảnh báo lệch nguồn:** Sự kiện đang nóng trên MXH nhưng ít tin bài báo chí. Có thể là tin đồn hoặc diễn biến chưa được kiểm chứng.")
+                elif news_count > fb_count * 2 and fb_count > 0:
+                    st.info("📰 **Tin tức chủ đạo:** Sự kiện được báo chí đưa tin đậm nét nhưng MXH chưa có phản ứng tương xứng.")
+
+            # 2. Category Pie
+            if 'category' in identified_df.columns:
+                cat_counts = identified_df['category'].value_counts().reset_index()
+                cat_counts.columns = ['Mã', 'Số lượng']
+                
+                # Use TAXONOMY_MAP if available, otherwise fallback to code
+                if 'TAXONOMY_MAP' in globals():
+                    cat_counts['Loại hình'] = cat_counts['Mã'].apply(lambda x: TAXONOMY_MAP.get(x, x))
+                else:
+                     cat_counts['Loại hình'] = cat_counts['Mã']
+                
+                fig_t = px.pie(cat_counts, values='Số lượng', names='Loại hình', hole=0.5, 
+                               template="plotly_dark", title="Tỷ lệ Phân loại Sự kiện")
+                fig_t.update_layout(height=350, margin=dict(l=0,r=0,t=40,b=0), showlegend=True)
+                st.plotly_chart(fig_t, width="stretch")
 
         # 2. Topic Type Bar (Mapped)
         type_counts = df_full['topic_type'].value_counts().reset_index()
@@ -500,6 +541,147 @@ with tab_intel:
             fig_s.update_layout(showlegend=False, height=350, margin=dict(l=0,r=0,t=40,b=0), 
                                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_s, width="stretch")
+
+        # 3. Similar Trends Suggestions - NEW
+        if rag_helper and not target_df.empty:
+            st.markdown("---")
+            st.subheader("🔗 Sự kiện liên quan")
+            with st.spinner("Đang tìm các sự kiện tương tự..."):
+                similar = rag_helper.get_relevant_trends(selected_trend, top_k=6)
+                # Filter out the current trend itself
+                similar = [t for t in similar if t['name'] != selected_trend]
+                
+                if similar:
+                    for s_trend in similar[:4]:
+                        # Score formatting
+                        sim_pct = s_trend['score'] * 100
+                        st.markdown(f"""
+                        <div style="background: #1e293b; padding: 10px; margin-bottom: 8px; border-radius: 8px; border-left: 4px solid #7c3aed;">
+                            <div style="font-weight: bold; color: #f1f5f9; font-size: 0.9rem;">{s_trend['name']}</div>
+                            <div style="font-size: 0.75rem; color: #94a3b8;">Độ tương đồng: {sim_pct:.1f}%</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.caption("Không tìm thấy sự kiện tương tự nào khác.")
+
+@st.fragment()
+def show_tab_rag():
+    st.subheader("💬 Hỏi đáp Thông minh với AI")
+    st.caption("Sử dụng công nghệ RAG (Retrieval-Augmented Generation) để trả lời dựa trên dữ liệu thực tế từ các trend và bài viết.")
+
+    if rag_helper is None:
+        st.error("⚠️ Hệ thống AI Chat chưa sẵn sàng. Vui lòng kiểm tra lại cấu hình API Gemini và Sentence Transformers.")
+        return
+
+    # Chat History
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display Chat History
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat Input
+    if prompt := st.chat_input("Hỏi AI về các xu hướng hiện tại..."):
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        # Generate Response
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            message_placeholder.markdown("🔍 *Đang tìm kiếm thông tin liên quan...*")
+            
+            # 1. Retrieve
+            relevant_trends = rag_helper.get_relevant_trends(prompt, top_k=3)
+            
+            if not relevant_trends:
+                full_response = "Xin lỗi, tôi không tìm thấy thông tin nào liên quan đến câu hỏi của bạn trong dữ liệu hiện tại."
+            else:
+                # Show found trends briefly
+                trend_names = ", ".join([t['name'] for t in relevant_trends])
+                message_placeholder.markdown(f"💡 *Tìm thấy các sự kiện liên quan: {trend_names}... Đang phân tích...*")
+                
+                # 2. Generate
+                full_response = rag_helper.generate_answer(prompt, relevant_trends)
+            
+            message_placeholder.markdown(full_response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+with tab_rag:
+    show_tab_rag()
+
+@st.fragment()
+def show_tab_map():
+    st.subheader("🛸 Bản đồ Ngữ nghĩa AI (2D Projection)")
+    st.caption("Mô hình hóa toàn bộ sự kiện trong không gian 2D. Các điểm gần nhau có nội dung tương đồng. Kích thước điểm thể hiện sức nóng.")
+    
+    if rag_helper is None:
+        st.error("AI Helper chưa sẵn sàng.")
+        return
+        
+    with st.spinner("Đang tính toán tọa độ không gian..."):
+        df_map = rag_helper.get_semantic_map_data(limit=150)
+        
+        if df_map is None or df_map.empty:
+            st.info("Chưa có đủ dữ liệu để vẽ bản đồ.")
+            return
+            
+        fig = px.scatter(
+            df_map, x='x', y='y', 
+            text='name', 
+            color='category', 
+            size='score',
+            hover_name='name',
+            template="plotly_dark",
+            color_discrete_map={
+                'T1': '#ef4444', 'T2': '#3b82f6', 'T3': '#f59e0b', 
+                'T4': '#10b981', 'T5': '#ec4899', 'T6': '#8b5cf6', 'T7': '#64748b'
+            },
+            labels={'x': '', 'y': '', 'category': 'Danh mục'},
+            height=600
+        )
+        fig.update_traces(textposition='top center', marker=dict(line=dict(width=1, color='DarkGrey')))
+        fig.update_layout(
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            margin=dict(l=0,r=0,t=20,b=0)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+with tab_map:
+    show_tab_map()
+
+@st.fragment()
+def show_tab_report():
+    st.subheader("📜 Báo cáo Chiến lược Thông minh (AI Synthesis)")
+    st.caption("Tự động tổng hợp và phân tích 15 sự kiện quan trọng nhất trong cơ sở dữ liệu để đưa ra cái nhìn tổng thể.")
+    
+    if rag_helper is None:
+        st.error("AI Helper chưa sẵn sàng.")
+        return
+        
+    if st.button("🚀 Khởi tạo Báo cáo Ngay", type="primary"):
+        with st.spinner("AI đang 'đọc' toàn bộ xu hướng và viết báo cáo..."):
+            report = rag_helper.generate_daily_report()
+            st.markdown("---")
+            st.markdown(report)
+            
+            # Export options
+            st.download_button(
+                "📥 Tải báo cáo (Markdown)",
+                report,
+                file_name=f"intelligence_report_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+                mime="text/markdown"
+            )
+    else:
+        st.info("Nhấn nút phía trên để bắt đầu quá trình tổng hợp báo cáo chiến lược.")
+
+with tab_report:
+    show_tab_report()
 
 with tab_sys:
     @st.fragment(run_every=refresh_rate if auto_refresh else None)
