@@ -44,7 +44,6 @@ def load_posts(input_path: str) -> list:
         console.print(f"[green]✅ Loaded {len(posts)} articles from CSV[/green]")
         return posts
     
-    # Handle JSON files
     with open(input_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
@@ -132,13 +131,9 @@ def batch_summarize(
         resume: If True, skip already summarized posts
         checkpoint_interval: Save progress every N posts
     """
-    # Load posts
     posts = load_posts(input_path)
-    
-    # Load existing summaries if resuming
     summaries = load_existing_summaries(output_path) if resume else {}
     
-    # Extract texts and IDs
     to_summarize = []
     for i, post in enumerate(posts):
         post_id = get_post_id(post, i)
@@ -157,7 +152,6 @@ def batch_summarize(
     
     console.print(f"[cyan]📝 Summarizing {len(to_summarize)} posts (skipped {len(posts) - len(to_summarize)})...[/cyan]")
     
-    # Initialize summarizer
     summarizer = Summarizer(model_name=model_name)
     summarizer.load_model()
     
@@ -165,7 +159,6 @@ def batch_summarize(
         console.print("[red]❌ Failed to load summarizer[/red]")
         return summaries
     
-    # Batch summarize with checkpointing
     batch_size = 8  # Safe GPU batch size
     
     for i in range(0, len(to_summarize), batch_size):
@@ -191,17 +184,12 @@ def batch_summarize(
                 
         except Exception as e:
             console.print(f"[red]Error in batch {i}: {e}[/red]")
-            # Save progress on error
             save_summaries(summaries, output_path)
             raise
     
-    # Final save
     save_summaries(summaries, output_path)
-    
-    # Cleanup
     summarizer.unload_model()
     
-    # Stats
     total_original = sum(s['original_length'] for s in summaries.values())
     total_summary = sum(s['summary_length'] for s in summaries.values())
     compression = (1 - total_summary / total_original) * 100 if total_original else 0

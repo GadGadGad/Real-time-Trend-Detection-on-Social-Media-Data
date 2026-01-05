@@ -105,6 +105,25 @@ def get_trend_detail(trend_id: int):
         representative_posts=[Post(**p) for p in reps]
     )
 
+@app.get("/trends/{trend_id}/related")
+def get_related_trends(trend_id: int):
+    # 1. Get the trend name first
+    query = text("SELECT trend_name FROM detected_trends WHERE id = :id")
+    with engine.connect() as conn:
+        r = conn.execute(query, {"id": trend_id}).fetchone()
+    
+    if not r:
+        raise HTTPException(status_code=404, detail="Trend not found")
+        
+    trend_name = r.trend_name
+    
+    # 2. Use RAG to find similar
+    similar = rag_helper.get_relevant_trends(trend_name, top_k=6)
+    
+    # Filter out itself
+    filtered = [t for t in similar if t['name'] != trend_name]
+    return filtered[:4]
+
 @app.get("/analytics/semantic-map")
 def get_semantic_map():
     df = rag_helper.get_semantic_map_data(limit=150)

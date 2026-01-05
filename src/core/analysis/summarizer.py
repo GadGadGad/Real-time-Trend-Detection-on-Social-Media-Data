@@ -61,7 +61,6 @@ class Summarizer:
             if not self.enabled: return texts # Fallback
             
         if self.model_name.startswith('gemini'):
-            # True batching for Gemini: group articles into one long prompt
             summaries = []
             gemini_batch_size = 20 # Can handle more, but 20 is safe for response parsing
             for i in range(0, len(texts), gemini_batch_size):
@@ -82,7 +81,6 @@ class Summarizer:
                     if chunk_summaries and len(chunk_summaries) == len(chunk):
                         summaries.extend(chunk_summaries)
                     else:
-                        # Fallback/Error recovery: individual generation if batch failed
                         console.print(f"[yellow]⚠️ Batch summary failed/mismatched for chunk {i//gemini_batch_size}. Retrying individually...[/yellow]")
                         for t in chunk:
                             summaries.append(self.model.summarize_text(t))
@@ -99,8 +97,6 @@ class Summarizer:
         
         for i in track(range(0, len(texts), batch_size), description="[cyan]Summarizing batches...[/cyan]"):
             batch = texts[i : i + batch_size]
-            
-            # ViT5 requires special format: "vietnews: {text} </s>"
             formatted_batch = [f"vietnews: {text} </s>" for text in batch]
             
             inputs = self.tokenizer(

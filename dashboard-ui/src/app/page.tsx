@@ -19,12 +19,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ChatView from '@/components/ChatView';
 import SemanticMap from '@/components/SemanticMap';
 import ReportView from './ReportView';
+import IntelView from './IntelView';
+import SystemStatsView from './SystemStatsView';
+import SettingsView from './SettingsView';
 
 // API Configuration
 const API_BASE = "http://localhost:8000";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('live');
+  const [selectedTrendId, setSelectedTrendId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [trends, setTrends] = useState([]);
 
@@ -86,10 +90,21 @@ export default function Dashboard() {
             active={activeTab === 'reports'}
             onClick={() => setActiveTab('reports')}
           />
+          <NavItem
+            icon={<Activity size={20} />} // Reusing Activity icon or finding another
+            label="System Status"
+            active={activeTab === 'stats'}
+            onClick={() => setActiveTab('stats')}
+          />
         </nav>
 
         <div className="p-4 border-t border-slate-800">
-          <NavItem icon={<Settings size={20} />} label="System Settings" />
+          <NavItem
+            icon={<Settings size={20} />}
+            label="System Settings"
+            active={activeTab === 'settings'}
+            onClick={() => setActiveTab('settings')}
+          />
         </div>
       </aside>
 
@@ -128,20 +143,22 @@ export default function Dashboard() {
               transition={{ duration: 0.2 }}
               className="h-full"
             >
-              {activeTab === 'live' && <LiveView trends={trends} loading={loading} />}
+              {activeTab === 'live' && (
+                <LiveView
+                  trends={trends}
+                  loading={loading}
+                  onSelectTrend={(id) => {
+                    setSelectedTrendId(id);
+                    setActiveTab('intel');
+                  }}
+                />
+              )}
               {activeTab === 'map' && <SemanticMap />}
               {activeTab === 'chat' && <ChatView />}
               {activeTab === 'reports' && <ReportView />}
-              {activeTab === 'intel' && (
-                <div className="flex items-center justify-center h-full text-slate-500">
-                  <div className="text-center space-y-4">
-                    <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto animate-pulse">
-                      <Activity size={32} />
-                    </div>
-                    <p className="font-mono text-sm uppercase tracking-widest">Select a trend from Live Feed to analyze</p>
-                  </div>
-                </div>
-              )}
+              {activeTab === 'intel' && <IntelView initialTrendId={selectedTrendId || undefined} />}
+              {activeTab === 'stats' && <SystemStatsView />}
+              {activeTab === 'settings' && <SettingsView />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -173,7 +190,7 @@ function NavItem({ icon, label, active, onClick }: { icon: any, label: string, a
   );
 }
 
-function LiveView({ trends, loading }: { trends: any[], loading: boolean }) {
+function LiveView({ trends, loading, onSelectTrend }: { trends: any[], loading: boolean, onSelectTrend: (id: number) => void }) {
   if (loading && trends.length === 0) return <div>Loading Intelligence Stream...</div>;
 
   return (
@@ -188,16 +205,17 @@ function LiveView({ trends, loading }: { trends: any[], loading: boolean }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {trends.map((trend) => (
-          <TrendCard key={trend.id} trend={trend} />
+          <TrendCard key={trend.id} trend={trend} onClick={() => onSelectTrend(trend.id)} />
         ))}
       </div>
     </div>
   );
 }
 
-function TrendCard({ trend }: { trend: any }) {
+function TrendCard({ trend, onClick }: { trend: any, onClick: () => void }) {
   return (
     <motion.div
+      onClick={onClick}
       whileHover={{ scale: 1.02 }}
       className="glass-panel p-5 rounded-2xl group cursor-pointer hover:border-cyan-500/30 transition-all glow-card"
     >

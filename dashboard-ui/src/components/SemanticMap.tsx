@@ -7,7 +7,7 @@ import {
     Scatter,
     XAxis,
     YAxis,
-    ZAxis, f
+    ZAxis,
     Tooltip,
     ResponsiveContainer,
     Cell

@@ -280,6 +280,14 @@
 %============================================================
 \section{Phương pháp thực hiện}
 
+% Frame 3.0: Pipeline Overview - Cập nhật theo kiến trúc Streaming thực tế
+\begin{frame}
+    \frametitle{Tổng quan quy trình (Pipeline Overview)}
+    \begin{center}
+        \includegraphics[width=0.8\textwidth]{figures/full_pipeline.png}
+    \end{center}
+\end{frame}
+
 % Frame 3.1: Kiến trúc Hybrid & Model (Tinh gọn)
 \begin{frame}{Kiến trúc Mô hình đề xuất (Proposed Architecture)}
     Hệ thống áp dụng pipeline 5 tầng, kết hợp NLP thống kê và Generative AI:
@@ -294,7 +302,7 @@
 
 \end{frame}
 
-\begin{frame}{Ngăn xếp Công nghệ lõi (Core Tech Stack)}
+\begin{frame}{Ng ngăn xếp Công nghệ lõi (Core Tech Stack)}
     \begin{itemize}
         \item \textbf{Embedding:} \texttt{dangvantuan/vietnamese-document-embedding}.
         \item \textbf{Clustering:} HDBSCAN + Cosine Similarity.
@@ -311,6 +319,50 @@
     \end{itemize}
 \end{frame}
 
+% Frame 3.2b: Tiền xử lý Luồng Trend (Seed/Anchor)
+\begin{frame}{Tiền xử lý Luồng Trend (Seed/Anchor)}
+    Tập trung lọc nhiễu và định hình thực thể mỏ neo từ dữ liệu ngắn (Short-text):
+
+    \begin{itemize}
+        \item \textbf{Stage 1: Heuristic Quality Guard}
+              \begin{itemize}
+                  \item Sử dụng Regex để loại bỏ các query routine: Xổ số (mostly numeric), Giá vàng, Thời tiết, Chất lượng không khí (AQI).
+                  \item Loại bỏ các mẫu "vs" dở dang hoặc từ khóa quá ngắn (< 3 ký tự).
+              \end{itemize}
+        \item \textbf{Stage 2: Smart Query Construction}
+              \begin{itemize}
+                  \item Mở rộng từ khóa mỏ neo bằng các thực thể liên quan: $Query = Trend + Keywords$.
+                  \item \textit{Mục tiêu:} Tăng độ phủ (recall) khi so khớp với dữ liệu bài viết dài.
+                  \item \textbf{Ví dụ:} "sea games 33" $\rightarrow$ "sea games 33 lich bong da seagame việt nam đấu với đội tuyển bóng đá nữ quốc gia malaysia..."
+              \end{itemize}
+        \item \textbf{Stage 3: Semantic Deduplication (LLM)}
+              \begin{itemize}
+                  \item LLM phát hiện và gộp các trend trùng lặp ngữ nghĩa (VD: "Bão Yagi" và "Bão số 3") thành một **Canonical Trend** duy nhất.
+              \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Frame 3.2c: Tiền xử lý Luồng Article (Data Feed)
+\begin{frame}{Tiền xử lý Luồng Article (Data Feed)}
+    Tập trung trích xuất tín hiệu (Signal) và loại bỏ rác từ dữ liệu dài (Long-form):
+
+    \begin{itemize}
+        \item \textbf{Structural Cleaning (Source Stripping)}
+              \begin{itemize}
+                  \item Loại bỏ tiền tố báo chí gây lệch cụm: "(VTV.vn) -", "VNExpress -", "Báo Thanh Niên -".
+                  \item Xử lý nhiễu OCR từ các bài đăng Facebook (Dấu lạ, text rác).
+              \end{itemize}
+        \item \textbf{Signal Extraction (Summarization)}
+              \begin{itemize}
+                  \item Sử dụng mô hình Tóm tắt (BART/ViT5) hoặc trích xuất câu quan trọng.
+                  \item Giảm chiều dữ liệu đầu vào cho bước Embedding giúp tăng tốc độ xử lý 2.5x.
+              \end{itemize}
+        \item \textbf{Named Entity Recognition Enrichment}
+              \begin{itemize}
+                  \item Gắn nhãn thực thể (Who/Where) để hỗ trợ bộ giải thuật gom cụm Clustering bám đúng ngữ cảnh.
+              \end{itemize}
+    \end{itemize}
+\end{frame}
 
 % Frame 3.2: Chi tiết Preprocessing & Embedding
 \begin{frame}{Vector hóa và Làm sạch dữ liệu}
@@ -418,10 +470,7 @@
     \end{exampleblock}
 \end{frame}
 
-
-
-% Frame 3.5: Chấm điểm xu hướng (Trend Scoring) \begin{frame}{Thuật toán Chấm điểm Xu hướng (Multi-factor Scoring)} Hệ thống xếp hạng mức độ "Hot" của sự kiện dựa trên mô hình tổng hợp đa nguồn (Multi-source Weighted Scoring).
-% Frame 3.5: Chấm điểm xu hướng (Trend Scoring - Concept)
+% Frame 3.5: Chấm điểm xu hướng (Trend Scoring)
 \begin{frame}{Thuật toán Chấm điểm Xu hướng (Scoring Logic)}
     Hệ thống tính điểm "Hot" ($S_{trend}$) để quyết định tin nào được lên Dashboard và gửi Alert.
 
@@ -457,56 +506,9 @@
     \fbox{\textbf{Logic:} Tổng điểm của 3 yếu tố phải lớn hơn một ngưỡng được đạt trước mới được coi là "Trend".}
 \end{frame}
 
-% Frame 3.2b: Tiền xử lý Luồng Trend (Seed/Anchor)
-\begin{frame}{Tiền xử lý Luồng Trend (Seed/Anchor)}
-    Tập trung lọc nhiễu và định hình thực thể mỏ neo từ dữ liệu ngắn (Short-text):
-
-    \begin{itemize}
-        \item \textbf{Stage 1: Heuristic Quality Guard}
-              \begin{itemize}
-                  \item Sử dụng Regex để loại bỏ các query routine: Xổ số (mostly numeric), Giá vàng, Thời tiết, Chất lượng không khí (AQI).
-                  \item Loại bỏ các mẫu "vs" dở dang hoặc từ khóa quá ngắn (< 3 ký tự).
-              \end{itemize}
-        \item \textbf{Stage 2: Smart Query Construction}
-              \begin{itemize}
-                  \item Mở rộng từ khóa mỏ neo bằng các thực thể liên quan: $Query = Trend + Keywords$.
-                  \item \textit{Mục tiêu:} Tăng độ phủ (recall) khi so khớp với dữ liệu bài viết dài.
-                  \item \textbf{Ví dụ:} "sea games 33" $\rightarrow$ "sea games 33 lich bong da seagame việt nam đấu với đội tuyển bóng đá nữ quốc gia malaysia..."
-              \end{itemize}
-        \item \textbf{Stage 3: Semantic Deduplication (LLM)}
-              \begin{itemize}
-                  \item LLM phát hiện và gộp các trend trùng lặp ngữ nghĩa (VD: "Bão Yagi" và "Bão số 3") thành một **Canonical Trend** duy nhất.
-              \end{itemize}
-    \end{itemize}
-\end{frame}
-
-% Frame 3.2c: Tiền xử lý Luồng Article (Data Feed)
-\begin{frame}{Tiền xử lý Luồng Article (Data Feed)}
-    Tập trung trích xuất tín hiệu (Signal) và loại bỏ rác từ dữ liệu dài (Long-form):
-
-    \begin{itemize}
-        \item \textbf{Structural Cleaning (Source Stripping)}
-              \begin{itemize}
-                  \item Loại bỏ tiền tố báo chí gây lệch cụm: "(VTV.vn) -", "VNExpress -", "Báo Thanh Niên -".
-                  \item Xử lý nhiễu OCR từ các bài đăng Facebook (Dấu lạ, text rác).
-              \end{itemize}
-        \item \textbf{Signal Extraction (Summarization)}
-              \begin{itemize}
-                  \item Sử dụng mô hình Tóm tắt (BART/ViT5) hoặc trích xuất câu quan trọng.
-                  \item Giảm chiều dữ liệu đầu vào cho bước Embedding giúp tăng tốc độ xử lý 2.5x.
-              \end{itemize}
-        \item \textbf{Named Entity Recognition Enrichment}
-              \begin{itemize}
-                  \item Gắn nhãn thực thể (Who/Where) để hỗ trợ bộ giải thuật gom cụm Clustering bám đúng ngữ cảnh.
-              \end{itemize}
-    \end{itemize}
-\end{frame}
-
-
 %============================================================
 % CHI TIẾT LLM & TAXONOMY (Đã tách thành 2 frame)
 %============================================================
-
 
 % Frame 3.4a: Tại sao lại là T1-T7? (Taxonomy Rationale)
 \begin{frame}{Chiến lược Phân loại Taxonomy}
@@ -584,20 +586,10 @@
     \end{exampleblock}
 \end{frame}
 
-
 %============================================================
 % SECTION 4: REAL-TIME DATA STREAMING
 %============================================================
 \section{Real-time Data Streaming}
-
-% Frame 3.0: Pipeline Overview - Cập nhật theo kiến trúc Streaming thực tế
-\begin{frame}
-    \frametitle{Tổng quan quy trình (Pipeline Overview)}
-    \begin{center}
-        \includegraphics[width=0.8\textwidth]{figures/full_pipeline.png}
-    \end{center}
-\end{frame}
-
 % Frame 4.0b: Fast Path vs Slow Path (Architecture Philosophy)
 \begin{frame}{Chiến lược Xử lý: Fast Path và Slow Path}
     Hệ thống tách biệt hai luồng xử lý để tối ưu giữa \textbf{Tốc độ} và \textbf{Độ sâu tri thức}:
@@ -673,7 +665,6 @@
         \end{itemize}
     \end{block}
 \end{frame}
-
 
 %============================================================
 % SECTION 5: HUẤN LUYỆN & TINH CHỈNH (New)
@@ -1158,9 +1149,6 @@
     \large \textbf{Q \& A}
 \end{frame}
 
-%============================================================
-% SECTION 6: DEMO
-%============================================================
-\section{Demo}
+
 
 \end{document}
