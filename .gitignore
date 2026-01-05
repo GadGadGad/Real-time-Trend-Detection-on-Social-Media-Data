@@ -18,6 +18,7 @@ env/
 
 # Project Logs
 *.log
+logs/
 airflow_standalone.log
 consumer.log
 producer.log
