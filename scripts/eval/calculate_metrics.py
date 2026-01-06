@@ -124,7 +124,7 @@ def main():
     console.print(f"True Event Count: {len(set(true_labels) - {-1})}")
     console.print(f"Noise Count: {np.sum(true_labels == -1)}")
 
-    # 2. Run Pipeline (System Output)
+    # Run Pipeline (System Output)
     console.print("[bold]Running Hybrid Pipeline (Evaluation Mode)...[/bold]")
     # Using parameters close to production but without LLM for speed/cost if desired
     # For accurate evaluation, we should ideally use the same params.
@@ -214,7 +214,7 @@ def main():
         traceback.print_exc()
         return
 
-    # 3. Calculate Metrics
+    # Calculate Metrics
     ari = adjusted_rand_score(true_labels_sorted, pred_labels)
     nmi = normalized_mutual_info_score(true_labels_sorted, pred_labels)
     purity = purity_score(true_labels_sorted, pred_labels)

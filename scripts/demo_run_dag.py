@@ -32,24 +32,24 @@ def run_demo():
     context = {'ti': MockTaskInstance()}
     
     try:
-        # Step 1: Check API Key
+        # Check API Key
         print("\nStep 1: Checking API Key...")
         check_api_key(**context)
         
-        # Step 2: Fetch trends
+        # Fetch trends
         print("\nStep 2: Fetching Trends from DB...")
         count = fetch_unanalyzed_trends(**context)
         if count == 0:
             print("📭 No trends to process. Exiting demo.")
             return
 
-        # Step 3: Analyze with LLM
+        # Analyze with LLM
         print("\nStep 3: Analyzing with LLM (Phase 3-5)...")
         # This will calculate re-embeddings and perform deduplication
         stats = analyze_with_llm(**context)
         context['ti'].xcom_push('analyze_with_llm', stats)
         
-        # Step 4: Log completion
+        # Log completion
         print("\nStep 4: Final Summary")
         log_completion(**context)
         

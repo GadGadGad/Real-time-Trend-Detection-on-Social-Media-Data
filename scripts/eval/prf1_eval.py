@@ -188,17 +188,17 @@ def main():
     # Compute all metrics
     results = {}
     
-    # 1. BCubed
+    # BCubed
     console.print("[dim]Computing BCubed metrics...[/dim]")
     bc_p, bc_r, bc_f1 = bcubed_precision_recall_f1(true_labels, pred_labels)
     results['bcubed'] = {'precision': bc_p, 'recall': bc_r, 'f1': bc_f1}
     
-    # 2. Pairwise
+    # Pairwise
     console.print("[dim]Computing Pairwise metrics...[/dim]")
     pw_p, pw_r, pw_f1 = pairwise_precision_recall_f1(true_labels, pred_labels)
     results['pairwise'] = {'precision': pw_p, 'recall': pw_r, 'f1': pw_f1}
     
-    # 3. Standard clustering metrics
+    # Standard clustering metrics
     console.print("[dim]Computing clustering metrics...[/dim]")
     results['clustering'] = {
         'ari': adjusted_rand_score(true_labels, pred_labels),

@@ -99,7 +99,7 @@ class TransformerTaxonomyClassifier:
         
         if self.model_path and os.path.exists(self.model_path):
             try:
-                console.print(f"[bold green]✅ Loading TRAINED Taxonomy Classifier from {self.model_path}...[/bold green]")
+                console.print(f"[bold green][OK] Loading TRAINED Taxonomy Classifier from {self.model_path}...[/bold green]")
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
                 self.model = AutoModelForSequenceClassification.from_pretrained(self.model_path).to(self.device)
                 self.model.eval()
@@ -191,7 +191,7 @@ class TaxonomyClassifier:
             
     def _precompute_embeddings(self):
         """Pre-compute embeddings for category descriptions"""
-        console.print("[dim]🧠 Pre-computing 7-Group Taxonomy Embeddings (fallback)...[/dim]")
+        console.print("[dim][AI] Pre-computing 7-Group Taxonomy Embeddings (fallback)...[/dim]")
         descriptions = [CATEGORY_DESCRIPTIONS[c] for c in self.categories]
         self.category_embeddings = self.embedder.encode(descriptions)
         

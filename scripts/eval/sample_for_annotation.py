@@ -18,8 +18,8 @@ def load_all_data():
     console.print(f"[dim]Loading data from {SEARCH_ROOT}...[/dim]")
     posts = []
     
-    # 1. Load Facebook Data
-    # 1a. Old Facebook folder
+    # Load Facebook Data
+    # Old Facebook folder
     fb_paths = [
         "crawlers/new_data/facebook/*.json"
     ]
@@ -40,7 +40,7 @@ def load_all_data():
             except Exception as e:
                 pass
 
-    # 2. Load News Data
+    # Load News Data
     news_paths = [
         "crawlers/old_data/news/**/*.csv",
         "crawlers/new_data/news/**/*.csv"

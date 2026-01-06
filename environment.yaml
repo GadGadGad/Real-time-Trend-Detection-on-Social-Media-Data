@@ -1,0 +1,33 @@
+name: se363-trend-detection
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - pandas
+  - scikit-learn
+  - pytorch
+  - transformers
+  - sentence-transformers
+  - pyspark
+  - sqlalchemy
+  - psycopg2
+  - requests
+  - beautifulsoup4
+  - selenium
+  - playwright
+  - streamlit
+  - plotly
+  - rich
+  - openpyxl
+  - python-dotenv
+  - pip
+  - pip:
+    - google-generativeai
+    - underthesea
+    - py-vncorenlp
+    - kafka-python
+    - toml
+    - lxml

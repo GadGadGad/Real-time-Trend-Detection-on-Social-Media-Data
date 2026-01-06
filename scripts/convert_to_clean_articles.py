@@ -26,7 +26,7 @@ def process_cleaning(input_file, output_file):
         raw_content = str(row.get('content', ''))
         title = str(row.get('title', ''))
         
-        # 1. Regex tìm ngày giờ
+        # Regex tìm ngày giờ
         date_pattern = r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}\s+\(GMT\+07:00\))"
         match = re.search(date_pattern, raw_content)
         

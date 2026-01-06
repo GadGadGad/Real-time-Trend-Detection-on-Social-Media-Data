@@ -1,0 +1,394 @@
+% This is samplepaper.tex, a sample chapter demonstrating the
+% LLNCS macro package for Springer Computer Science proceedings;
+% Version 2.21 of 2022/01/12
+%
+\documentclass[runningheads]{llncs}
+%
+\usepackage[T5,T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+%
+\begin{document}
+%
+\title{Real-time Event Detection System: Integrating Social Streams and Mainstream News with LLM Intelligence}
+\titlerunning{Real-time Event Detection System}
+%
+%\titlerunning{Abbreviated paper title}
+% If the paper title is too long for the running head, you can set
+% an abbreviated paper title here
+%
+\author{Nhat Tang\inst{1} \and
+    Minh Nhut Le\inst{1}}
+%
+\authorrunning{N. Tang and M. N. Le}
+% First names are abbreviated in the running head.
+% If there are more than two authors, 'et al.' is used.
+%
+\institute{University of Information Technology, VNU-HCM, Vietnam\\
+    \email{\{22521035,22521060\}@gm.uit.edu.vn}}
+%
+\maketitle              % typeset the header of the contribution
+%
+\begin{abstract}
+    In the era of information overload, rapidly detecting and understanding social trends is crucial for public safety and market intelligence. However, current methods struggle with the "Semantic Ambiguity" of social posts and the "Evaluation Gap" in unlabelled streaming data. This paper presents a comprehensive \textbf{Real-time Event Detection System} using a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy. We introduce a \textbf{Dual-Path Architecture} that combines Spark/Kafka for low-latency alerts with asynchronous LLM workers for deep semantic reasoning. Experimental results on 7,605 posts show our method achieves an NMI of 0.59 and Purity of 0.65. Furthermore, we introduce a \textbf{"Mini-Ground Truth"} protocol and an \textbf{LLM-as-a-Judge} framework to rigorously evaluate cluster coherence, demonstrating significant improvements over traditional implementations.
+
+    \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
+\end{abstract}
+%
+%
+%
+\section{Introduction}
+Social media platforms have become the primary source of real-time information. However, processing this data presents unique challenges: (1) \textbf{High Noise Ratio:} Valid news is often buried under spam and daily chatter (e.g., "Lottery results", "Weather"); (2) \textbf{Semantic Ambiguity:} Different communities use vastly different vocabularies to describe the same event (e.g., "Typhoon Yagi" vs. "Storm No. 3"); and (3) \textbf{Lack of Verification:} Viral rumors spread faster than factual corrections.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/dashboard.png}
+    \caption{System Dashboard: Real-time visualization of trending events and their sentiment.} \label{fig:dashboard}
+\end{figure}
+
+As shown in Fig. \ref{fig:dashboard}, the system dashboard integrates three key views: (1) A real-time ranked list of trending events; (2) A time-series chart tracking sentiment evolution; and (3) A geospatial map highlighting event hotspots. This interface allows stakeholders to quickly grasp the "What, Where, and How" of emerging issues.
+
+To tackle the challenges of Noise and Ambiguity, we introduce a \textbf{Dual-Path Architecture} that separates detection from analysis. This design allows us to catch viral trends in seconds (via the Fast Path) while preserving the deep semantic understanding of Large Language Models (LLMs) via the Slow Path, effectively solving the classic "Latency vs. Accuracy" dilemma.
+
+Our specific contributions include:
+\begin{enumerate}
+    \item A \textbf{Dual-Path Architecture} balancing < 10s latency for detection and deep LLM reasoning for insight.
+    \item A \textbf{Social-Aware Hierarchical Clustering (SAHC)} algorithm using news anchors to reduce noise by ~50\%.
+    \item A rigorous evaluation using both a \textbf{Mini-Ground Truth} dataset (N=300) and \textbf{LLM-as-a-Judge} metrics.
+\end{enumerate}
+
+\section{Related Work}
+Event detection has evolved from statistical methods to neural approaches. Early works relied on term-frequency analysis (TF-IDF) and topic modeling (LDA), which are fast but struggle with short, noisy social texts \cite{ref_bm25}.
+Recent approaches leverage Deep Learning, specifically Transformer-based embeddings (BERT) \cite{ref_bert}, to capture semantic meaning. However, these methods often incur high latency, making them unsuitable for real-time streaming \cite{ref_sbert}.
+Our work bridges this gap by using a density-based clustering algorithm (HDBSCAN) \cite{ref_hdbscan} on top of lightweight embeddings, achieving both speed and semantic depth.
+
+\section{Event Taxonomy}
+We move beyond binary sentiment to a usage-based taxonomy (T1-T7), categorizing events by their actionable value to stakeholders.
+
+\begin{description}
+    \item[T1. Crisis \& Public Risk] (Target: Emergency Services). \emph{Core Question: Is immediate intervention required?} Covers accidents, disasters, and riots.
+    \item[T2. Policy Signal] (Target: Government). \emph{Core Question: How is the public reacting to new policies?} Covers new laws and official statements.
+    \item[T3. Reputation Risk] (Target: PR Agencies). \emph{Core Question: Is public trust being damaged?} Covers scandals, boycotts, and controversies.
+    \item[T4. Market Opportunity] (Target: Marketing Teams). \emph{Core Question: Is there monetizable demand?} Covers viral products and emerging lifestyle trends.
+    \item[T5. Cultural Trend] (Target: Content Creators). \emph{Core Question: Is this trend worth riding for attention?} Covers memes and entertainment events.
+    \item[T6. Operational Pain Point] (Target: Service Operators). \emph{Core Question: What are people complaining about?} Covers traffic, outages, and service failures.
+    \item[T7. Routine/Noise] (Target: System Filter). \emph{Core Question: Should this be filtered?} Covers daily weather, routine sports, and lottery results.
+\end{description}
+
+\section{Proposed System Architecture}
+The system employs a specific variant of the Lambda Architecture, separated into two distinct processing paths to handle the "Latency vs. Accuracy" trade-off.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/full_pipeline.png}
+    \caption{Proposed System Architecture: Dual-Path Processing (Fast Path vs. Slow Path).} \label{fig:pipeline}
+\end{figure}
+
+Fig. \ref{fig:pipeline} illustrates the end-to-end data flow. Raw data is ingested via Kafka, processed in micro-batches by Spark (Fast Path), and asynchronously enriched by Gemini Pro (Slow Path) before being served to the UI. This separation ensures that the heavy inference time of LLMs does not block the high-throughput ingestion pipeline.
+
+\subsection{System Workflow}
+The lifecycle of a social post in our system follows five stages:
+\begin{enumerate}
+    \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
+    \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard immediately drops routine noise (e.g., lottery results, weather forecasts) before heavy processing.
+    \item \textbf{Clustering (Fast Path):} Valid posts are vectorized using ONNX models and "attached" to simplified News Anchors via SAHC. This module runs entirely in-memory to minimize latency.
+    \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. They query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics.
+    \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
+\end{enumerate}
+
+\subsection{Fast Path vs. Slow Path}
+\begin{itemize}
+    \item \textbf{Fast Path (Spark + Kafka):} Designed for speed. It employs a \textbf{Heuristic Quality Guard} to filter routine queries (e.g., "Lottery", "Gold Prices") and low-quality inputs (e.g., keywords with $<3$ characters, unfinished "vs." patterns). We also use \textbf{Smart Query Construction} to expand short anchors. Additionally, we implement \textbf{Source Bias Removal} by stripping prefixes like "VTV -" or "VNExpress -" to ensure clusters are formed based on content semantics rather than source identity. Data is then vectorized and clustered via SAHC to update the dashboard in real-time.
+    \item \textbf{Slow Path (Asynchronous Worker + LLM):} Designed for intelligence. Workers poll confirmed clusters and employ a \textbf{Context-Aware Prompting} strategy: the system retrieves the "Top-5 posts" with the highest G-Score (Section 3.4) to serve as grounded context. This cluster data is then sent to Google Gemini Pro to extract structured reasoning (5W1H), assign T1-T7 categories, and generate advice. The output follows a strict JSON schema including keys for \texttt{trend\_name}, \texttt{sentiment}, \texttt{classification}, and \texttt{advice}. This ensures that the heavy inference time of LLMs (2-3s) does not block the ingestion pipeline.
+\end{itemize}
+
+\subsection{Social-Aware Hierarchical Clustering (SAHC)}
+Standard clustering (K-Means, DBSCAN) often fails on social data due to noise. SAHC operates in three phases:
+\begin{enumerate}
+    \item \textbf{Phase 1: News Anchoring.} We first cluster verified News articles to form "Anchor Centroids". These represent high-confidence events.
+    \item \textbf{Phase 2: Social Attachment.} Incoming social posts are mapped to these anchors using Cosine Similarity.
+    \item \textbf{Phase 3: Social Discovery.} Posts that do not match any anchor undergo a second pass of density-based clustering (HDBSCAN) to detect "Social-Only" trends (unreported by news).
+\end{enumerate}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/clustering_pipeline.png}
+    \caption{Social-Aware Hierarchical Clustering (SAHC) Workflow.} \label{fig:clustering}
+\end{figure}
+
+The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first establish "Anchor" centroids (Blue nodes). Incoming Social posts (Green nodes) are then attracted to these anchors based on semantic similarity. Residual noise is finally filtered or clustered into new events by HDBSCAN, effectively reducing spam.
+
+\textbf{Hybrid Matching Strategy:} To satisfy both semantic understanding and precision, we employ a composite score:
+\begin{equation}
+    Score = \underbrace{\text{Vector Similarity}}_{\text{Semantic Context}} + \underbrace{\text{Keyword Match}}_{\text{Exact Entity}}
+\end{equation}
+This hybrid approach balances recall and precision: \textbf{Vector Similarity} captures semantic nuances (e.g., matching "typhoon" with "storm"), while \textbf{Keyword Match} enforces exact entity alignment (e.g., distinguishing "Storm Yagi" from "Storm Koto"), preventing valid but distinct events from being merged.
+
+\subsection{Trend Scoring Logic}
+To determine which events are "Trending", we calculate a Unified Trend Score ($T$) for each cluster based on three weighted signals:
+\begin{equation}
+    T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
+\end{equation}
+To handle the power-law distribution of social data, each component is normalized using a \textbf{Log-Min-Max} scale before weighting:
+\begin{equation}
+    S_{component} = 100 \cdot \frac{\log_{10}(1 + v)}{\log_{10}(1 + v_{max})}
+\end{equation}
+Where $v$ is the raw value and $v_{max}$ is an empirical ceiling ($G_{max}=10^6$, $N_{max}=10$, $F_{max}=2\cdot10^4$). Specifically for Facebook ($F$), interactions are weighted: $v_F = Likes + 2 \cdot Comments + 3 \cdot Shares$. This ensures that high-engagement events are categorized correctly even with low volume. A cluster is promoted to the dashboard only if $T > Threshold$.
+
+\section{Data and Experimental Setup}
+
+\subsection{Data Sources}
+Our system monitors two primary data streams, unified into a common schema for processing:
+\begin{itemize}
+    \item \textbf{Social Media (Facebook):} Collected from high-engagement Fanpages (e.g., Theanh28, ThongTinChinhPhu). Data fields include: \texttt{pageName}, \texttt{postId}, \texttt{time} (ISO-8601), \texttt{text} content, and engagement metrics (\texttt{likes}, \texttt{comments}, \texttt{shares}).
+    \item \textbf{Mainstream News:} Articles crawled from verified outlets (VnExpress, Tuoi Tre). Key fields: \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, and \texttt{PublishTime}.
+\end{itemize}
+The experimental dataset consists of \textbf{7,605 unique posts} collected from Dec 8 to Dec 22, 2025, with a distribution of \textbf{Mainstream News (4,644 articles, 61.1\%)} serving as reliable Ground Truth anchors, and \textbf{Social Media (2,961 posts, 38.9\%)} representing the noisy input stream.
+
+\paragraph{Implementation Details.} The system is built on \textbf{Apache Spark 3.5} and \textbf{Kafka 3.6} for scalable streaming. We utilize \textbf{Spark Pandas User Defined Functions (UDFs)} to execute high-throughput batch inference for Embeddings and Classification directly on worker nodes, avoiding Python-JVM serialization overhead. Embedding inference is further accelerated using \textbf{Open Neural Network Exchange (ONNX) Runtime} on NVIDIA T4 GPUs. The Large Language Model component interacts with \textbf{Google Gemini Pro} via asynchronous workers to ensure non-blocking throughput.
+
+\subsection{Dataset Construction Strategy}
+To train our specialized models without incurring high labeling costs, we employed a \textbf{Hybrid Labeling Strategy}:
+\begin{enumerate}
+    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs.
+    \item \textbf{Active Learning with LLM:} For Sentiment and Taxonomy classification, we used Gemini Pro to pseudo-label roughly 10k samples, then manually reviewed low-confidence scores. This yielded \textbf{4,630 samples for Sentiment} and \textbf{3,687 samples for Taxonomy} training.
+\end{enumerate}
+
+\begin{figure}[h]
+    \centering
+    \begin{verbatim}
+{"text": "Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng.", 
+ "label_sentiment": "Neutral", "label_taxonomy": "T1 - Crisis & Public Risk"}
+{"text": ["Bão số 15 Koto đang ở đâu?", "Áp thấp nhiệt đới mạnh lên thành bão."], 
+ "label_relevance": 1.0}
+\end{verbatim}
+    \caption{JSONL Training Data Examples for Classification and Reranking.} \label{fig:jsonl}
+\end{figure}
+
+\subsection{Model Selection and Fine-tuning}
+We fine-tuned specific models for Vietnamese to serve as the system's backbone. To ensure robustness, we constructed a \textbf{Stress Test Set} containing 20 hard samples per category, specifically targeting edge cases such as "Slang" (social media language), "Storm Synonyms" (ambiguous event naming), and "Domain Overlap". Table \ref{tab:training_config} details the specific training hyperparameters used, and Table \ref{tab:models} shows the final performance metrics on this rigorous test set.
+
+\begin{table}
+    \caption{Detailed Training Configuration and Hyperparameters}\label{tab:training_config}
+    \centering
+    \begin{tabular}{l l l l}
+        \toprule
+        \textbf{Model Target} & \textbf{Base Architecture} & \textbf{Dataset Size} & \textbf{Training Config}        \\
+        \midrule
+        Sentiment             & \texttt{uitnlp/visobert}   & 4,630 (3 classes)     & Epochs: 20, Batch: 32, LR: 2e-5 \\
+        Taxonomy              & \texttt{uitnlp/visobert}   & 3,687 (7 classes)     & Epochs: 20, Batch: 16, LR: 2e-5 \\
+        Reranker              & \texttt{ms-marco-MiniLM}   & 877 pairs (Gold)      & Contractive Loss, Epochs: 20    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/embedding_benchmark.png}
+    \caption{Benchmark results comparing Embedding Models across different edge cases.} \label{fig:benchmark}
+\end{figure}
+
+\end{figure}
+
+Fig. \ref{fig:benchmark} compares the stability (gap between positive/negative pairs) of 5 state-of-the-art models. We define the Stability Gap mathematically as:
+\begin{equation}
+    Gap = Sim(q, pos) - Sim(q, neg)
+\end{equation}
+\texttt{vietnamese-document-embedding} (blue bar) consistentnly maintains the largest margin across edge cases like "Storm Synonyms" and "Slang", validating its selection as our backbone model.
+
+Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved the best stability (Avg Gap 0.265). Table \ref{tab:embedding_benchmark} provides a granular breakdown of the Stability Gap across different edge cases, showing our backbone's consistent performance.
+
+\begin{table}
+    \caption{Embedding Stability Gap Analysis (Metric: Cosine Distance Diff)}\label{tab:embedding_benchmark}
+    \centering
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l c c c c c c}
+            \toprule
+            \textbf{Model Identifier}  & \textbf{Avg Gap} & \textbf{Storm} & \textbf{Domain} & \textbf{Category} & \textbf{Slang} & \textbf{Abbrev} \\
+            \midrule
+            \textbf{vn-doc-embedding*} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
+            vn-bi-encoder              & 0.193            & 0.155          & 0.213           & 0.107             & 0.108          & 0.381           \\
+            vn-sbert                   & 0.188            & \textbf{0.355} & 0.172           & 0.033             & -0.005         & 0.386           \\
+            bge-m3                     & 0.160            & -0.003         & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
+            multilingual-e5            & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
+            \bottomrule
+        \end{tabular}%
+    }
+\end{table}
+
+\begin{table}
+    \caption{Fine-tuned Model Performance}\label{tab:models}
+    \centering
+    \begin{tabular}{l l c c}
+        \toprule
+        \textbf{Model Task}      & \textbf{Class Type}     & \textbf{Accuracy} & \textbf{Latency} \\
+        \midrule
+        Sentiment Classifier     & 3 classes (Pos/Neg/Neu) & \textbf{93.5\%}   & 12ms             \\
+        Bi-CrossEncoder Reranker & Relevance Scoring       & 91.0\%            & 45ms             \\
+        Taxonomy Classifier      & 7 classes (T1-T7)       & 89.2\%            & 14ms             \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Results and Analysis}
+
+\subsection{Clustering Algorithm Selection}
+We compared our SAHC approach (using HDBSCAN core) against baselines. HDBSCAN was chosen for its superior Noise handling and Balance.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/trend_tsne.png}
+    \caption{t-SNE Visualization of Event Clusters. Colors represent distinct events isolated by the algorithm.} \label{fig:tsne}
+\end{figure}
+
+The t-SNE projection in Fig. \ref{fig:tsne} demonstrates the effectiveness of our clustering. Distinct events (colored clusters) are well-separated in the semantic space, while noise points (gray) are scattered and effectively isolated by the algorithm.
+
+\begin{table}
+    \caption{Clustering Method Comparison}\label{tab:clustering_select}
+    \centering
+    \begin{tabular}{l c c c c l}
+        \toprule
+        \textbf{Method}             & \textbf{Clusters (k)} & \textbf{Noise Pts} & \textbf{Silh. Score} & \textbf{DB Index} & \textbf{Time} \\
+        \midrule
+        K-Means                     & 253                   & 0                  & 0.024                & 3.177             & 8.45s         \\
+        \textbf{HDBSCAN (Baseline)} & \textbf{460}          & 1,984              & 0.109                & \textbf{2.094}    & 16.00s        \\
+        BERTopic                    & 223                   & 1,801              & \textbf{0.112}       & 2.363             & 55.72s        \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Analysis:} As shown in Table \ref{tab:clustering_select}, \textbf{K-Means} proved unsuitable for social streaming data as it forces all noise into clusters (Noise Pts = 0), resulting in a poor Davies-Bouldin Index (3.177). Conversely, \textbf{BERTopic} offered high quality (Silh. 0.112) but was prohibitively slow (55.72s) for real-time ingestion. \textbf{HDBSCAN} was selected as the optimal core for SAHC because it strikes the best balance: it effectively isolates noise ($\approx$26\% of data), maintains high cluster density (DB 2.094), and processes data 3.5x faster than BERTopic.
+
+\subsection{Quantitative Evaluation (Mini-Ground Truth)}
+Evaluating unsupervised clustering is difficult. We implemented a "Mini-Ground Truth" protocol where human experts labeled 300 random posts to compute standard metrics.
+
+\begin{table}
+    \caption{Performance on Mini-Ground Truth (N=300)}\label{tab:minigt}
+    \centering
+    \begin{tabular}{l c l}
+        \toprule
+        \textbf{Metric} & \textbf{Value} & \textbf{Interpretation}                   \\
+        \midrule
+        \textbf{NMI}    & \textbf{0.54}  & Good mutual information with human labels \\
+        Purity          & 0.65           & High dominant class consistency           \\
+        BCubed-F1       & 0.35           & Balanced precision/recall for clustering  \\
+        Entropy         & 4.85           & Lower entropy indicates purer clusters    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Metric Definitions:} To ensure a rigorous evaluation, we selected metrics that cover different aspects of clustering quality:
+\begin{itemize}
+    \item \textbf{Normalized Mutual Information (NMI):} Measures the alignment between cluster labels $Y$ and ground truth $C$:
+          \begin{equation}
+              NMI(Y, C) = \frac{2 \cdot I(Y; C)}{H(Y) + H(C)}
+          \end{equation}
+          Where $I$ is mutual information and $H$ is entropy.
+    \item \textbf{Purity:} Quantifies the dominance of the majority class in each cluster:
+          \begin{equation}
+              Purity(\Omega, C) = \frac{1}{N} \sum_k \max_j |\omega_k \cap c_j|
+          \end{equation}
+    \item \textbf{Entropy:} Measures the disorder within a cluster (lower is better):
+          \begin{equation}
+              Entropy(C) = - \sum_{i} P(c_i) \log_2 P(c_i)
+          \end{equation}
+    \item \textbf{BCubed-F1:} An element-wise precision/recall metric robust to class imbalance.
+    \item \textbf{Silhouette Score:} Geometric metric assessing cluster tightness ($a$) vs separation ($b$): $S = \frac{b-a}{\max(a,b)}$.
+\end{itemize}
+
+\subsection{Batch Evaluation and Component Analysis}
+We further evaluated the impact of different components on the full dataset using internal metrics. The "Full LLM" pipeline (SAHC + LLM Refinement) achieved the best results.
+
+\begin{table}
+    \caption{Ablation Study of Pipeline Components}\label{tab:ablation}
+    \centering
+    \begin{tabular}{l c c c}
+        \toprule
+        \textbf{Configuration}        & \textbf{NMI} ($\uparrow$) & \textbf{BCubed-F1} ($\uparrow$) & \textbf{Entropy} ($\downarrow$) \\
+        \midrule
+        Standard Clustering           & 0.53                      & 0.31                            & 4.91                            \\
+        \textbf{Full Hybrid Pipeline} & \textbf{0.5978}           & \textbf{0.3821}                 & \textbf{4.4178}                 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Qualitative Analysis: LLM-as-a-Judge}
+Traditional metrics like Silhouette Score often fail to capture semantic coherence. To address this, we implemented an **LLM-as-a-Judge** protocol, where a strong instruction-tuned model (Gemini Pro) acts as a proxy for human evaluation.
+\begin{itemize}
+    \item \textbf{Protocol:} The LLM is provided with a cluster's content and asked two questions: (1) "Does this cluster describe a single, distinct event?" (Topic Consistency, rated 0-1), and (2) Given two conflicting clusters, "Which one is more coherent?" (Pairwise Win-Rate).
+    \item \textbf{Prompting:} We use a "Roley-Play" prompt: \textit{"You are an expert news editor. Evaluate the following social media cluster for topical consistency..."}
+\end{itemize}
+Using this framework, we evaluated 100 random clusters:
+\begin{itemize}
+    \item \textbf{Clear Events (e.g., "Middle East Conflict"):} Achieved \textbf{Consistency $\approx$ 1.0} and high Win-Rates.
+    \item \textbf{Mixed/Noisy Clusters:} Correctly flagged by the LLM with significantly lower scores (0.64), validating the metric's utility for automated quality assurance.
+\end{itemize}
+
+\subsection{Detailed Case Studies}
+To better understand the system's behavior, we analyze three specific cases from the test deployment:
+
+\begin{enumerate}
+    \item \textbf{Success Case: "Bondi Beach Shooting" (T1).}
+          \begin{itemize}
+              \item \emph{Input:} "{\fontencoding{T5}\selectfont Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng sau vụ tấn công bằng dao.}" (Bondi beach shooting kills 15 people after knife attack.)
+              \item \emph{Analysis:} Despite concurrent news about "Australia Travel", the SAHC algorithm correctly isolated this event due to strong lexical overlap with "Crisis" keywords. The LLM assigned it to \textbf{T1 (Public Risk)} with high confidence (>0.9).
+          \end{itemize}
+
+    \item \textbf{Success Case: "Middle East Conflict" (T1).}
+          \begin{itemize}
+              \item \emph{Metrics:} This cluster achieved a Semantic Consistency score of \textbf{0.96} and a Win-Rate of \textbf{0.67} against noise clusters.
+              \item \emph{Insight:} The high volume of verified news anchors allowed the system to absorb social media reactions effectively without "drifting" into unrelated topics.
+          \end{itemize}
+
+    \item \textbf{Failure Analysis: "Mixed International News".}
+          \begin{itemize}
+              \item \emph{Issue:} The algorithm merged "Vietnamese-origin lawsuit" with "Territorial conflict" into a single cluster.
+              \item \emph{Root Cause:} This likely occurred due to shared diplomatic terminology (e.g., "sovereignty", "international law") acting as spurious vector anchors, bridging two semantically distinct but lexically similar topics.
+              \item \emph{Detection:} Crucially, our \textbf{LLM-as-a-Judge protocol} flagged this error, assigning a low Consistency Score of \textbf{0.64} and a \textbf{0.00 Win-Rate}. This demonstrates the system's ability to automatically detect quality degradation for human review.
+          \end{itemize}
+\end{enumerate}
+
+\section{Discussion and Future Work}
+
+\subsection{Challenges and Lessons Learned}
+Deploying the system revealed three major technical hurdles:
+\begin{enumerate}
+    \item \textbf{Semantic Ambiguity:} Different communities use disparate terms for the same event (e.g., "Bão Yagi" vs. "Cơn bão số 3"). We addressed this using \textbf{LLM-based Deduplication} and the Hybrid Matching score.
+    \item \textbf{Evaluation Gap:} The lack of labeled ground truth in streaming data made validation difficult. We overcame this by establishing a \textbf{"Mini-Ground Truth"} protocol (manually labeling 300 samples) to standardize our NMI and F1 metrics.
+    \item \textbf{Latency vs. Accuracy Trade-off:} Calling LLMs for every cluster introduced a 2-3s latency. We mitigated this by separating the pipeline into a \textbf{Fast Path} (Spark) for instant detection and a \textbf{Slow Path} (Async Workers) for deep analysis. Furthermore, we implemented an \textbf{Incremental Update Rule}: the LLM is only re-triggered if a cluster grows by $>20\%$ in volume, significantly reducing redundant inference costs.
+\end{enumerate}
+
+\subsection{Future Roadmap}
+To scale the system for production use ($>10,000$ EPS), we plan to:
+\begin{itemize}
+    \item \textbf{Model Optimization:} Implement quantization (ONNX/Int8) for the Embedding models to reduce inference cost.
+    \item \textbf{Advanced Sentiment:} Upgrade from 3-class sentiment to fine-grained emotion detection (Anger, Fear, Hope).
+    \item \textbf{Feedback Loop:} Build a mechanism for users to correct cluster labels on the dashboard, feeding data back for Active Learning.
+    \item \textbf{Production Scaling:} Migrate from Spark Local to a full \textbf{Kubernetes/YARN Cluster}.
+\end{itemize}
+
+\section{Conclusion}
+This paper demonstrated a production-ready system for real-time social event detection. By combining the speed of Spark Structured Streaming with the reasoning of LLMs, and employing a novel Anchoring strategy, we successfully filter 50\% of social noise while maintaining high detection accuracy (NMI 0.59).
+
+\begin{credits}
+    \subsubsection{\ackname} The authors thank Dr. Do Trong Hop and Mr. Nguyen Ngoc Qui for their supervision.
+\end{credits}
+
+\begin{thebibliography}{8}
+    \bibitem{ref_hdbscan}
+    Campello, R.J., Moulavi, D., Sander, J.: Density-based clustering based on hierarchical density estimates. In: PAKDD 2013. pp. 160--172. Springer (2013)
+
+    \bibitem{ref_bert}
+    Devlin, J., Chang, M.W., Lee, K., Toutanova, K.: BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding. In: NAACL-HLT (2019)
+
+    \bibitem{ref_sbert}
+    Reimers, N., Gurevych, I.: Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. In: EMNLP-IJCNLP (2019)
+
+    \bibitem{ref_bm25}
+    Robertson, S.E., Walker, S., Jones, S., Hancock-Beaulieu, M.M., Gatford, M.: Okapi at TREC-3. NIST Special Publication 500-225, 109--126 (1995)
+\end{thebibliography}
+\end{document}

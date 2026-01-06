@@ -11,7 +11,12 @@ Mở Terminal tại thư mục gốc của dự án và chạy các lệnh sau:
 
 ```bash
 # 1. Cài đặt các thư viện Python chuyên sâu
+# Cách 1: Sử dụng PIP (Truyền thống)
 pip install -r requirements.txt
+
+# Cách 2: Sử dụng Conda (Khuyên dùng để tránh lỗi thư viện)
+conda env create -f environment.yaml
+conda activate se363-trend-detection
 
 # 2. Cài đặt trình duyệt cho module cào dữ liệu (nếu cần chạy crawl lại)
 playwright install chromium

@@ -124,7 +124,7 @@ class KeywordExtractor:
                 ["git", "clone", "https://huggingface.co/tpha4308/keyword-extraction-viet", self.bert_repo_path],
                 check=True
             )
-            print("[BERT-KW] ✅ Repo cloned.")
+            print("[BERT-KW] [OK] Repo cloned.")
         
         # 2. Check for pretrained models, download if needed
         phobert_path = os.path.join(self.bert_repo_path, "pretrained-models", "phobert.pt")
@@ -139,12 +139,12 @@ class KeywordExtractor:
             phobert = AutoModel.from_pretrained("vinai/phobert-base-v2")
             phobert.eval()
             torch.save(phobert, phobert_path)
-            print("[BERT-KW] ✅ PhoBERT saved.")
+            print("[BERT-KW] [OK] PhoBERT saved.")
             
             ner_model = AutoModelForTokenClassification.from_pretrained("NlpHUST/ner-vietnamese-electra-base")
             ner_model.eval()
             torch.save(ner_model, ner_path)
-            print("[BERT-KW] ✅ NER model saved.")
+            print("[BERT-KW] [OK] NER model saved.")
         
         # 3. Add repo to path and import pipeline
         if self.bert_repo_path not in sys.path:
@@ -158,7 +158,7 @@ class KeywordExtractor:
         ner_model.eval()
         
         self.bert_pipeline = KeywordExtractorPipeline(phobert, ner_model)
-        print("[BERT-KW] ✅ Pipeline loaded.")
+        print("[BERT-KW] [OK] Pipeline loaded.")
         return self.bert_pipeline
     
     def _extract_with_bert(self, text: str, top_n: int = 10) -> str:
@@ -174,7 +174,7 @@ class KeywordExtractor:
             if kws:
                 return " ".join(kws)
         except Exception as e:
-            print(f"[BERT-KW] ❌ Error: {e}. Falling back to rule-based.")
+            print(f"[BERT-KW] [ERR] Error: {e}. Falling back to rule-based.")
         
         return ""  # Fallback
 
@@ -204,27 +204,27 @@ class KeywordExtractor:
             models_dir = os.path.join(self.vncorenlp_path, 'models')
             if not os.path.exists(models_dir):
                 print("[VnCoreNLP] Models not found. Attempting download...")
-                print("[VnCoreNLP] ⚠️  Note: This requires internet access and may fail on Kaggle.")
+                print("[VnCoreNLP] [WARN]  Note: This requires internet access and may fail on Kaggle.")
                 py_vncorenlp.download_model(save_dir=self.vncorenlp_path)
-                print("[VnCoreNLP] ✅ Download complete!")
+                print("[VnCoreNLP] [OK] Download complete!")
             else:
-                print(f"[VnCoreNLP] ✅ Models found at {models_dir}")
+                print(f"[VnCoreNLP] [OK] Models found at {models_dir}")
             
             # Load segmenter
             print("[VnCoreNLP] Loading word segmentation model...")
             # Use try-block specifically for wrapping the loader which triggers JVM
             KeywordExtractor._SHARED_VNCORENLP_MODEL = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir=self.vncorenlp_path)
             self.vncorenlp_model = KeywordExtractor._SHARED_VNCORENLP_MODEL
-            print("[VnCoreNLP] ✅ Model loaded successfully (Singleton)!")
+            print("[VnCoreNLP] [OK] Model loaded successfully (Singleton)!")
             
         except Exception as e:
             # Check specifically for JVM error to provide helpful context
             if "VM is already running" in str(e):
-                 print("[VnCoreNLP] ⚠️ VM already running. Attempting to recover existing controller if possible, or fallback.")
+                 print("[VnCoreNLP] [WARN] VM already running. Attempting to recover existing controller if possible, or fallback.")
                  # In many cases we can't recover the JAVA object if we lost the reference. Fallback is safer.
             
-            print(f"[VnCoreNLP] ❌ Failed to load: {e}")
-            print("[VnCoreNLP] 🔄 Falling back to underthesea (CRF) segmentation")
+            print(f"[VnCoreNLP] [ERR] Failed to load: {e}")
+            print("[VnCoreNLP] [RETRY] Falling back to underthesea (CRF) segmentation")
             # Set flag to use fallback for this session
             KeywordExtractor._SHARED_VNCORENLP_MODEL = "FALLBACK"
             self.vncorenlp_model = "FALLBACK"
@@ -348,7 +348,7 @@ class KeywordExtractor:
 
         # 2. BATCH LLM Extraction (Reduce from 200 to 30 for stability and speed)
         CHUNK_SIZE = 30  
-        print(f"⚡ Batch extracting keywords for {len(texts)} items using LLM (Mega-Batch: {CHUNK_SIZE}/req)...")
+        print(f"[INFO] Batch extracting keywords for {len(texts)} items using LLM (Mega-Batch: {CHUNK_SIZE}/req)...")
         
         results_map = {}
         missing_texts = []  # (original_idx, text)
@@ -360,7 +360,7 @@ class KeywordExtractor:
             else:
                 missing_texts.append((idx, text))
         
-        print(f"   📦 {len(texts) - len(missing_texts)} cached, {len(missing_texts)} to process.")
+        print(f"   [CACHE] {len(texts) - len(missing_texts)} cached, {len(missing_texts)} to process.")
         
         if not missing_texts:
             return [results_map.get(i, "") for i in range(len(texts))]
@@ -370,7 +370,7 @@ class KeywordExtractor:
         import time
         
         num_chunks = (len(missing_texts) + CHUNK_SIZE - 1) // CHUNK_SIZE
-        print(f"   📊 Will process in {num_chunks} API calls (~{num_chunks * 15}s estimated).")
+        print(f"   [STAT] Will process in {num_chunks} API calls (~{num_chunks * 15}s estimated).")
         
         success_count = 0
         fallback_count = 0
@@ -382,7 +382,7 @@ class KeywordExtractor:
             end = min(start + CHUNK_SIZE, len(missing_texts))
             chunk = missing_texts[start:end]
             
-            print(f"   🔄 Chunk {chunk_idx+1}/{num_chunks}: Processing items {start+1}-{end}...", end=" ", flush=True)
+            print(f"   [PROC] Chunk {chunk_idx+1}/{num_chunks}: Processing items {start+1}-{end}...", end=" ", flush=True)
             
             # Build the numbered list for this chunk
             numbered_items = []
@@ -420,9 +420,9 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                 
                 # Debug: Log what we got back
                 if parsed is None:
-                    print(f"⚠️ Parse returned None. Response preview: {resp[:200] if resp else 'EMPTY'}...")
+                    print(f"[WARN] Parse returned None. Response preview: {resp[:200] if resp else 'EMPTY'}...")
                 elif not isinstance(parsed, list):
-                    print(f"⚠️ Parse returned non-list: {type(parsed)}")
+                    print(f"[WARN] Parse returned non-list: {type(parsed)}")
                 elif len(parsed) > 0:
                     # Check first element type
                     first_elem = parsed[0]
@@ -431,7 +431,7 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                     elif isinstance(first_elem, str):
                         # Model returned flat list ["kw1", "kw2", ...] instead of nested
                         # Convert to 1 result for all items (share keywords)
-                        print(f"⚠️ Got flat list ({len(parsed)} items), using as shared keywords")
+                        print(f"[WARN] Got flat list ({len(parsed)} items), using as shared keywords")
                         shared_kws = " ".join(str(k) for k in parsed[:15])
                         for orig_idx, text_key in chunk:
                             self.cache[text_key] = shared_kws
@@ -440,7 +440,7 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                         # Skip the normal loop
                         elapsed = time.time() - chunk_start
                         success_count += chunk_success
-                        print(f"✅ {elapsed:.1f}s (LLM-shared: {chunk_success})")
+                        print(f"[OK] {elapsed:.1f}s (LLM-shared: {chunk_success})")
                         continue
                 
                 if parsed and isinstance(parsed, list):
@@ -469,11 +469,11 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
                 elapsed = time.time() - chunk_start
                 success_count += chunk_success
                 fallback_count += chunk_fallback
-                print(f"✅ {elapsed:.1f}s (LLM: {chunk_success}, Fallback: {chunk_fallback})")
+                print(f"[OK] {elapsed:.1f}s (LLM: {chunk_success}, Fallback: {chunk_fallback})")
                         
             except Exception as e:
                 elapsed = time.time() - chunk_start
-                print(f"❌ Error ({elapsed:.1f}s): {e}")
+                print(f"[ERR] Error ({elapsed:.1f}s): {e}")
                 # Fallback
                 for orig_idx, text_key in chunk:
                     self.use_llm = False
@@ -483,7 +483,7 @@ Example (for 3 items): [["Hà Nội", "bão Yagi"], ["Messi", "World Cup"], ["Vi
         
         # Final Summary
         total_elapsed = time.time() - total_start
-        print(f"   🎉 Done! {success_count} LLM, {fallback_count} fallback in {total_elapsed:.1f}s")
+        print(f"   [DONE] Done! {success_count} LLM, {fallback_count} fallback in {total_elapsed:.1f}s")
         self.save_cache()
 
         # Reconstruct list order

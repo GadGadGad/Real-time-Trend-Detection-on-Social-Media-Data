@@ -197,34 +197,34 @@ def main():
     df = state['df_results']
     all_metrics = {'state': args.state, 'evaluated_at': datetime.now().isoformat()}
     
-    # 1. Clustering Quality
+    # Clustering Quality
     if 'cluster_labels' in state and 'post_embeddings' in state:
         console.print("[dim]Computing clustering metrics...[/dim]")
         all_metrics['clustering'] = compute_clustering_metrics(
             state['cluster_labels'], state['post_embeddings']
         )
     
-    # 2. Topic Diversity
+    # Topic Diversity
     console.print("[dim]Computing topic diversity...[/dim]")
     all_metrics['diversity'] = compute_topic_diversity(df)
     
-    # 3. Source Diversity
+    # Source Diversity
     console.print("[dim]Computing source diversity...[/dim]")
     all_metrics['source_diversity'] = compute_source_diversity(df)
     
-    # 4. Temporal Coherence
+    # Temporal Coherence
     console.print("[dim]Computing temporal coherence...[/dim]")
     all_metrics['temporal'] = compute_temporal_coherence(df)
     
-    # 5. Confidence Metrics
+    # Confidence Metrics
     console.print("[dim]Computing confidence metrics...[/dim]")
     all_metrics['confidence'] = compute_confidence_metrics(df)
     
-    # 6. Sentiment Metrics
+    # Sentiment Metrics
     console.print("[dim]Computing sentiment metrics...[/dim]")
     all_metrics['sentiment'] = compute_sentiment_metrics(df)
     
-    # 7. Topic Type Distribution
+    # Topic Type Distribution
     console.print("[dim]Computing topic type distribution...[/dim]")
     all_metrics['topic_types'] = compute_topic_type_metrics(df)
     

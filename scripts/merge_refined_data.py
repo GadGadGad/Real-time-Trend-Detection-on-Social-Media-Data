@@ -25,7 +25,7 @@ def merge_refined_data():
         filename = os.path.basename(refined_path)
         source_name = filename.replace("_refined.csv", "")
         
-        # 1. Determine Target File
+        # Determine Target File
         target_path = os.path.join(DATA_DIR, f"{source_name}_summarized_content.csv")
         
         # Pattern 2: all_[source]_summarized.csv (e.g. facebook)
@@ -38,7 +38,7 @@ def merge_refined_data():
             continue
             
         try:
-            # 2. Read Files
+            # Read Files
             console.print(f"[dim]Reading {refined_path} and {target_path}...[/dim]")
             
             # Use 'python' engine for more robust parsing of messy CSVs
@@ -57,7 +57,7 @@ def merge_refined_data():
             
             total_refined = len(df_refined)
             
-            # 3. Clean Refined Data
+            # Clean Refined Data
             if 'refined_summary' not in df_refined.columns:
                  # Try to find it
                  cols = [c for c in df_refined.columns if 'refined' in c]
@@ -77,7 +77,7 @@ def merge_refined_data():
             df_refined_clean = df_refined[valid_mask].copy()
             valid_count = len(df_refined_clean)
             
-            # 4. Merge
+            # Merge
             merged_count = 0
             if 'index' in df_refined_clean.columns:
                 # Force index to int
@@ -115,7 +115,7 @@ def merge_refined_data():
                      print(f"{filename:<30} | {os.path.basename(target_path):<30} | {total_refined:<10} | {valid_count:<10} | {'0':<10} | Missing 'index' col. Found: {list(df_refined.columns)}")
                      continue
 
-            # 5. Save
+            # Save
             output_filename = f"{source_name}_merged.csv"
             output_path = os.path.join(DATA_DIR, output_filename)
             df_target.to_csv(output_path, index=False)

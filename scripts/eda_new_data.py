@@ -125,12 +125,12 @@ def load_trends_data(data_dir):
 def run_eda():
     print(f"🚀 Starting EDA on {DATA_DIR}...\n")
     
-    # 1. Load Data
+    # Load Data
     df_news = load_news_data(DATA_DIR)
     df_fb = load_facebook_data(DATA_DIR)
     df_trends = load_trends_data(DATA_DIR)
     
-    # 2. Unified Content DataFrame
+    # Unified Content DataFrame
     # Map columns: content/text -> text, published_at/time -> date
     news_subset = df_news[['publisher', 'published_at', 'content', 'title']].rename(
         columns={'published_at': 'date', 'content': 'text'}
@@ -153,7 +153,7 @@ def run_eda():
     print("\nPublishers/Pages:")
     print(df_all.groupby(['type', 'publisher']).size())
     
-    # 3. Visualizations
+    # Visualizations
     fig = plt.figure(figsize=(15, 12))
     gs = fig.add_gridspec(3, 2)
     

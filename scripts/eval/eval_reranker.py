@@ -15,10 +15,10 @@ def evaluate():
         print(f"Error: {test_file} not found.")
         return
 
-    # 1. Load the model
+    # Load the model
     model = CrossEncoder(model_path)
 
-    # 2. Load test samples
+    # Load test samples
     samples = []
     with open(test_file, 'r', encoding='utf-8') as f:
         for line in f:
@@ -30,7 +30,7 @@ def evaluate():
 
     print(f"Loaded {len(samples)} samples for evaluation.")
 
-    # 3. Predict and Calculate Metrics
+    # Predict and Calculate Metrics
     # For a cross-encoder, we usually evaluate how well it distinguishing positive from negative
     correct = 0
     total = len(samples)
