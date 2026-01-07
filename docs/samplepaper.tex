@@ -29,7 +29,7 @@
     Do Trong Hop\inst{2} \and
     Nguyen Ngoc Quy\inst{2}}
 %
-\authorrunning{N. Tang et al.}
+
 % First names are abbreviated in the running head.
 % If there are more than two authors, 'et al.' is used.
 %
@@ -43,7 +43,7 @@
 \maketitle              % typeset the header of the contribution
 %
 \begin{abstract}
-    In the era of information overload, rapidly detecting and understanding social trends is crucial for public safety and market intelligence. However, current methods struggle with the "Semantic Ambiguity" of social posts and the "Evaluation Gap" in unlabelled streaming data. This paper presents a comprehensive \textbf{Real-time Event Detection System} using a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy. We introduce a \textbf{Dual-Path Architecture} that combines Spark/Kafka for low-latency alerts with asynchronous LLM workers for deep semantic reasoning. Experimental results on 7,605 posts show our method achieves an NMI of 0.59 and Purity of 0.65. Furthermore, we introduce a \textbf{"Mini-Ground Truth"} protocol and an \textbf{LLM-as-a-Judge} framework to rigorously evaluate cluster coherence, demonstrating significant improvements over traditional implementations.
+    In the era of information overload, rapidly detecting and understanding social trends is crucial for public safety and market intelligence. However, current methods struggle with the "Semantic Ambiguity" of social posts and the "Evaluation Gap" in unlabelled streaming data. This report presents a comprehensive \textbf{Real-time Event Detection System} using a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy. We introduce a \textbf{Dual-Path Architecture} that combines Spark/Kafka for low-latency alerts with asynchronous LLM workers for deep semantic reasoning. Experimental results on 7,605 posts show our method achieves an NMI of 0.59 and Purity of 0.65. Furthermore, we introduce a \textbf{"Mini-Ground Truth"} protocol and an \textbf{LLM-as-a-Judge} framework to rigorously evaluate cluster coherence, demonstrating significant improvements over traditional implementations.
 
     \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
 \end{abstract}
@@ -147,9 +147,30 @@ The lifecycle of a social post in our system follows five stages:
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
     \item \textbf{Clustering (Fast Path):} Valid posts are vectorized using ONNX models and "attached" to simplified News Anchors via SAHC. This module runs entirely in-memory to minimize latency.
-    \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. They query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics.
+    \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. They query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
 \end{enumerate}
+
+\noindent
+\begin{center}
+    \setlength{\fboxsep}{10pt}
+    \fcolorbox{black}{gray!10}{%
+        \begin{minipage}{0.95\textwidth}
+            \textbf{\large End-to-End Processing Trace: "Typhoon Yagi Alert"}
+            \vspace{0.2cm}
+            \par
+            To illustrate the pipeline, consider a single social post lifecycle:
+            \begin{enumerate}
+                \item \textbf{Input:} Crawler fetches raw text "Bão số 3 giật cấp 12..." from fanpage \textit{ThongTinChinhPhu}.
+                \item \textbf{Ingestion:} Kafka producer serializes it to JSON and pushes to topic \texttt{posts\_stream\_v1} (Partition 0).
+                \item \textbf{Filtration:} Spark Streaming consumes the message. The Heuristic Guard permits it, and Smart Query expands context to "Typhoon Yagi tracking".
+                \item \textbf{Clustering:} The Onnx Worker maps it to vector $\mathbf{v}$. SAHC identifies the nearest News Anchor "Typhoon Yagi" (Similarity $> 0.85$) and attaches the post.
+                \item \textbf{Intelligence:} The cluster grows beyond the significance threshold. An async worker triggers Gemini Pro, which returns a structured summary: "Typhoon Yagi approaching Quang Ninh."
+                \item \textbf{Output:} The Dashboard receives the specific update and displays a "Public Risk" alert on the live map.
+            \end{enumerate}
+        \end{minipage}%
+    }
+\end{center}
 
 \subsection{Fast Path vs. Slow Path Implementation}
 \begin{itemize}
@@ -173,7 +194,11 @@ The lifecycle of a social post in our system follows five stages:
 
     \item \textbf{Slow Path Intelligence (Async Workers):}
           \begin{itemize}
-              \item Designed to decouple heavy LLM inference from the ingestion stream. Workers poll confirmed clusters and employ a \textbf{Context-Aware Prompting} strategy to synthesize coherent summaries.
+              \item Designed to decouple heavy operations from the ingestion stream. Workers poll confirmed clusters and:
+                  \begin{enumerate}
+                      \item Query \textbf{Google Trends API} to fetch search volume (G-score), using the filter prompt in Appendix Table \ref{tab:prompt_trends}. This is asynchronous because search interest often requires time to accumulate ("stack up") before becoming significant, making it a lagging signal compared to instant social bursts, alongside API rate constraints.
+                      \item Employ a \textbf{Context-Aware Prompting} strategy with Gemini Pro to synthesize coherent summaries.
+                  \end{enumerate}
           \end{itemize}
 \end{itemize}
 
@@ -187,6 +212,24 @@ A valid event cluster $C_i$ must satisfy two conditions:
     \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
     \item \textbf{Impact:} $|C_i| \geq \delta_{min}$, where $|C_i|$ is the number of distinct users discussing the event.
 \end{enumerate}
+
+\subsection{Data Preprocessing and Normalization}
+
+To ensure high-quality input for the clustering engine, raw data from both paths undergoes specific preprocessing steps:
+
+\begin{itemize}
+    \item \textbf{Fast Path (Social Speed):} Given the high-throughput nature of social streams, we apply minimal, latency-optimized cleaning:
+    \begin{itemize}
+        \item \textbf{Heuristic Filtering:} We discard posts with length $<20$ characters (insufficient semantic context for embedding) or $>800$ characters (high likelihood of marketing spam or irrelevant boilerplate), and remove known "credit" patterns (e.g., "cre:", "via:") which do not contribute to event identity.
+        \item \textbf{Unicode Normalization:} Converting all text to NFC format and lowercasing to handle Vietnamese diacritics consistently.
+    \end{itemize}
+
+    \item \textbf{Slow Path (News Precision):} News data, used as high-confidence anchors, undergoes deep structural parsing:
+    \begin{itemize}
+        \item \textbf{Structural Extraction:} We use Regex to separate metadata (Author, Date, Location) from the body content, ensuring only the core narrative affects the centroid.
+        \item \textbf{Alias Injection (Thesaurus):} To bridge the vocabulary gap between formal news and informal social posts, we inject known aliases into news vectors (e.g., mapping "Typhoon No. 3" $\to$ "Typhoon Yagi").
+    \end{itemize}
+\end{itemize}
 
 \subsection{Social-Aware Hierarchical Clustering (SAHC)}
 
@@ -494,7 +537,7 @@ We further evaluated the impact of different components on the full dataset usin
 Traditional metrics like Silhouette Score often fail to capture semantic coherence. To address this, we implemented an \textbf{LLM-as-a-Judge} protocol, where a strong instruction-tuned model (Gemini Pro) acts as a proxy for human evaluation.
 \begin{itemize}
     \item \textbf{Protocol:} The LLM is provided with a cluster's content and asked two questions: (1) "Does this cluster describe a single, distinct event?" (Topic Consistency, rated 0-1), and (2) Given two conflicting clusters, "Which one is more coherent?" (Pairwise Win-Rate).
-    \item \textbf{Prompting:} We use a "Role-Play" prompt: \textit{"You are an expert news editor. Evaluate the following social media cluster for topical consistency..."}
+    \item \textbf{Prompting:} We employ a "Role-Play" strategy where the LLM acts as an expert news editor. The full prompt specification is provided in Appendix Table \ref{tab:prompt_eval}.
 \end{itemize}
 Using this framework, we evaluated 100 random clusters:
 \begin{itemize}
@@ -531,7 +574,7 @@ To better understand the system's behavior, we analyze three specific cases from
 \subsection{Challenges and Lessons Learned}
 Deploying the system revealed three major technical hurdles:
 \begin{enumerate}
-    \item \textbf{Semantic Ambiguity:} Different communities use disparate terms for the same event (e.g., "Bão Yagi" vs. "Cơn bão số 3"). We addressed this using \textbf{LLM-based Deduplication} and the Hybrid Matching score.
+    \item \textbf{Semantic Ambiguity:} Different communities use disparate terms for the same event (e.g., "Bão Yagi" vs. "Cơn bão số 3"). We addressed this using \textbf{LLM-based Deduplication} (Appendix Table \ref{tab:prompt_dedup}) and the Hybrid Matching score.
     \item \textbf{Evaluation Gap:} The lack of labeled ground truth in streaming data made validation difficult. We overcame this by establishing a \textbf{"Mini-Ground Truth"} protocol (manually labeling 300 samples) to standardize our NMI and F1 metrics.
     \item \textbf{Latency vs. Accuracy Trade-off:} Calling LLMs for every cluster introduced a 2-3s latency. We mitigated this by separating the pipeline into a \textbf{Fast Path} (Spark) for instant detection and a \textbf{Slow Path} (Async Workers) for deep analysis. Furthermore, we implemented an \textbf{Incremental Update Rule}: the LLM is only re-triggered if a cluster grows by $>20\%$ in volume, significantly reducing redundant inference costs.
 \end{enumerate}
@@ -561,14 +604,14 @@ As an AI-integrated system analyzing public discourse, we strictly adhere to eth
 \begin{itemize}
     \item \textbf{Privacy Protection:} While the system processes public posts, we actively mask Personally Identifiable Information (PII) such as phone numbers and specific addresses before storage to prevent misuse. All social media data is aggregated at the cluster level, ensuring no individual user is targeted.
     \item \textbf{Source Bias:} We acknowledge that our "Anchor" news sources (mainstream media) may carry inherent editorial biases. To mitigate this, the system is designed to capture "Social-Only" events (via HDBSCAN) that may be underreported by mainstream outlets.
-    \item \textbf{AI Safety & Hallucination:} Large Language Models can occasionally generate plausible but incorrect summaries. We implement a "Human-in-the-Loop" protocol for all high-risk alerts (T1-Crisis), requiring manual verification before dissemination to emergency services.
+    \item \textbf{AI Safety \& Hallucination:} Large Language Models can occasionally generate plausible but incorrect summaries. We implement a "Human-in-the-Loop" protocol for all high-risk alerts (T1-Crisis), requiring manual verification before dissemination to emergency services.
 \end{itemize}
 
 \section{Conclusion}
-This paper demonstrated a production-ready system for real-time social event detection. By combining the speed of Spark Structured Streaming with the reasoning of LLMs, and employing a novel Anchoring strategy, we successfully filter 50\% of social noise while maintaining high detection accuracy (NMI 0.59).
+In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection (2.4s latency) while maintaining high precision (NMI 0.62) through News Anchoring. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
 
 \begin{credits}
-    \subsubsection{\ackname} The authors thank Dr. Do Trong Hop and Mr. Nguyen Ngoc Qui for their supervision.
+\subsubsection{\ackname} We would like to express our sincere gratitude to Dr. Do Trong Hop and Mr. Nguyen Ngoc Qui for their invaluable supervision, critical insights, and continuous support throughout the development of this research. Their expert guidance on system architecture and methodology was instrumental in the success of this project.
 \end{credits}
 
 \begin{thebibliography}{8}
@@ -618,6 +661,39 @@ To ensure reproducibility, we provide the specific prompts used in our system's 
         1. Which cluster is more COHERENT (posts discuss the same topic)?                                                                  \\
         2. Which cluster is CLEARER (less topic mixing)?                                                                                   \\
         \textbf{Output Format:} JSON dict with \texttt{better\_cluster} ("A", "B", or "Tie"), \texttt{confidence}, and \texttt{reasoning}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Semantic Deduplication Prompt (Phase 4)}\label{tab:prompt_dedup}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Senior News Editor.                                                                          \\
+        \textbf{Task:} Identify titles referring to the EXACT SAME single real-world event.                         \\
+        \textbf{Criteria for Match (Must match all 3):}                                                             \\
+        1. SAME Location (e.g., "Hanoi" vs "Hanoi" $\checkmark$).                                                   \\
+        2. SAME Timeframe (e.g., "Today" vs "Today" $\checkmark$).                                                  \\
+        3. SAME Core Entity (e.g., "Typhoon Yagi" vs "Storm No. 3" $\checkmark$).                                   \\
+        \textbf{Output Format:} JSON dict mapping \texttt{"Original Title": "Canonical Title"}.                     \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Google Trends Filter Prompt (Phase 6)}\label{tab:prompt_trends}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Google Trends Classifier (Vietnam).                                                          \\
+        \textbf{Task:} Filter NOISE and MERGE duplicates.                                                           \\
+        \textbf{Filter Rules (Remove):}                                                                             \\
+        1. Weather/Utilities (e.g., "weather today", "lottery results").                                            \\
+        2. Generic Broad Terms (e.g., "love", "news", "video").                                                     \\
+        \textbf{Merge Rules (Group):}                                                                               \\
+        - Combine variants of the same event (e.g., "AFF Cup schedule" + "AFF Cup standings" $\to$ "AFF Cup 2024"). \\
+        \textbf{Output Format:} JSON dict with \texttt{filtered} list and \texttt{merged} map.                      \\
         \hline
     \end{tabular}
 \end{table}
