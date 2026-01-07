@@ -25,7 +25,10 @@ graph TD
   - **Automated Summary:** Generates concise event descriptions in Vietnamese.
   - **Strategic Advice:** Actionable recommendations for Authorities and Businesses.
   - **Taxonomy Classification:** Categorizes events into standard Vietnamese social monitoring topics (T1-T7).
-- **Unified Launch Script:** Start the entire stack (Database, Kafka, Spark, Worker, Dashboard) with a single command.
+- **Dual-Mode Dashboard:**
+  - **Demo:** Lightweight **Streamlit** UI for rapid prototyping.
+  - **Pro:** Modern **Next.js (React)** + **FastAPI** architecture for production.
+- **Unified Launch Script:** Start the complete stack (Database, Kafka, Spark, Worker, Dashboard) with a single command.
 
 ## 🛠 Tech Stack
 
@@ -33,7 +36,8 @@ graph TD
 - **Orchestration:** Apache Airflow
 - **Database:** PostgreSQL (with SQLAlchemy)
 - **AI/LLM:** Google Gemini Pro 1.5, Sentence-Transformers
-- **Frontend:** Streamlit
+- **Backend:** FastAPI (Pro Mode)
+- **Frontend:** Streamlit (Demo) / Next.js + React (Pro)
 
 ## 🚀 Quick Start
 
@@ -64,7 +68,9 @@ The system includes a unified bootstrap script that handles infrastructure check
 
 ```bash
 chmod +x run_full_system.sh
-./run_full_system.sh demo
+./run_full_system.sh demo  # Launches Streamlit Demo
+# OR
+./run_pro_system.sh        # Launches Next.js Pro System
 ```
 
 *Note: The `demo` mode uses local simulations to showcase system capabilities without requiring live crawler credentials.*
