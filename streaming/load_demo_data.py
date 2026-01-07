@@ -267,14 +267,7 @@ def load_default_data(is_stream=False):
     # ... (Same as before)
     print("🚀 Loading DEFAULT (Full LLM) demo data...")
     # ... (rest of function omitted for brevity, verify context replacement)
-    # Actually I should not truncated too much or regex will fail. I will use only necessary parts.
-    # But wait, Step 1722 REPLACED `load_default_data` fully.
-    # I can just re-paste `load_default_data` content to be safe OR assume it's there.
-    # To avoid accidentally destroying `load_default_data`, I will read checking where it starts.
-    # Step 1722: `load_default_data` starts around line 170.
     
-    # I will replace from `def load_legacy_data` down to `if __name__` block.
-    # I need to keep `load_default_data` intact.
     pass
 
 # (The replace_file_content call will target `def load_legacy_data` block specifically).

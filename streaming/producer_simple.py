@@ -74,7 +74,7 @@ def load_data_raw(data_dir):
             with open(f, 'r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
-                    content = f"{row.get('title', '')} {row.get('content', '')}"
+                    content = f"{row.get('title', '')} {row.get('content', '')} {row.get('text', '')} {row.get('summaried_text', '')}"
                     if len(content) < 20: continue
                     
                     fname_lower = os.path.basename(f).lower()

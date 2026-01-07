@@ -79,8 +79,8 @@ def load_all_posts(data_dir):
                     reader = csv.DictReader(file)
                     for row in reader:
                         # Try various summary keys
-                        summary = row.get('summary') or row.get('refine_summary') or row.get('short_description')
-                        content_raw = row.get('content') or row.get('title') or ""
+                        summary = row.get('summary') or row.get('refine_summary') or row.get('short_description') or row.get('summaried_text')
+                        content_raw = row.get('content') or row.get('title') or row.get('text') or ""
                         
                         final_content = f"{row.get('title', '')} {summary or content_raw}".strip()
                         if len(final_content) < 20: 

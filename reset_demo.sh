@@ -1,8 +1,10 @@
 #!/bin/bash
 
 PROJECT_ROOT="$(cd "$(dirname "$0")"; pwd)"
-PYTHON_BIN="$(which python)"
-AIRFLOW_BIN="$(which airflow)"
+ENV_BIN="/home/gad/miniforge3/envs/SE363Final/bin"
+PYTHON_BIN="$ENV_BIN/python"
+AIRFLOW_BIN="$ENV_BIN/airflow"
+export PATH="$ENV_BIN:$PATH"
 
 echo "🔄 RESETTING DEMO SYSTEM STATE..."
 echo "---------------------------------------------------"

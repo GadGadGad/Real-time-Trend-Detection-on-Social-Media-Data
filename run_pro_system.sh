@@ -5,8 +5,10 @@
 # Orchestration: Airflow
 
 PROJECT_ROOT="$(cd "$(dirname "$0")"; pwd)"
-AIRFLOW_BIN="$(which airflow)"
-PYTHON_BIN="$(which python)"
+ENV_BIN="/home/gad/miniforge3/envs/SE363Final/bin"
+AIRFLOW_BIN="$ENV_BIN/airflow"
+PYTHON_BIN="$ENV_BIN/python"
+export PATH="$ENV_BIN:$PATH"
 MODE=${1:-demo}
 
 echo "🚀 INITIALIZING CYBER INTELLIGENCE PRO SYSTEM (Airflow Orchestrated)"

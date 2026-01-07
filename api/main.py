@@ -47,6 +47,8 @@ class Trend(BaseModel):
     last_updated: datetime
     post_count: int
     representative_posts: List[Post]
+    advice_state: Optional[str]
+    advice_business: Optional[str]
 
 @app.get("/")
 def read_root():
@@ -55,7 +57,7 @@ def read_root():
 @app.get("/trends", response_model=List[Trend])
 def get_trends(limit: int = 50, min_score: float = 0.0):
     query = text("""
-        SELECT id, trend_name, trend_score, category, summary, last_updated, post_count, representative_posts 
+        SELECT id, trend_name, trend_score, category, summary, last_updated, post_count, representative_posts, advice_state, advice_business 
         FROM detected_trends 
         WHERE trend_score >= :min_score
         ORDER BY last_updated DESC 
@@ -78,7 +80,9 @@ def get_trends(limit: int = 50, min_score: float = 0.0):
             summary=r.summary,
             last_updated=r.last_updated,
             post_count=r.post_count,
-            representative_posts=[Post(**p) for p in reps[:5]]
+            representative_posts=[Post(**p) for p in reps[:5]],
+            advice_state=r.advice_state,
+            advice_business=r.advice_business
         ))
     return trends
 
@@ -102,7 +106,9 @@ def get_trend_detail(trend_id: int):
         summary=r.summary,
         last_updated=r.last_updated,
         post_count=r.post_count,
-        representative_posts=[Post(**p) for p in reps]
+        representative_posts=[Post(**p) for p in reps],
+        advice_state=r.advice_state,
+        advice_business=r.advice_business
     )
 
 @app.get("/trends/{trend_id}/related")
