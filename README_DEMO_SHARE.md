@@ -1,4 +1,4 @@
-# 🚀 Hướng Dẫn Chạy Hệ Thống Phát Hiện Xu Hướng (Event Detection)
+# Hướng Dẫn Chạy Hệ Thống Phát Hiện Xu Hướng (Event Detection)
 
 ## 1. Chuẩn Bị Hệ Thống
 *   **Hệ điều hành:** Khuyên dùng Linux hoặc macOS (Để chạy tốt Bash script).
@@ -22,25 +22,27 @@ conda activate se363-trend-detection
 playwright install chromium
 ```
 
-## 3. Cấu Hình AI (Quan trọng)
-1.  Tìm file `.env` ở thư mục gốc.
-2.  Mở file và cập nhật `GEMINI_API_KEY` của bạn:
-    ```env
-    GEMINI_API_KEY=AIzaSy... (Điền key của bạn ở đây)
+## 3. Cài Đặt Dữ Liệu & Cấu Hình Nhanh
+Nếu ông nhận được file **`demo_essentials.zip`**, hãy làm theo các bước sau để thiết lập nhanh:
+
+1.  **Giải nén file:** Đặt file zip vào thư mục gốc của dự án (cùng cấp với file này).
+    ```bash
+    unzip demo_essentials.zip
     ```
-    *Nếu không có Key, AI sẽ không thể đặt tên Trend hoặc tóm tắt nội dung được.*
+2.  **Kiểm tra file `.env`:** Sau khi giải nén, file `.env` sẽ xuất hiện. Mở nó và chỉnh sửa `GEMINI_API_KEY` nếu cần thiết (hoặc sử dụng key có sẵn nếu được cung cấp).
 
-## 4. Kiểm Tra Dữ Liệu
-Hãy đảm bảo folder bạn nhận được có đủ 2 file/thư mục sau để demo chạy được ngay:
-*   `streaming/embeddings_cache.pkl`: Chứa 4,700 bài đăng đã được AI vector hóa sẵn.
-*   `data/demo-ready_archieve/`: Thư mục chứa các file dữ liệu CSV gốc.
+*Lưu ý: Hệ thống cần file `streaming/embeddings_cache.pkl` (Model đã vector hóa data). File này thường có sẵn khi clone git, nhưng nếu thiếu, hãy đảm bảo ông đã tải nó về.*
 
-## 5. Bắt Đầu Demo 🎬
-Bạn chỉ cần chạy **duy nhất một lệnh** để khởi động toàn bộ "vũ trụ" của dự án:
+## 3b. Kiểm Tra Thủ Công (Nếu không dùng zip)
+*   Tạo file `.env` và điền `GEMINI_API_KEY`.
+*   Đảm bảo có thư mục `data/demo-ready_archieve/` chứa các file CSV.
+
+## 4. Bắt Đầu Demo
+Ông chỉ cần chạy **duy nhất một lệnh** để khởi động toàn bộ hệ thống "Pro" (Next.js + Airflow + FastAPI):
 
 ```bash
-chmod +x run_full_system.sh
-./run_full_system.sh
+chmod +x run_pro_system.sh
+./run_pro_system.sh demo
 ```
 
 ### Script này sẽ tự động:
@@ -51,8 +53,8 @@ chmod +x run_full_system.sh
 - Bật Producer chạy **vòng lặp vô tận** (Gửi hết 4.7k tin sẽ tự động trộn và gửi lại).
 
 ## 6. Xem Kết Quả
-*   📊 **Dashboard:** [http://localhost:8501](http://localhost:8501) (Giao diện chính để xem trend).
-*   🌪️ **Airflow:** [http://localhost:8080](http://localhost:8080) (Tài khoản: `admin` / `admin`).
+*   **Dashboard:** [http://localhost:8501](http://localhost:8501) (Giao diện chính để xem trend).
+*   **Airflow:** [http://localhost:8080](http://localhost:8080) (Tài khoản: `admin` / `admin`).
 
 ## 7. Xử Lý Sự Cố (Troubleshooting)
 *   **Lỗi "Connection Refused":** Thường do Docker khởi động chậm. Hãy đợi 30s-1 phút rồi chạy lại lệnh.
@@ -61,14 +63,12 @@ chmod +x run_full_system.sh
 
 ## 8. Reset Hệ Thống (Làm mới từ đầu)
 
-Nếu bạn muốn xóa sạch mọi dữ liệu đã chạy và đưa hệ thống về trạng thái "vừa mới cài đặt" (ví dụ: trước khi bắt đầu bài thuyết trình thật), hãy chạy:
+Nếu ông muốn xóa sạch mọi dữ liệu đã chạy và đưa hệ thống về trạng thái "vừa mới cài đặt" (ví dụ: trước khi bắt đầu bài thuyết trình thật), hãy chạy:
 
 ```bash
 chmod +x reset_demo.sh
 ./reset_demo.sh
 ```
-
-Script này sẽ xóa sạch Database, logs, và lịch sử chạy của Airflow để bạn có một khởi đầu hoàn hảo nhất. ✅
 
 ## 9. Dừng Hệ Thống
 Chỉ cần nhấn `Ctrl + C` tại Terminal đang chạy script `run_full_system.sh`.
