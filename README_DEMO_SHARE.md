@@ -23,7 +23,7 @@ playwright install chromium
 ```
 
 ## 3. Cài Đặt Dữ Liệu & Cấu Hình Nhanh
-Nếu ông nhận được file **`demo_essentials.zip`**, hãy làm theo các bước sau để thiết lập nhanh:
+Nếu ông nhận được file **`demo_essentials.zip`** hoặc tải ở [đây](https://drive.google.com/file/d/1iIzBh21gnuyjqh3pJye-1KOFpGWHo3JS/view?usp=sharing), hãy làm theo các bước sau để thiết lập nhanh:
 
 1.  **Giải nén file:** Đặt file zip vào thư mục gốc của dự án (cùng cấp với file này).
     ```bash
