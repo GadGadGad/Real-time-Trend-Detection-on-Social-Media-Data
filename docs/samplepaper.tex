@@ -403,13 +403,13 @@ Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved 
     \resizebox{\textwidth}{!}{%
         \begin{tabular}{l c c c c c c}
             \toprule
-            \textbf{Model Identifier}  & \textbf{Avg Gap} & \textbf{Storm} & \textbf{Domain} & \textbf{Category} & \textbf{Slang} & \textbf{Abbrev} \\
+            \textbf{Model Identifier}  & \textbf{Avg Gap} $\uparrow$  & \textbf{Storm} $\uparrow$ & \textbf{Domain} $\uparrow$ & \textbf{Category} $\uparrow$ & \textbf{Slang}  $\uparrow$& \textbf{Abbrev}  $\uparrow$ \\
             \midrule
-            \textbf{vn-doc-embedding*} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
+            \textbf{vn-doc-embedding*} \cite{ref_vndoc} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
             vn-bi-encoder              & 0.193            & 0.155          & 0.213           & 0.107             & 0.108          & 0.381           \\
-            vn-sbert                   & 0.188            & \textbf{0.355} & 0.172           & 0.033             & -0.005         & 0.386           \\
-            bge-m3                     & 0.160            & -0.003         & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
-            multilingual-e5            & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
+            vn-sbert \cite{ref_visobert}                   & 0.188            & \textbf{0.355} & 0.172           & 0.033             & -0.005         & 0.386           \\
+            bge-m3 \cite{ref_bge}                     & 0.160            & -0.003         & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
+            multilingual-e5 \cite{ref_e5}            & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
             \bottomrule
         \end{tabular}%
     }
@@ -420,7 +420,7 @@ Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved 
     \centering
     \begin{tabular}{l l c c}
         \toprule
-        \textbf{Model Task}      & \textbf{Class Type}     & \textbf{Accuracy} & \textbf{Latency} \\
+        \textbf{Model Task}      & \textbf{Class Type}     & \textbf{Accuracy} ($\uparrow$) & \textbf{Latency} ($\downarrow$) \\
         \midrule
         Sentiment Classifier     & 3 classes (Pos/Neg/Neu) & \textbf{93.5\%}   & 12ms             \\
         Bi-CrossEncoder Reranker & Relevance Scoring       & 91.0\%            & 45ms             \\
@@ -447,7 +447,7 @@ The t-SNE projection in Fig. \ref{fig:tsne} demonstrates the effectiveness of ou
     \centering
     \begin{tabular}{l c c c c c}
         \toprule
-        \textbf{Method}             & \textbf{Clusters (k)} & \textbf{Noise Pts} & \textbf{Silh. Score} & \textbf{DB Index} & \textbf{Time}  \\
+        \textbf{Method}             & \textbf{Clusters (k)} & \textbf{Noise Pts} & \textbf{Silh. Score} ($\uparrow$) & \textbf{DB Index} ($\downarrow$) & \textbf{Time} ($\downarrow$) \\
         \midrule
         K-Means                     & 253                   & 0                  & 0.024                & 3.177             & 8.45s          \\
         \textbf{HDBSCAN (Baseline)} & \textbf{460}          & 1,984              & 0.109                & \textbf{2.094}    & 16.00s         \\
@@ -470,10 +470,10 @@ Evaluating unsupervised clustering is difficult. We implemented a "Mini-Ground T
         \toprule
         \textbf{Metric} & \textbf{Value} & \textbf{Interpretation}                   \\
         \midrule
-        \textbf{NMI}    & \textbf{0.54}  & Good mutual information with human labels \\
-        Purity          & 0.65           & High dominant class consistency           \\
-        BCubed-F1       & 0.35           & Balanced precision/recall for clustering  \\
-        Entropy         & 4.85           & Lower entropy indicates purer clusters    \\
+        \textbf{NMI} ($\uparrow$)    & \textbf{0.54}  & Good mutual information with human labels \\
+        Purity ($\uparrow$)          & 0.65           & High dominant class consistency           \\
+        BCubed-F1 ($\uparrow$)       & 0.35           & Balanced precision/recall for clustering  \\
+        Entropy ($\downarrow$)       & 4.85           & Lower entropy indicates purer clusters    \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -626,6 +626,18 @@ In this work, we presented a novel \textbf{Dual-Path Event Detection} framework 
 
     \bibitem{ref_bm25}
     Robertson, S.E., Walker, S., Jones, S., Hancock-Beaulieu, M.M., Gatford, M.: Okapi at TREC-3. NIST Special Publication 500-225, 109--126 (1995)
+
+    \bibitem{ref_vndoc}
+    Tuan, D.V.: Vietnamese Document Embedding measures. HuggingFace Hub (2023). \url{https://huggingface.co/dangvantuan/vietnamese-document-embedding}
+
+    \bibitem{ref_visobert}
+    Nguyen, Q., et al.: ViSoBERT: A Pre-trained Language Model for Vietnamese Social Media Text. In: EMNLP (2023)
+
+    \bibitem{ref_bge}
+    Xiao, S., et al.: C-Pack: Packaged Resources To Advance General Chinese Embedding. arXiv preprint arXiv:2309.07597 (2023)
+
+    \bibitem{ref_e5}
+    Wang, L., et al.: Text Embeddings by Weakly-Supervised Contrastive Pre-training. arXiv preprint arXiv:2212.03533 (2022)
 \end{thebibliography}
 
 \appendix
