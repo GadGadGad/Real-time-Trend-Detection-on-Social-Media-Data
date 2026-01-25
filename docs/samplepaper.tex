@@ -47,8 +47,8 @@
     However, current methods struggle with the "Semantic Ambiguity" of social posts and the "Evaluation Gap" in unlabelled streaming data. 
     This report presents a comprehensive \textbf{Real-time Event Detection System} using a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy. 
     We introduce a \textbf{Dual-Path Architecture} that combines Spark/Kafka for low-latency alerts with asynchronous LLM workers for deep semantic reasoning. 
-    Experimental results on a Mini-Ground Truth subset (N=300 manually labeled social posts) show our method achieves an NMI of 0.54 and Purity of 0.65. 
-    On the full dataset of 7,605 items, we further report intrinsic clustering metrics and an LLM-as-a-Judge framework to evaluate semantic coherence.
+    Experimental results on a \textbf{Mini-Ground Truth} subset (N=300 manually labeled social posts) show our \textbf{full hybrid pipeline} achieves \textbf{NMI = 0.598}. . 
+    On the full dataset of 7,605 items, we report intrinsic clustering metrics (Silhouette, Davies--Bouldin, noise ratio) and an \textbf{LLM-as-a-Judge} framework to evaluate semantic coherence at scale.
     Furthermore, we introduce a \textbf{"Mini-Ground Truth"} protocol and an \textbf{LLM-as-a-Judge} framework to rigorously evaluate cluster coherence, demonstrating significant improvements over traditional implementations.
 
     \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
@@ -498,10 +498,10 @@ Our \textbf{SAHC} approach resolves this by using News Anchors to "bridge" these
 
 \subsection{Quantitative Evaluation (Mini-Ground Truth)}
 All label-based clustering metrics (NMI, Purity, BCubed-F1, Entropy) are computed exclusively on the Mini-Ground Truth subset (N=300), as the full dataset does not contain human-annotated event labels.
-Evaluating unsupervised clustering is difficult. We implemented a "Mini-Ground Truth" protocol where human experts labeled 300 random posts to compute standard metrics.
+Table \ref{tab:minigt} reports the performance of our \textbf{default SAHC setting}, while Table \ref{tab:ablation} further shows that the \textbf{full hybrid pipeline} (adding anchoring and LLM refinement) improves NMI from 0.54 to \textbf{0.5978}.
 
 \begin{table}
-    \caption{Performance on Mini-Ground Truth (N=300)}\label{tab:minigt}
+    \caption{Performance on Mini-Ground Truth (N=300) -- Base SAHC Setting}\label{tab:minigt}
     \centering
     \begin{tabular}{l c l}
         \toprule
@@ -555,10 +555,11 @@ Evaluating unsupervised clustering is difficult. We implemented a "Mini-Ground T
 \end{itemize}
 
 \subsection{Batch Evaluation and Component Analysis}
-We further evaluated the impact of different components on the full dataset using internal metrics. The "Full LLM" pipeline (SAHC + LLM Refinement) achieved the best results.
+To quantify the contribution of each module, we conduct an ablation study on the \textbf{Mini-Ground Truth} subset (N=300), where label-based metrics (NMI, BCubed-F1, Entropy) are well-defined.
+Table \ref{tab:ablation} shows that progressively adding anchoring and LLM refinement improves clustering agreement with human labels.
 
 \begin{table}
-    \caption{Ablation Study of Pipeline Components}\label{tab:ablation}
+    \caption{Ablation Study on Mini-Ground Truth (N=300)}\label{tab:ablation}
     \centering
     \begin{tabular}{l c c c}
         \toprule
