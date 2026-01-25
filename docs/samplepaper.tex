@@ -43,7 +43,13 @@
 \maketitle              % typeset the header of the contribution
 %
 \begin{abstract}
-    In the era of information overload, rapidly detecting and understanding social trends is crucial for public safety and market intelligence. However, current methods struggle with the "Semantic Ambiguity" of social posts and the "Evaluation Gap" in unlabelled streaming data. This report presents a comprehensive \textbf{Real-time Event Detection System} using a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy. We introduce a \textbf{Dual-Path Architecture} that combines Spark/Kafka for low-latency alerts with asynchronous LLM workers for deep semantic reasoning. Experimental results on 7,605 posts show our method achieves an NMI of 0.59 and Purity of 0.65. Furthermore, we introduce a \textbf{"Mini-Ground Truth"} protocol and an \textbf{LLM-as-a-Judge} framework to rigorously evaluate cluster coherence, demonstrating significant improvements over traditional implementations.
+    In the era of information overload, rapidly detecting and understanding social trends is crucial for public safety and market intelligence. 
+    However, current methods struggle with the "Semantic Ambiguity" of social posts and the "Evaluation Gap" in unlabelled streaming data. 
+    This report presents a comprehensive \textbf{Real-time Event Detection System} using a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy. 
+    We introduce a \textbf{Dual-Path Architecture} that combines Spark/Kafka for low-latency alerts with asynchronous LLM workers for deep semantic reasoning. 
+    Experimental results on a Mini-Ground Truth subset (N=300 manually labeled social posts) show our method achieves an NMI of 0.54 and Purity of 0.65. 
+    On the full dataset of 7,605 items, we further report intrinsic clustering metrics and an LLM-as-a-Judge framework to evaluate semantic coherence.
+    Furthermore, we introduce a \textbf{"Mini-Ground Truth"} protocol and an \textbf{LLM-as-a-Judge} framework to rigorously evaluate cluster coherence, demonstrating significant improvements over traditional implementations.
 
     \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
 \end{abstract}
@@ -202,6 +208,15 @@ The lifecycle of a social post in our system follows five stages:
           \end{itemize}
 \end{itemize}
 
+\subsection{Latency Definition}
+We distinguish between two types of latency in our system:
+\begin{itemize}
+    \item \textbf{Fast-Path Processing Latency:} measured from Kafka ingestion to cluster assignment within a Spark micro-batch.
+    \item \textbf{End-to-End Alert Latency:} measured from data ingestion to dashboard update.
+\end{itemize}
+
+In our experimental setup, the Fast Path achieves an average processing latency of \textbf{2.4 seconds}, while the end-to-end alert latency remains \textbf{below 10 seconds}, as the Slow Path LLM enrichment is executed asynchronously and does not block real-time event detection.
+
 \section{Methodology}
 
 \subsection{Formal Problem Definition}
@@ -300,7 +315,10 @@ Our system monitors two primary data streams, unified into a common schema for p
     \item \textbf{Mainstream News:} Articles crawled from verified outlets (VnExpress, Tuoi Tre). Key fields: \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, and \texttt{PublishTime}.
     \item \textbf{Google Trends:} Real-time search keywords acting as "Leading Signals" to guide the initial filtering and prioritization of social clusters.
 \end{itemize}
-The experimental dataset consists of \textbf{7,605 unique posts} collected from Dec 8 to Dec 22, 2025, with a distribution of \textbf{Mainstream News (4,644 articles, 61.1\%)} serving as reliable Ground Truth anchors, and \textbf{Social Media (2,961 posts, 38.9\%)} representing the noisy input stream.
+The experimental dataset consists of \textbf{7,605 unique items} collected from Dec 8 to Dec 22, 2025, including 
+\textbf{4,644 mainstream news articles (61.1\%)} serving as high-confidence anchor signals, and 
+\textbf{2,961 social media posts (38.9\%)} representing the noisy input stream.
+
 
 \subsection{Exploratory Data Analysis}
 Table \ref{tab:data_dist} presents the distribution of our experimental dataset. We observed a significant "Availability Gap": while we crawled over 9,400 news URLs, only \textbf{4,603 articles (48.6\%)} contained extractable body text, whereas \textbf{social media posts (2,981 items)} achieved near 100\% availability.
@@ -461,6 +479,7 @@ The t-SNE projection in Fig. \ref{fig:tsne} demonstrates the effectiveness of ou
 Our \textbf{SAHC} approach resolves this by using News Anchors to "bridge" these micro-clusters. This successfully condensed the space into \textbf{315 coherent events} and recovered $\approx 50\%$ of the valid data previously discarded as noise (Noise reduced to 985), significantly boosting the Silhouette Score to \textbf{0.135}.
 
 \subsection{Quantitative Evaluation (Mini-Ground Truth)}
+All label-based clustering metrics (NMI, Purity, BCubed-F1, Entropy) are computed exclusively on the Mini-Ground Truth subset (N=300), as the full dataset does not contain human-annotated event labels.
 Evaluating unsupervised clustering is difficult. We implemented a "Mini-Ground Truth" protocol where human experts labeled 300 random posts to compute standard metrics.
 
 \begin{table}
@@ -608,7 +627,8 @@ As an AI-integrated system analyzing public discourse, we strictly adhere to eth
 \end{itemize}
 
 \section{Conclusion}
-In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection (2.4s latency) while maintaining high precision (NMI 0.62) through News Anchoring. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
+In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection on the Fast Path (2.4s processing latency under our test setup) while maintaining strong clustering quality on the labeled Mini-Ground Truth subset (NMI 0.54; Purity 0.65) through News Anchoring. 
+On the full dataset, intrinsic metrics and LLM-as-a-Judge evaluation further confirm improved cluster coherence over baseline methods. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
 
 \begin{credits}
 \subsubsection{\ackname} We would like to express our sincere gratitude to Dr. Do Trong Hop and Mr. Nguyen Ngoc Quy for their invaluable supervision, critical insights, and continuous support throughout the development of this research. Their expert guidance on system architecture and methodology was instrumental in the success of this project.
