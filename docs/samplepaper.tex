@@ -152,7 +152,7 @@ The lifecycle of a social post in our system follows five stages:
 \begin{enumerate}
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
-    \item \textbf{Clustering (Fast Path):} Valid posts are vectorized using ONNX models and "attached" to simplified News Anchors via SAHC. This module runs entirely in-memory to minimize latency.
+    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{hybrid score} (vector + keyword + rerank). Posts that fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
     \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. They query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
 \end{enumerate}
@@ -195,7 +195,7 @@ The lifecycle of a social post in our system follows five stages:
     \item \textbf{Inference (Pandas UDF \& ONNX):}
           \begin{itemize}
               \item Uses PySpark’s \textbf{Pandas UDF} interface to vectorize text in batches, avoiding row-by-row Python serialization overhead.
-              \item Invokes the \textbf{ONNX Runtime} engine on Worker nodes to compute embeddings (SBERT) and density clusters (HDBSCAN) within each micro-batch.
+              \item Invokes the \textbf{ONNX Runtime} engine on Worker nodes to compute embeddings (SBERT) for each micro-batch; \textbf{HDBSCAN} is triggered only on the \textit{unmatched/residual} set to discover emerging \textbf{Social-only} events.
           \end{itemize}
 
     \item \textbf{Slow Path Intelligence (Async Workers):}
@@ -264,22 +264,40 @@ Standard clustering (K-Means, DBSCAN) often fails on social data due to noise. S
 The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first establish "Anchor" centroids (Blue nodes). Incoming Social posts (Green nodes) are then attracted to these anchors based on semantic similarity. Residual noise is finally filtered or clustered into new events by HDBSCAN, effectively reducing spam.
 
 \begin{algorithm}
-    \caption{Dual-Path Event Detection}
+    \caption{SAHC-A: Anchor-First Dual-Path Event Detection}
     \begin{algorithmic}[1]
-        \Require Stream $\mathcal{S}$, Anchors $\mathcal{A}$
-        \Ensure Top-K ranked clusters
-        \State $\textbf{v}_p \leftarrow \text{SBERT}(p_{text})$ for all $p \in \mathcal{S}$ \Comment{Embedding}
-        \State \textbf{Fast Path (Social):}
-        \State $C_{social} \leftarrow \text{HDBSCAN}(\mathcal{S}, \min_{pts}=5, \epsilon=0.3)$
-        \State \textbf{Slow Path (Anchoring):}
-        \For{each cluster $c \in C_{social}$}
-        \State $\mu_c = \frac{1}{|c|} \sum_{p \in c} \textbf{v}_p$ \Comment{Centroid}
-        \State $a^* = \arg\max_{a \in \mathcal{A}} \cos(\mu_c, \textbf{v}_a)$
-        \If{$\cos(\mu_c, \textbf{v}_{a^*}) > \lambda_{anchor}$}
-        \State Label $c$ with $a^*_{title}$
-        \EndIf
+        \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
+        \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
+
+        \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
+        
+        \State \textbf{// Path 1: Anchor Matching (Fast Path)}
+        \For{each post $p \in B$}
+            \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \text{HybridSim}(p, a)$
+            \State $score \leftarrow \text{HybridSim}(p, a^*)$ \Comment{Cos + Keyword}
+            
+            \If{$score \ge \lambda_{match}$}
+                \State Add $p$ to Event $E_{a^*}$
+                \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+            \Else
+                \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+            \EndIf
         \EndFor
-        \State \textbf{Ranking:} Score $S(c) = \alpha \cdot |c| + \beta \cdot \text{Growth}(c)$
+
+        \State \textbf{// Path 2: Social Discovery (Slow Path)}
+        \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
+        \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
+            \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
+            \For{each cluster $c \in \mathcal{C}_{new}$}
+                \If{$|c| \ge \delta_{significant}$}
+                    \State Initialize new Event $E_{new}$ from $c$
+                    \State Remove points in $c$ from $\mathcal{G}$
+                \EndIf
+            \EndFor
+            \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
+        \EndIf
+        
     \end{algorithmic}
 \end{algorithm}
 
