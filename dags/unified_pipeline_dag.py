@@ -8,6 +8,7 @@ import os
 
 # Configuration
 PROJECT_ROOT = "/home/gad/My Study/Code Storages/University/HK7/SE363/Final Project"
+PROJECT_ROOT = "/home/minsun/Documents/Project/Ongoing/Real-time-Event-Detection-on-Social-Media-Data"
 PYTHON_BIN = "python"  # Ensure this points to the correct env if needed
 
 sys.path.insert(0, PROJECT_ROOT)
@@ -112,8 +113,12 @@ with DAG(
     # 4a. Standard Python Consumer Task
     consumer_task = BashOperator(
         task_id='run_consumer_processing',
-        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 300',
+        bash_command=f'''
+            export CUDA_VISIBLE_DEVICES=""
+            cd "{PROJECT_ROOT}" && {PYTHON_BIN} streaming/kafka_consumer.py --timeout 300
+        ''',
     )
+
 
     # 4b. New Spark Consumer Task
     spark_task = BashOperator(
@@ -131,7 +136,7 @@ with DAG(
     # 6. Verification Task
     verify_task = BashOperator(
         task_id='verify_pipeline_health',
-        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} scripts/verify_pipeline.py',
+        bash_command=f'cd "{PROJECT_ROOT}" && {PYTHON_BIN} scripts/verify_demo_data.py',
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS
     )
 

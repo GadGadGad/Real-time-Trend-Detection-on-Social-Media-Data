@@ -4,6 +4,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
 
 const API_BASE = "http://localhost:8000";
 
@@ -56,7 +57,16 @@ export default function ChatView() {
                                     ? 'bg-slate-800 text-white rounded-tr-none border border-slate-700'
                                     : 'bg-slate-900 text-slate-200 rounded-tl-none border border-slate-800'
                                 }`}>
-                                {msg.content}
+                                <ReactMarkdown 
+                                    components={{
+                                        strong: ({node, ...props}) => <span className="font-bold text-cyan-400" {...props} />,
+                                        p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                                        ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2" {...props} />,
+                                        li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                                    }}
+                                >
+                                    {msg.content}
+                                </ReactMarkdown>
                             </div>
 
                             {msg.sources && msg.sources.length > 0 && (

@@ -41,8 +41,13 @@ def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
         from sentence_transformers import SentenceTransformer
+        device = "cpu"
         print(f"📥 Loading Embedding Model '{MODEL_NAME}'...")
-        _embedding_model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+        _embedding_model = SentenceTransformer(
+            MODEL_NAME,
+            device=device,
+            trust_remote_code=True
+        )
         print("✅ Embedding Model Loaded.")
     return _embedding_model
 
