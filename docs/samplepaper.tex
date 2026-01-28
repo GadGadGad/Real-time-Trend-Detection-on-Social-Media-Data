@@ -14,6 +14,7 @@
 \usepackage{array}
 \usepackage{algorithm}
 \usepackage[noend]{algpseudocode}
+\usepackage[a4paper,left=30mm,right=30mm]{geometry}
 %
 \begin{document}
 %
@@ -46,7 +47,7 @@
     In the era of information overload, rapidly detecting and understanding emerging events from social streams is crucial for public safety and market intelligence.
     However, practical systems face two core challenges: (i) \textit{semantic ambiguity} in short, noisy social posts, and (ii) an \textit{evaluation gap} due to the lack of labels in streaming data.
     We present a \textbf{real-time event detection system} built on a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy and a \textbf{dual-path architecture} that combines Spark/Kafka for low-latency detection with asynchronous LLM workers for deep semantic refinement.
-    On a \textbf{Mini-Ground Truth} subset (N=300 manually labeled social posts), our full hybrid pipeline achieves \textbf{NMI = 0.598}.
+    On a \textbf{Mini-Ground Truth} subset (N=300 manually labeled social posts), our full hybrid pipeline achieves \textbf{NMI = 0.5978}.
     On the full dataset of 7{,}605 items, we report intrinsic clustering metrics (Silhouette, Davies--Bouldin, noise ratio) and an \textbf{LLM-as-a-Judge} protocol to assess semantic coherence at scale.
 
     \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
@@ -87,7 +88,7 @@ To close the evaluation gap, we combine a \textbf{Mini-Ground Truth} protocol (m
 Our specific contributions include:
 \begin{enumerate}
     \item A \textbf{Dual-Path Architecture} balancing < 10s latency for detection and deep LLM reasoning for insight.
-    \item A \textbf{Social-Aware Hierarchical Clustering (SAHC)} algorithm using news anchors to reduce noise by ~50\%.
+    \item A \textbf{Social-Aware Hierarchical Clustering (SAHC)} algorithm using news anchors to reduce noise by ~50\% compared to vanilla HDBSCAN under the same embedding \& preprocessing.
     \item A rigorous evaluation using both a \textbf{Mini-Ground Truth} dataset (N=300) and \textbf{LLM-as-a-Judge} metrics.
 \end{enumerate}
 
@@ -239,10 +240,17 @@ The lifecycle of a social post in our system follows five stages:
 \begin{enumerate}
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
+<<<<<<< HEAD
+    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (dense-sparse fusion of cosine similarity and normalized BM25). 
+    We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}. 
+    In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
+    Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+=======
     \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost).
           We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}.
           In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
           Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+>>>>>>> refs/remotes/origin/main
 
     \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
@@ -370,21 +378,19 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
 
         \State \textbf{// Path 1: Anchor Matching (Fast Path)}
         \For{each post $p \in B$}
-        \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
-        \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
-        \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
-        \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
-        \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
-        \If{$keyword\_score > 0.5$}
-        \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
-        \EndIf
-
-        \If{$score \ge \lambda_{match}$}
-        \State Add $p$ to Event $E_{a^*}$
-        \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
-        \Else
-        \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
-        \EndIf
+            \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval}
+            \State $dense\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+            \State $raw\_bm25 \leftarrow \text{BM25}(p,a^*)$
+            \State $sparse\_score \leftarrow raw\_bm25 \; / \; \max_{a' \in \mathcal{A}} \text{BM25}(p,a')$ \Comment{Max-normalization}
+            \State $score \leftarrow 0.7 \cdot dense\_sim + 0.3 \cdot sparse\_score$ \Comment{Linear Fusion}
+            
+            \If{$score \ge \lambda_{match}$}
+                \State Add $p$ to Event $E_{a^*}$
+                \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+            \Else
+                \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+            \EndIf
         \EndFor
 
         \State \textbf{// Path 2: Social Discovery (Slow Path)}
@@ -406,13 +412,13 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
 \end{algorithm}
 
 \textbf{Latency-Optimized Hybrid Matching:}
-To balance semantic understanding and exact entity matching under real-time constraints, we employ a weighted scoring mechanism with a conditional boost.
-Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. This preserves low latency while reducing false attachments.
+To balance semantic understanding and exact entity matching under real-time constraints, we employ a lightweight dense--sparse fusion score that combines cosine similarity and BM25.
+Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. Concretely, it (i) rejects a top-1 attachment if the cross-encoder score falls below a threshold, and (ii) can ``save'' borderline matches after title refinement by re-checking the refined pair. This preserves low latency while reducing false attachments. 
 \begin{equation}
     \label{eq:hybrid_real}
-    \text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
+    \text{Score}(p,a) = w_d \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_s \cdot \frac{\text{BM25}(p,a)}{\max_{a' \in \mathcal{A}} \text{BM25}(p,a')},
 \end{equation}
-where $w_v=0.7$ and $w_k=0.3$ are empirical weights, $\text{KW}(p,a)\in[0,1]$ is the keyword overlap ratio, and a fixed boost $\delta_{boost}=0.1$ is applied when overlap exceeds $\tau=0.5$. This design remains compatible with real-time constraints while reducing false attachments between lexically distinct events.
+where $w_d=0.7, w_s=0.3$ are the default fusion weights in our implementation. The sparse BM25 score is \textbf{max-normalized} across the candidate set $\mathcal{A}$ to ensure scale consistency with the cosine similarity component (after cosine rescaling/clipping in implementation).
 
 \subsection{Trend Scoring Logic}
 To determine which events are "Trending", we calculate a Unified Trend Score ($T$) for each cluster based on three weighted signals:
@@ -716,7 +722,7 @@ To better understand the system's behavior, we analyze three specific cases from
           \end{itemize}
 \end{enumerate}
 
-\section{Discussion and Future Work}
+\section{Discussion}
 
 \subsection{Challenges and Lessons Learned}
 Deploying the system revealed three major technical hurdles:
@@ -735,28 +741,28 @@ To quantify the contribution of each module, we conducted an ablation study by s
     \item \textbf{w/o LLM Refinement:} Using raw centroids instead of LLM summaries resulted in vague event titles, reducing the interpretability score (human-eval) from 4.5 to 2.1.
 \end{itemize}
 
+\section{Conclusion and Future Work}
+\subsection{Conclusion}
+In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection on the Fast Path (2.4s processing latency under our test setup) while maintaining strong clustering quality on the labeled Mini-Ground Truth subset through News Anchoring (base SAHC: NMI = 0.54, Purity = 0.65; full hybrid pipeline: best NMI = 0.5978).
+On the full dataset, intrinsic metrics and LLM-as-a-Judge evaluation further confirm improved cluster coherence over baseline methods. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
 
-
-\subsection{Future Roadmap}
-To scale the system for production use ($>10,000$ EPS), we plan to:
+\subsection{Future Work}
+To scale the system toward production deployment ($>10{,}000$ events per second), we plan the following extensions:
 \begin{itemize}
-    \item \textbf{Model Optimization:} Implement quantization (ONNX/Int8) for the Embedding models to reduce inference cost.
-    \item \textbf{Advanced Sentiment:} Upgrade from 3-class sentiment to fine-grained emotion detection (Anger, Fear, Hope).
-    \item \textbf{Feedback Loop:} Build a mechanism for users to correct cluster labels on the dashboard, feeding data back for Active Learning.
-    \item \textbf{Production Scaling:} Migrate from Spark Local to a full \textbf{Kubernetes/YARN Cluster}.
+    \item \textbf{Model Optimization:} Apply quantization (ONNX/INT8) and batching-aware inference to reduce embedding latency and cost while preserving clustering quality.
+    \item \textbf{Advanced Affect Modeling:} Extend the current 3-class sentiment to fine-grained emotions (e.g., Anger, Fear, Hope) to better characterize crisis dynamics and public reactions.
+    \item \textbf{Human Feedback Loop:} Add dashboard-level correction tools (merge/split clusters, relabel taxonomy) and feed validated edits back into Active Learning for continual improvement.
+    \item \textbf{Production Scaling:} Migrate from Spark Local to a distributed deployment on \textbf{Kubernetes/YARN}, enabling independent horizontal scaling of Kafka, Spark executors, and LLM workers.
 \end{itemize}
 
 \section{Ethical Considerations and Limitations}
-As an AI-integrated system analyzing public discourse, we strictly adhere to ethical data practices.
+As an AI-integrated system analyzing public discourse, we follow ethical data practices and explicitly acknowledge key limitations.
 \begin{itemize}
-    \item \textbf{Privacy Protection:} While the system processes public posts, we actively mask Personally Identifiable Information (PII) such as phone numbers and specific addresses before storage to prevent misuse. All social media data is aggregated at the cluster level, ensuring no individual user is targeted.
-    \item \textbf{Source Bias:} We acknowledge that our "Anchor" news sources (mainstream media) may carry inherent editorial biases. To mitigate this, the system is designed to capture "Social-Only" events (via HDBSCAN) that may be underreported by mainstream outlets.
-    \item \textbf{AI Safety \& Hallucination:} Large Language Models can occasionally generate plausible but incorrect summaries. We implement a "Human-in-the-Loop" protocol for all high-risk alerts (T1-Crisis), requiring manual verification before dissemination to emergency services.
+    \item \textbf{Privacy Protection:} Although the system processes public posts, we mask Personally Identifiable Information (PII) such as phone numbers and specific addresses before storage. We present results at the \emph{cluster/event} level to avoid targeting individuals.
+    \item \textbf{Source Bias and Coverage:} News ``anchors'' may reflect editorial bias or incomplete coverage. To mitigate this, the pipeline explicitly supports \textbf{Social-only} event discovery (via HDBSCAN) so that underreported topics can still surface; nevertheless, anchor choice can influence what becomes ``verified'' in downstream summaries.
+    \item \textbf{LLM Safety and Reliability:} LLMs can produce plausible but incorrect summaries. We therefore restrict LLM usage to \emph{post-hoc enrichment} (not triggering detection) and apply a \textbf{Human-in-the-Loop} verification policy for high-risk alerts (T1--Crisis) before any external escalation.
 \end{itemize}
 
-\section{Conclusion}
-In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection on the Fast Path (2.4s processing latency under our test setup) while maintaining strong clustering quality on the labeled Mini-Ground Truth subset through News Anchoring (base SAHC: NMI = 0.54, Purity = 0.65; full hybrid pipeline: best NMI = 0.5978).
-On the full dataset, intrinsic metrics and LLM-as-a-Judge evaluation further confirm improved cluster coherence over baseline methods. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
 
 \begin{credits}
     \subsubsection{\ackname} We would like to express our sincere gratitude to Dr. Do Trong Hop and Mr. Nguyen Ngoc Quy for their invaluable supervision, critical insights, and continuous support throughout the development of this research. Their expert guidance on system architecture and methodology was instrumental in the success of this project.
