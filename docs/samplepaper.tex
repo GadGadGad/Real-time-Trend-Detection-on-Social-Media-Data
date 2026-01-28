@@ -66,7 +66,23 @@ Social media platforms have become the primary source of real-time information. 
 
 As shown in Fig. \ref{fig:dashboard}, the system dashboard integrates three key views: (1) A real-time ranked list of trending events; (2) A time-series chart tracking sentiment evolution; and (3) A geospatial map highlighting event hotspots. This interface allows stakeholders to quickly grasp the "What, Where, and How" of emerging issues.
 
-To tackle the challenges of Noise and Ambiguity, we introduce a \textbf{Dual-Path Architecture} that separates detection from analysis. This design allows us to catch viral trends in seconds (via the Fast Path) while preserving the deep semantic understanding of Large Language Models (LLMs) via the Slow Path, effectively solving the classic "Latency vs. Accuracy" dilemma.
+\noindent\textbf{Research Gap.}
+Existing event detection pipelines often optimize for either (i) low-latency streaming detection using lightweight statistical or embedding-based clustering, or (ii) high semantic coherence and interpretability using heavier neural/LLM reasoning.
+However, practical deployments require \emph{all three} simultaneously: \textbf{(a) real-time latency}, \textbf{(b) coherent event grouping under noisy short texts}, and \textbf{(c) scalable evaluation} when ground-truth labels are scarce in streams.
+This creates a gap between \emph{system-level real-time constraints} and \emph{semantic/evaluation rigor}.
+
+\noindent\textbf{Research Questions.}
+We study the following questions:
+\begin{itemize}
+    \item \textbf{RQ1:} How can we detect emerging events from noisy social streams under strict latency constraints ($<10$s) while minimizing fragmentation and noise?
+    \item \textbf{RQ2:} How can we improve semantic coherence and event interpretability without blocking the streaming pipeline?
+    \item \textbf{RQ3:} How can we evaluate clustering quality at scale when full human labels are unavailable for streaming data?
+\end{itemize}
+
+To answer these questions, we propose a \textbf{Dual-Path Architecture} that separates low-latency detection from semantic refinement.
+In the Fast Path, we perform streaming attachment and discovery via a \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy to reduce noise and over-fragmentation.
+In the Slow Path, asynchronous LLM workers generate structured 5W1H summaries and support semantic quality control.
+To close the evaluation gap, we combine a \textbf{Mini-Ground Truth} protocol (manual labels on a small subset) with an \textbf{LLM-as-a-Judge} procedure to assess semantic coherence at scale.
 
 Our specific contributions include:
 \begin{enumerate}
@@ -151,7 +167,7 @@ The lifecycle of a social post in our system follows five stages:
 \begin{enumerate}
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
-    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{hybrid score} (vector + keyword + rerank). Posts that fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost). Posts that fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
     \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
 \end{enumerate}
@@ -279,8 +295,12 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
         \State \textbf{// Path 1: Anchor Matching (Fast Path)}
         \For{each post $p \in B$}
             \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
-            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \text{HybridSim}(p, a)$
-            \State $score \leftarrow \text{HybridSim}(p, a^*)$ \Comment{Cos + Keyword}
+            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
+            \State $score \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+            \If{$\text{KW}(p,a^*) = 1$}
+                \State $score \leftarrow score + \delta_{bonus}$ \Comment{Heuristic keyword boosting}
+            \EndIf
+
             
             \If{$score \ge \lambda_{match}$}
                 \State Add $p$ to Event $E_{a^*}$
@@ -308,11 +328,13 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
     \end{algorithmic}
 \end{algorithm}
 
-\textbf{Hybrid Matching Strategy:} To satisfy both semantic understanding and precision, we employ a composite score:
+\textbf{Latency-Optimized Hybrid Matching:}
+To balance semantic understanding and exact entity matching without the overhead of cross-encoders, we employ a weighted scoring mechanism with a conditional boost:
 \begin{equation}
-    Score = \underbrace{\text{Vector Similarity}}_{\text{Semantic Context}} + \underbrace{\text{Keyword Match}}_{\text{Exact Entity}}
+\label{eq:hybrid_real}
+\text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
 \end{equation}
-This hybrid approach balances recall and precision: \textbf{Vector Similarity} captures semantic nuances (e.g., matching "typhoon" with "storm"), while \textbf{Keyword Match} enforces exact entity alignment (e.g., distinguishing "Storm Yagi" from "Storm Koto"), preventing valid but distinct events from being merged.
+where $w_v=0.7$ and $w_k=0.3$ are empirical weights, $\text{KW}(p,a)\in[0,1]$ is the keyword overlap ratio, and a fixed boost $\delta_{boost}=0.1$ is applied when overlap exceeds $\tau=0.5$. This design remains compatible with real-time constraints while reducing false attachments between lexically distinct events.
 
 \subsection{Trend Scoring Logic}
 To determine which events are "Trending", we calculate a Unified Trend Score ($T$) for each cluster based on three weighted signals:
