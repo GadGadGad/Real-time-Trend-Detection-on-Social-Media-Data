@@ -152,7 +152,7 @@ The lifecycle of a social post in our system follows five stages:
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
     \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{hybrid score} (vector + keyword + rerank). Posts that fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
-    \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. They query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
+    \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
 \end{enumerate}
 
@@ -201,8 +201,8 @@ The lifecycle of a social post in our system follows five stages:
           \begin{itemize}
               \item Designed to decouple heavy operations from the ingestion stream. Workers poll confirmed clusters and:
                   \begin{enumerate}
-                      \item Query \textbf{Google Trends API} to fetch search volume (G-score), using the filter prompt in Appendix Table \ref{tab:prompt_trends}. This is asynchronous because search interest often requires time to accumulate ("stack up") before becoming significant, making it a lagging signal compared to instant social bursts, alongside API rate constraints.
-                      \item Employ a \textbf{Context-Aware Prompting} strategy with Gemini Pro to synthesize coherent summaries.
+                    \item Query \textbf{Google Trends API} to fetch search volume (G-score), using the filter prompt in Appendix Table \ref{tab:prompt_trends}. This signal is treated as \textbf{confirmatory/lagging}: it typically accumulates after an event is already visible on social streams, and is therefore used to validate and prioritize clusters rather than to trigger initial detection.
+                    \item Employ a \textbf{Context-Aware Prompting} strategy with Gemini Pro to synthesize coherent summaries.
                   \end{enumerate}
           \end{itemize}
 \end{itemize}
@@ -224,8 +224,14 @@ The goal of real-time event detection is to map this stream into a set of disjoi
 A valid event cluster $C_i$ must satisfy two conditions:
 \begin{enumerate}
     \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
-    \item \textbf{Impact:} $|C_i| \geq \delta_{min}$, where $|C_i|$ is the number of distinct users discussing the event.
+    \item \textbf{Impact:} $U(C_i) \geq \delta_{min}$, where $U(C_i)$ is the number of \emph{distinct users} discussing the event:
+        \begin{equation}
+        U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
+        \end{equation}
+
 \end{enumerate}
+
+In practice, we use $\delta_{significant}$ as the operational impact threshold in the streaming system (typically $\delta_{significant}\ge \delta_{min}$) to decide when a cluster is promoted for enrichment and visualization.
 
 \subsection{Data Preprocessing and Normalization}
 
@@ -289,11 +295,13 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
         \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
             \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
             \For{each cluster $c \in \mathcal{C}_{new}$}
-                \If{$|c| \ge \delta_{significant}$}
+                \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
+                \If{$U(c) \ge \delta_{significant}$}
                     \State Initialize new Event $E_{new}$ from $c$
                     \State Remove points in $c$ from $\mathcal{G}$
                 \EndIf
             \EndFor
+
             \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
         \EndIf
         
@@ -311,9 +319,11 @@ To determine which events are "Trending", we calculate a Unified Trend Score ($T
 \begin{equation}
     T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
 \end{equation}
+In our setting, social streams provide the earliest burst signals, while Google Trends typically peaks later. Therefore, $G$ is used primarily to confirm and prioritize candidate clusters already detected on the Fast Path.
+
 Where the components represent:
 \begin{itemize}
-    \item \textbf{G (Google Search Volume):} The normalized search interest score from Google Trends, serving as a leading indicator of public curiosity.
+    \item \textbf{G (Google Search Volume):} The normalized search interest score from Google Trends, serving as a \textbf{confirmatory (lagging) signal} of public attention.
     \item \textbf{N (News Volume):} The count of distinct mainstream news clusters linked to this event.
     \item \textbf{F (Facebook Engagement):} The weighted sum of interactions ($Likes + 2 \cdot Comments + 3 \cdot Shares$).
 \end{itemize}
@@ -334,10 +344,10 @@ Our system monitors two primary data streams, unified into a common schema for p
 \end{itemize}
 
 The experimental dataset consists of \textbf{7,605 unique items} collected from Dec 8 to Dec 22, 2025, including \textbf{4,644 crawled news articles} and \textbf{2,961 social media posts}.
-After content extraction, \textbf{4,603 news articles} contain valid body text and are used for anchoring and embedding.
+After content extraction, \textbf{4,603 news articles} contain valid body text and are used for anchoring and embedding. Here, \textbf{2,961} denotes the \emph{unique social posts used in experiments} after deduplication and basic validity checks (raw crawled volume is reported as an approximation).
 
 \subsection{Exploratory Data Analysis}
-Table \ref{tab:data_dist} presents the distribution of our experimental dataset. We observed a significant "Availability Gap": while we crawled over 9,400 news URLs, only \textbf{4,603 articles (48.6\%)} contained extractable body text, whereas \textbf{social media posts (2,981 items)} achieved near 100\% availability.
+Table \ref{tab:data_dist} presents the distribution of our experimental dataset. We observed a significant "Availability Gap": while we crawled over 9,400 news URLs, only \textbf{4,603 articles (48.6\%)} contained extractable body text, whereas \textbf{social media posts (2,961 items)} achieved \emph{near-complete} availability.
 Furthermore, there is a structural divergence: News articles average $>500$ words with formal grammar, while social posts average $<50$ words with frequent slang. This dichotomy necessitates our "Dual-Path" design, where the \textbf{Fast Path} handles the high-velocity, short-text social stream, and the \textbf{Slow Path} leverages LLMs to synthesize the deeper context found in news anchors.
 
 \begin{table}
@@ -348,7 +358,7 @@ Furthermore, there is a structural divergence: News articles average $>500$ word
         \textbf{Source Type} & \textbf{Crawled URLs} & \textbf{Valid Content} & \textbf{Avg Length (words)} \\
         \midrule
         Mainstream News      & $\approx 9,400$       & 4,603 (48.6\%)         & $> 500$                     \\
-        Social Media         & $\approx 3,000$       & 2,981 (99.4\%)         & $< 50$                      \\
+        Social Media         & $\approx 3,000$       & 2,961 ($\approx 98.7\%$) & $< 50$                      \\
         \bottomrule
     \end{tabular}
 \end{table}
