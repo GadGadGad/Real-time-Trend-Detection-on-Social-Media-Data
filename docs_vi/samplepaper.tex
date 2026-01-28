@@ -1,0 +1,839 @@
+% This is samplepaper.tex, a sample chapter demonstrating the
+% LLNCS macro package for Springer Computer Science proceedings;
+% Version 2.21 of 2022/01/12
+%
+\documentclass[runningheads]{llncs}
+%
+\usepackage[utf8]{inputenc}
+\usepackage[T1,T5]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+%
+\begin{document}
+%
+\title{Hệ thống Phát hiện Sự kiện Thời gian Thực: Tích hợp Luồng Mạng Xã hội và Tin tức Chính thống với Trí tuệ LLM}
+\titlerunning{Hệ thống Phát hiện Sự kiện Thời gian Thực}
+%
+%\titlerunning{Abbreviated paper title}
+% If the paper title is too long for the running head, you can set
+% an abbreviated paper title here
+%
+\author{Tăng Nhất\inst{1} \and
+    Lê Minh Nhựt\inst{1} \and
+    Đỗ Trọng Hợp\inst{2} \and
+    Nguyễn Ngọc Quý\inst{2}}
+%
+
+% First names are abbreviated in the running head.
+% If there are more than two authors, 'et al.' is used.
+%
+\institute{Khoa Khoa học Máy tính\\
+    Trường Đại học Thông tin, VNU-HCM\\
+    \email{\{22521035, 22521060\}@gm.uit.edu.vn} \and
+    Khoa Khoa học Máy tính\\
+    Trường Đại học Thông tin, VNU-HCM\\
+    \email{\{hopdt, quynn\}@uit.edu.vn}}
+%
+\maketitle              % typeset the header of the contribution
+%
+\begin{abstract}
+    Trong thời đại quá tải thông tin, việc phát hiện và hiểu nhanh các sự kiện mới nổi từ luồng mạng xã hội là vô cùng quan trọng cho an toàn công cộng và thông tin thị trường.
+    Tuy nhiên, các hệ thống thực tế phải đối mặt với hai thách thức cốt lõi: (i) \textit{sự mơ hồ ngữ nghĩa} trong các bài đăng ngắn, nhiễu, và (ii) \textit{khoảng trống đánh giá} do thiếu nhãn trong dữ liệu luồng.
+    Chúng tôi trình bày một \textbf{hệ thống phát hiện sự kiện thời gian thực} được xây dựng trên chiến lược \textbf{Phân cụm Phân cấp Nhận thức Mạng xã hội (SAHC)} mới lạ và \textbf{kiến trúc hai đường} kết hợp Spark/Kafka cho phát hiện độ trễ thấp với các worker LLM bất đồng bộ cho tinh chỉnh ngữ nghĩa sâu.
+    Trên tập con \textbf{Mini-Ground Truth} (N=300 bài đăng được gán nhãn thủ công), pipeline lai đầy đủ đạt \textbf{NMI = 0.598}.
+    Trên bộ dữ liệu đầy đủ gồm 7{,}605 mục, chúng tôi báo cáo các chỉ số phân cụm nội tại (Silhouette, Davies--Bouldin, tỷ lệ nhiễu) và giao thức \textbf{LLM-as-a-Judge} để đánh giá tính nhất quán ngữ nghĩa ở quy mô lớn.
+
+    \keywords{Phát hiện Sự kiện \and Khai phá Mạng Xã hội \and Xử lý Luồng Thời gian Thực \and Mô hình Ngôn ngữ Lớn \and Phân cụm Lai.}
+\end{abstract}
+
+%
+%
+%
+\section{Giới thiệu}
+Các nền tảng mạng xã hội đã trở thành nguồn thông tin thời gian thực chính. Tuy nhiên, việc xử lý dữ liệu này đặt ra những thách thức độc đáo: (1) \textbf{Tỷ lệ Nhiễu Cao:} Tin tức có giá trị thường bị chìm trong spam và các cuộc trò chuyện hàng ngày (ví dụ: "Kết quả xổ số", "Thời tiết"); (2) \textbf{Sự Mơ hồ Ngữ nghĩa:} Các cộng đồng khác nhau sử dụng từ vựng hoàn toàn khác nhau để mô tả cùng một sự kiện (ví dụ: "Bão Yagi" so với "Bão số 3"); và (3) \textbf{Thiếu Xác minh:} Tin đồn lan truyền nhanh hơn việc đính chính thực tế.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/dashboard.png}
+    \caption{Bảng điều khiển Hệ thống: Trực quan hóa thời gian thực các sự kiện xu hướng và cảm xúc của chúng.} \label{fig:dashboard}
+\end{figure}
+
+Như minh họa trong Hình \ref{fig:dashboard}, bảng điều khiển hệ thống tích hợp ba chế độ xem chính: (1) Danh sách xếp hạng thời gian thực các sự kiện xu hướng; (2) Biểu đồ chuỗi thời gian theo dõi sự tiến hóa cảm xúc; và (3) Bản đồ địa lý làm nổi bật các điểm nóng sự kiện. Giao diện này cho phép các bên liên quan nhanh chóng nắm bắt "Cái gì, Ở đâu và Như thế nào" của các vấn đề mới nổi.
+
+\noindent\textbf{Khoảng trống Nghiên cứu.}
+Các pipeline phát hiện sự kiện hiện có thường tối ưu hóa cho (i) phát hiện luồng độ trễ thấp sử dụng phân cụm thống kê hoặc dựa trên embedding nhẹ, hoặc (ii) tính nhất quán ngữ nghĩa cao và khả năng diễn giải sử dụng suy luận neural/LLM nặng hơn.
+Tuy nhiên, các triển khai thực tế đòi hỏi \emph{cả ba} đồng thời: \textbf{(a) độ trễ thời gian thực}, \textbf{(b) nhóm sự kiện mạch lạc với văn bản ngắn nhiễu}, và \textbf{(c) đánh giá có khả năng mở rộng} khi nhãn ground-truth khan hiếm trong luồng.
+Điều này tạo ra khoảng cách giữa \emph{ràng buộc thời gian thực cấp hệ thống} và \emph{sự chặt chẽ ngữ nghĩa/đánh giá}.
+
+\noindent\textbf{Câu hỏi Nghiên cứu.}
+Chúng tôi nghiên cứu các câu hỏi sau:
+\begin{itemize}
+    \item \textbf{RQ1:} Làm thế nào chúng ta có thể phát hiện các sự kiện mới nổi từ luồng mạng xã hội nhiễu với ràng buộc độ trễ nghiêm ngặt ($<10$s) trong khi giảm thiểu sự phân mảnh và nhiễu?
+    \item \textbf{RQ2:} Làm thế nào chúng ta có thể cải thiện tính nhất quán ngữ nghĩa và khả năng diễn giải sự kiện mà không chặn pipeline luồng?
+    \item \textbf{RQ3:} Làm thế nào chúng ta có thể đánh giá chất lượng phân cụm ở quy mô khi nhãn người đầy đủ không có sẵn cho dữ liệu luồng?
+\end{itemize}
+
+Để trả lời các câu hỏi này, chúng tôi đề xuất một \textbf{Dual-Path Architecture} tách biệt phát hiện độ trễ thấp khỏi tinh chỉnh ngữ nghĩa.
+Trên Fast Path, chúng tôi thực hiện gắn kết và khám phá luồng thông qua chiến lược \textbf{Phân cụm Phân cấp Nhận thức Mạng xã hội (SAHC)} để giảm nhiễu và phân mảnh quá mức.
+Trên Slow Path, các worker LLM bất đồng bộ tạo các tóm tắt cấu trúc 5W1H và hỗ trợ kiểm soát chất lượng ngữ nghĩa.
+Để lấp khoảng trống đánh giá, chúng tôi kết hợp giao thức \textbf{Mini-Ground Truth} (nhãn thủ công trên tập con nhỏ) với quy trình \textbf{LLM-as-a-Judge} để đánh giá tính nhất quán ngữ nghĩa ở quy mô.
+
+Các đóng góp cụ thể của chúng tôi bao gồm:
+\begin{enumerate}
+    \item Một \textbf{Dual-Path Architecture} cân bằng độ trễ < 10s cho phát hiện và suy luận LLM sâu cho insight.
+    \item Một thuật toán \textbf{Phân cụm Phân cấp Nhận thức Mạng xã hội (SAHC)} sử dụng neo tin tức để giảm nhiễu khoảng ~50\%.
+    \item Một đánh giá chặt chẽ sử dụng cả bộ dữ liệu \textbf{Mini-Ground Truth} (N=300) và các chỉ số \textbf{LLM-as-a-Judge}.
+\end{enumerate}
+
+\section{Công trình Liên quan}
+Phát hiện sự kiện từ mạng xã hội đã phát triển đáng kể trong thập kỷ qua, tiến triển từ các phương pháp thống kê đến các phương pháp neural và, gần đây nhất, đến các hệ thống được tăng cường bởi Mô hình Ngôn ngữ Lớn (LLM).
+Chúng tôi tổ chức tài liệu liên quan thành bốn loại: (1) các phương pháp thống kê truyền thống, (2) các phương pháp neural và dựa trên embedding, (3) các phương pháp LLM và Tạo sinh Tăng cường Truy xuất (RAG), và (4) các kiến trúc luồng thời gian thực.
+Bảng \ref{tab:related_work} cung cấp tóm tắt so sánh các phương pháp đại diện.
+
+\subsection{Các Phương pháp Thống kê Truyền thống}
+Các hệ thống phát hiện sự kiện ban đầu phụ thuộc nhiều vào phân tích tần suất từ và mô hình hóa chủ đề.
+Các phương pháp \textbf{TF-IDF và BM25} \cite{ref_bm25} xác định các từ khóa bùng nổ lệch khỏi mô hình tần suất bình thường, cho phép phát hiện nhanh các chủ đề xu hướng.
+\textbf{Latent Dirichlet Allocation (LDA)} \cite{ref_lda} và các biến thể trực tuyến của nó mô hình hóa tài liệu như hỗn hợp các chủ đề ẩn, cho phép khám phá không giám sát các chủ đề sự kiện.
+\textbf{EDCoW} \cite{ref_edcow} giới thiệu xử lý tín hiệu dựa trên wavelet để phát hiện các từ khóa ``bùng nổ'' trong luồng Twitter, sử dụng đồ thị đồng xuất hiện để phân cụm các thuật ngữ liên quan thành sự kiện.
+
+\textbf{Điểm mạnh:} Các phương pháp này hiệu quả về tính toán và có thể diễn giải, làm cho chúng phù hợp với các kịch bản thông lượng cao.
+\textbf{Hạn chế:} Chúng gặp khó khăn với các văn bản mạng xã hội ngắn, nhiễu nơi sự đồng xuất hiện từ thưa thớt, và chúng không thể nắm bắt sự tương đồng ngữ nghĩa giữa các biểu thức khác nhau về từ vựng (ví dụ: ``Bão Yagi'' so với ``Bão số 3'').
+
+\subsection{Các Phương pháp Neural và Dựa trên Embedding}
+Sự ra đời của học sâu cho phép biểu diễn ngữ nghĩa của văn bản, cải thiện đáng kể chất lượng phát hiện sự kiện.
+\textbf{BERT} \cite{ref_bert} và các biến thể của nó cung cấp nhúng từ ngữ cảnh hóa nắm bắt ý nghĩa tinh tế.
+\textbf{Sentence-BERT (SBERT)} \cite{ref_sbert} thay đổi BERT cho tính toán tương đồng cấp câu hiệu quả sử dụng mạng Siamese, cho phép tìm kiếm lân cận nhanh trong không gian embedding.
+\textbf{BERTopic} \cite{ref_bertopic} kết hợp embeddings transformer với phân cụm (HDBSCAN) và TF-IDF dựa trên lớp để tạo biểu diễn chủ đề mạch lạc.
+
+Các thuật toán phân cụm tạo thành xương sống của nhiều hệ thống phát hiện sự kiện neural.
+\textbf{K-Means} \cite{ref_kmeans} phân chia dữ liệu thành $k$ cụm cầu nhưng đòi hỏi số cụm được xác định trước và không thể xử lý nhiễu.
+\textbf{DBSCAN} \cite{ref_dbscan} xác định các cụm hình dạng tùy ý dựa trên mật độ và gán nhãn rõ ràng các điểm nhiễu, nhưng sử dụng ngưỡng mật độ toàn cục thất bại khi mật độ cụm thay đổi.
+\textbf{HDBSCAN} \cite{ref_hdbscan} mở rộng DBSCAN với ước lượng mật độ phân cấp, tự động xác định các cụm có mật độ khác nhau trong khi cô lập nhiễu---làm cho nó đặc biệt phù hợp với dữ liệu mạng xã hội nơi các cụm sự kiện thể hiện mức độ tương tác đa dạng.
+
+\textbf{Điểm mạnh:} Các phương pháp dựa trên embedding nắm bắt các mối quan hệ ngữ nghĩa và xử lý biến đổi từ vựng hiệu quả.
+\textbf{Hạn chế:} Các embeddings chiều cao gây ra chi phí tính toán đáng kể, và suy luận thời gian thực vẫn còn là thách thức ở quy mô. Ngoài ra, các phương pháp này thường đòi hỏi điều chỉnh siêu tham số cẩn thận (ví dụ: ngưỡng cụm) cho từng miền.
+
+\subsection{LLM và Tạo sinh Tăng cường Truy xuất}
+Các Mô hình Ngôn ngữ Lớn gần đây đã chuyển đổi các nhiệm vụ NLP thông qua khả năng suy luận nổi bật \cite{ref_llm_reasoning}.
+\textbf{GPT-4, Gemini và Claude} thể hiện hiệu suất zero-shot mạnh mẽ trên các nhiệm vụ phân loại, tóm tắt và trích xuất thông tin mà không cần tinh chỉnh riêng cho nhiệm vụ.
+Tuy nhiên, LLMs gặp phải vấn đề ``ảo giác''---tạo nội dung có vẻ hợp lý nhưng không chính xác về thực tế---đặc biệt khi hoạt động mà không có ngữ cảnh nền tảng.
+
+\textbf{Tạo sinh Tăng cường Truy xuất (RAG)} \cite{ref_rag} giải quyết hạn chế này bằng cách điều kiện hóa câu trả lời LLM trên các tài liệu liên quan được truy xuất.
+Trong ngữ cảnh phát hiện sự kiện, RAG cho phép căn cứ tóm tắt LLM trên các điểm dữ liệu xã hội đã được xác minh, cải thiện độ chính xác thực tế.
+Một số công trình gần đây đã khám phá trích xuất và phân loại sự kiện dựa trên LLM, mặc dù hầu hết tập trung vào xử lý theo lô ngoại tuyến thay vì luồng thời gian thực.
+
+\textbf{Điểm mạnh:} LLMs cung cấp hiểu biết ngữ nghĩa vượt trội và có thể tạo các tóm tắt sự kiện có thể diễn giải với trích xuất 5W1H cấu trúc (Ai, Cái gì, Khi nào, Ở đâu, Tại sao, Như thế nào).
+\textbf{Hạn chế:} Suy luận LLM tốn kém tính toán (thường chậm hơn 100-1000$\times$ so với phân loại dựa trên embedding), làm cho việc tích hợp trực tiếp vào các pipeline luồng độ trễ thấp không khả thi.
+
+\subsection{Các Kiến trúc Luồng Thời gian Thực}
+Phát hiện sự kiện thời gian thực đòi hỏi các kiến trúc chuyên biệt cân bằng thông lượng, độ trễ và độ chính xác.
+\textbf{Sakaki và cộng sự} \cite{ref_twitter_earthquake} tiên phong trong phát hiện động đất thời gian thực từ Twitter sử dụng bộ lọc Kalman và bộ lọc hạt để theo dõi sự lan truyền sự kiện.
+\textbf{TwitterNews+} \cite{ref_streaming_survey} đề xuất một framework kết hợp phân cụm tăng dần với nhận dạng thực thể được đặt tên cho phát hiện sự kiện tin tức từ luồng Twitter.
+
+Các hệ thống luồng hiện đại thường sử dụng \textbf{Kiến trúc Lambda} (lớp batch + luồng) hoặc \textbf{Kiến trúc Kappa} đơn giản hơn (chỉ luồng), sử dụng các message broker như Apache Kafka cho thu nhập chống lỗi và các bộ xử lý luồng như Spark Streaming hoặc Flink cho tính toán thời gian thực.
+
+\textbf{Điểm mạnh:} Các kiến trúc này đạt độ trễ dưới giây và khả năng mở rộng theo chiều ngang.
+\textbf{Hạn chế:} Hầu hết các phương pháp luồng hy sinh chiều sâu ngữ nghĩa để đổi lấy tốc độ, sử dụng các đặc trưng nhẹ (từ khóa, hashtag) thay vì hiểu biết ngữ nghĩa đầy đủ.
+
+\subsection{Khoảng trống Nghiên cứu và Đóng góp của Chúng tôi}
+Như tóm tắt trong Bảng \ref{tab:related_work}, các phương pháp hiện có thường tối ưu hóa cho \emph{hoặc} phát hiện luồng độ trễ thấp \emph{hoặc} tính nhất quán ngữ nghĩa cao với suy luận LLM---nhưng các triển khai thực tế đòi hỏi \textbf{cả hai} đồng thời.
+\textbf{Dual-Path Architecture} của chúng tôi giải quyết khoảng trống này bằng cách tách rời phân cụm nhanh (SAHC trên Fast Path) khỏi làm giàu ngữ nghĩa sâu (LLM trên Slow Path), đạt độ trễ thời gian thực trong khi duy trì khả năng diễn giải sự kiện.
+Hơn nữa, chúng tôi giới thiệu giao thức \textbf{LLM-as-a-Judge} để giải quyết khoảng trống đánh giá khi nhãn ground-truth khan hiếm trong các kịch bản luồng.
+
+\begin{table}
+    \caption{So sánh các Phương pháp Phát hiện Sự kiện}\label{tab:related_work}
+    \centering
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l c c c c c}
+            \toprule
+            \textbf{Approach}                        & \textbf{Semantic}      & \textbf{Real-time}  & \textbf{Noise}      & \textbf{Interpretable} & \textbf{Scalable}   \\
+                                                     & \textbf{Understanding} & \textbf{Capable}    & \textbf{Handling}   & \textbf{Output}        &                     \\
+            \midrule
+            TF-IDF / BM25 \cite{ref_bm25}            & Low                    & \checkmark          & Limited             & --                     & \checkmark          \\
+            LDA \cite{ref_lda}                       & Medium                 & --                  & Limited             & \checkmark             & \checkmark          \\
+            EDCoW \cite{ref_edcow}                   & Low                    & \checkmark          & Limited             & --                     & \checkmark          \\
+            BERT + Clustering \cite{ref_bert}        & High                   & --                  & Medium              & --                     & --                  \\
+            BERTopic \cite{ref_bertopic}             & High                   & --                  & \checkmark          & \checkmark             & --                  \\
+            TwitterNews+ \cite{ref_streaming_survey} & Medium                 & \checkmark          & Medium              & --                     & \checkmark          \\
+            \midrule
+            \textbf{Ours (SAHC + LLM)}               & \textbf{High}          & \textbf{\checkmark} & \textbf{\checkmark} & \textbf{\checkmark}    & \textbf{\checkmark} \\
+            \bottomrule
+        \end{tabular}%
+    }
+\end{table}
+
+\section{Kiến thức Nền tảng}
+
+\subsection{Các Mô hình Ngôn ngữ Lớn và Tạo sinh Tăng cường Truy xuất}
+Large Language Models (LLMs) such as GPT-4 and Gemini have revolutionized Natural Language Processing (NLP) by demonstrating emergent reasoning capabilities. Built upon the Transformer architecture \cite{ref_bert}, these models utilize self-attention mechanisms to capture long-range dependencies in textual data.
+\begin{equation}
+    Attention(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\end{equation}
+Despite their prowess, LLMs suffer from "hallucinations"—generating plausible but factually incorrect assertions. To mitigate this in domain-specific applications, Retrieval-Augmented Generation (RAG) is employed. RAG enhances the generative process by conditioning the LLM on retrieved relevant documents $D = \{d_1, ..., d_k\}$ before generating a response $y$:
+\begin{equation}
+    P(y|x) = \sum_{z \in D} P(z|x)P(y|x,z)
+\end{equation}
+In our system, we adapt this paradigm by treating "Clusters" as the retrieved context $z$, grounding the LLM's summarization in verified social data points.
+
+\subsection{Các Kiến trúc Luồng Thời gian Thực}
+Modern event detection requires handling data with high velocity and volume. The \textbf{Kappa Architecture} simplifies the traditional Lambda Architecture by treating everything as a stream, utilizing a robust log-based message broker like Apache Kafka.
+Kafka partitions data across distributed brokers, ensuring fault tolerance and high throughput. Consumers read data from these partitions using offsets $O$, maintaining exactly-once processing guarantees:
+\begin{equation}
+    \text{Lag}(t) = \text{Offset}_{produce}(t) - \text{Offset}_{consume}(t)
+\end{equation}
+For processing, \textbf{Spark Structured Streaming} treats live data streams as an unbounded input table. It processes textual data in micro-batches (e.g., 200ms intervals), enabling the application of batch-like operations (such as aggregations and joins) on streaming data with minimal latency overhead.
+
+\subsection{Phân cụm Dựa trên Mật độ (HDBSCAN)}
+Unlike centroid-based methods (K-Means) which assume spherical clusters, Hierarchical Density-Based Spatial Clustering of Applications with Noise (HDBSCAN) \cite{ref_hdbscan} identifies clusters of varying densities and shapes.
+HDBSCAN relies on a transformed distance metric to separate sparse noise from dense clusters. The \textbf{Core Distance} of a point $p$, denoted as $d_{core}(p)$, is defined as the distance to its $k$-th nearest neighbor. To ensure potential clusters are robust, the \textbf{Mutual Reachability Distance} between points $p$ and $q$ is formalized as:
+\begin{equation}
+    d_{mreach}(p, q) = \max \{ d_{core}(p), d_{core}(q), d(p, q) \}
+\end{equation}
+This metric effectively "pushes" sparse points away from each other. A Minimum Spanning Tree (MST) is then constructed using $d_{mreach}$ as edge weights. By iteratively removing edges with the highest weight, HDBSCAN builds a hierarchy of connected components, extracting stable clusters that persist over a wide range of density thresholds. This property is crucial for social media data, where event clusters ("Viral Trends") typically exhibit much higher density than background noise ("Daily Chatter").
+
+\subsection{Phân loại Sự kiện và Hệ thống Taxonomy}
+To ensure actionable insights, we move beyond binary sentiment to a usage-based taxonomy (T1-T7), categorizing events by their value to specific stakeholders:
+
+\begin{itemize}
+    \item \textbf{T1. Crisis \& Public Risk} (Target: Emergency Services)\\
+          \emph{Core Question: Is immediate intervention required?} Covers accidents, disasters, and riots.
+
+    \item \textbf{T2. Policy Signal} (Target: Government)\\
+          \emph{Core Question: How is the public reacting to new policies?} Covers new laws and official statements.
+
+    \item \textbf{T3. Reputation Risk} (Target: PR Agencies)\\
+          \emph{Core Question: Is public trust being damaged?} Covers scandals, boycotts, and controversies.
+
+    \item \textbf{T4. Market Opportunity} (Target: Marketing Teams)\\
+          \emph{Core Question: Is there monetizable demand?} Covers viral products and emerging lifestyle trends.
+
+    \item \textbf{T5. Cultural Trend} (Target: Content Creators)\\
+          \emph{Core Question: Is this trend worth riding for attention?} Covers memes and entertainment events.
+
+    \item \textbf{T6. Operational Pain Point} (Target: Service Operators)\\
+          \emph{Core Question: What are people complaining about?} Covers traffic, outages, and service failures.
+
+    \item \textbf{T7. Routine/Noise} (Target: System Filter)\\
+          \emph{Core Question: Should this be filtered?} Covers daily weather, routine sports, and lottery results.
+\end{itemize}
+
+\section{Kiến trúc Hệ thống Đề xuất}
+Hệ thống tuân theo \textbf{kiến trúc luồng kiểu Kappa} được tách thành hai đường xử lý để giải quyết sự đánh đổi "Độ trễ vs. Độ chính xác".
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/full_pipeline.png}
+    \caption{Kiến trúc Hệ thống Đề xuất: Xử lý Hai Đường (Fast Path vs. Slow Path).} \label{fig:pipeline}
+\end{figure}
+
+Hình \ref{fig:pipeline} minh họa luồng dữ liệu toàn trình. Dữ liệu thô được thu nhập qua Kafka, xử lý theo micro-batch bởi Spark (Fast Path), và làm giàu bất đồng bộ bởi Gemini Pro (Slow Path) trước khi được phục vụ đến UI. Sự tách biệt này đảm bảo rằng thời gian suy luận nặng của LLMs không chặn pipeline thu nhập thông lượng cao.
+
+\subsection{Quy trình Hệ thống}
+Vòng đời của một bài đăng mạng xã hội trong hệ thống của chúng tôi tuân theo năm giai đoạn:
+\begin{enumerate}
+    \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
+    \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
+    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost).
+          We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}.
+          In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
+          Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+
+    \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
+    \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
+\end{enumerate}
+
+\noindent
+\begin{center}
+    \setlength{\fboxsep}{10pt}
+    \fcolorbox{black}{gray!10}{%
+        \begin{minipage}{0.95\textwidth}
+            \textbf{\large End-to-End Processing Trace: "Typhoon Yagi Alert"}
+            \vspace{0.2cm}
+            \par
+            To illustrate the pipeline, consider a single social post lifecycle:
+            \begin{enumerate}
+                \item \textbf{Input:} Crawler fetches raw text "Bão số 3 giật cấp 12..." from fanpage \textit{ThongTinChinhPhu}.
+                \item \textbf{Ingestion:} Kafka producer serializes it to JSON and pushes to topic \texttt{posts\_stream\_v1} (Partition 0).
+                \item \textbf{Filtration:} Spark Streaming consumes the message. The Heuristic Guard permits it, and Smart Query expands context to "Typhoon Yagi tracking".
+                \item \textbf{Clustering:} The Onnx Worker maps it to vector $\mathbf{v}$. SAHC identifies the best-matching News Anchor "Typhoon Yagi" (Hybrid Score $> \lambda_{match}$) and attaches the post.
+                \item \textbf{Intelligence:} The cluster grows beyond the significance threshold. An async worker triggers Gemini Pro, which returns a structured summary: "Typhoon Yagi approaching Quang Ninh."
+                \item \textbf{Output:} The Dashboard receives the specific update and displays a "Public Risk" alert on the live map.
+            \end{enumerate}
+        \end{minipage}%
+    }
+\end{center}
+
+\subsection{Fast Path vs. Slow Path Implementation}
+\begin{itemize}
+    \item \textbf{Ingestion (Kafka \& Zookeeper):}
+          \begin{itemize}
+              \item \textbf{Producer:} Serializes raw posts into JSON and publishes to the \texttt{posts\_stream\_v1} topic, handling retries and exponential backoff to ensure at-least-once delivery.
+              \item \textbf{Broker:} Kafka acts as the distributed, fault-tolerant log storage, while \textbf{ZooKeeper} manages broker metadata, leader election, and partition assignment.
+          \end{itemize}
+
+    \item \textbf{Processing (Spark Structured Streaming):}
+          \begin{itemize}
+              \item Consumes events from Kafka with \textbf{exactly-once semantics} using checkpointing.
+              \item Parses raw JSON payloads into Spark DataFrames for efficient columnar processing.
+          \end{itemize}
+
+    \item \textbf{Inference (Pandas UDF \& ONNX):}
+          \begin{itemize}
+              \item Uses PySpark’s \textbf{Pandas UDF} interface to vectorize text in batches, avoiding row-by-row Python serialization overhead.
+              \item Invokes the \textbf{ONNX Runtime} engine on Worker nodes to compute embeddings (SBERT) for each micro-batch; \textbf{HDBSCAN} is triggered only on the \textit{unmatched/residual} set to discover emerging \textbf{Social-only} events.
+          \end{itemize}
+
+    \item \textbf{Slow Path Intelligence (Async Workers):}
+          \begin{itemize}
+              \item Designed to decouple heavy operations from the ingestion stream. Workers poll confirmed clusters and:
+                    \begin{enumerate}
+                        \item Query \textbf{Google Trends API} to fetch search volume (G-score), using the filter prompt in Appendix Table \ref{tab:prompt_trends}. This signal is treated as \textbf{confirmatory/lagging}: it typically accumulates after an event is already visible on social streams, and is therefore used to validate and prioritize clusters rather than to trigger initial detection.
+                        \item Employ a \textbf{Context-Aware Prompting} strategy with Gemini Pro to synthesize coherent summaries.
+                    \end{enumerate}
+          \end{itemize}
+\end{itemize}
+
+\subsection{Latency Definition}
+We distinguish between two types of latency in our system:
+\begin{itemize}
+    \item \textbf{Fast-Path Processing Latency:} measured from Kafka ingestion to cluster assignment within a Spark micro-batch.
+    \item \textbf{End-to-End Alert Latency:} measured from data ingestion to dashboard update.
+\end{itemize}
+
+In our experimental setup, the Fast Path achieves an average processing latency of \textbf{2.4 seconds}, while the end-to-end alert latency remains \textbf{below 10 seconds}, as the Slow Path LLM enrichment is executed asynchronously and does not block real-time event detection.
+
+\section{Phương pháp}
+
+\subsection{Formal Problem Definition}
+Let $\mathcal{S} = \{p_1, p_2, ..., p_n\}$ be a continuous stream of social media posts, where each post $p_t$ at time $t$ is a tuple $(u_t, \tau_t, \textbf{v}_t)$, representing the user, timestamp, and semantic embedding vector respectively.
+The goal of real-time event detection is to map this stream into a set of disjoint clusters $\mathcal{C} = \{C_1, C_2, ..., C_k\}$, where each cluster $C_i$ represents a real-world event.
+A valid event cluster $C_i$ must satisfy two conditions:
+\begin{enumerate}
+    \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
+    \item \textbf{Impact:} $U(C_i) \geq \delta_{min}$, where $U(C_i)$ is the number of \emph{distinct users} discussing the event:
+          \begin{equation}
+              U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
+          \end{equation}
+
+\end{enumerate}
+
+In practice, we use $\delta_{significant}$ as the operational impact threshold in the streaming system (typically $\delta_{significant}\ge \delta_{min}$) to decide when a cluster is promoted for enrichment and visualization.
+
+\subsection{Data Preprocessing and Normalization}
+
+To ensure high-quality input for the clustering engine, raw data from both paths undergoes specific preprocessing steps:
+
+\begin{itemize}
+    \item \textbf{Fast Path (Social Speed):} Given the high-throughput nature of social streams, we apply minimal, latency-optimized cleaning:
+          \begin{itemize}
+              \item \textbf{Heuristic Filtering:} We discard posts with length $<20$ characters (insufficient semantic context for embedding) or $>800$ characters (high likelihood of marketing spam or irrelevant boilerplate), and remove known "credit" patterns (e.g., "cre:", "via:") which do not contribute to event identity.
+              \item \textbf{Unicode Normalization:} Converting all text to NFC format and lowercasing to handle Vietnamese diacritics consistently.
+          \end{itemize}
+
+    \item \textbf{Slow Path (News Precision):} News data, used as high-confidence anchors, undergoes deep structural parsing:
+          \begin{itemize}
+              \item \textbf{Structural Extraction:} We use Regex to separate metadata (Author, Date, Location) from the body content, ensuring only the core narrative affects the centroid.
+              \item \textbf{Alias Injection (Thesaurus):} To bridge the vocabulary gap between formal news and informal social posts, we inject known aliases into news vectors (e.g., mapping "Typhoon No. 3" $\to$ "Typhoon Yagi").
+          \end{itemize}
+\end{itemize}
+
+\subsection{Social-Aware Hierarchical Clustering (SAHC)}
+
+Standard clustering (K-Means, DBSCAN) often fails on social data due to noise. SAHC operates in three phases:
+\begin{enumerate}
+    \item \textbf{Phase 1: News Anchoring.} We first cluster verified News articles to form "Anchor Centroids". These represent high-confidence events.
+    \item \textbf{Phase 2: Social Attachment.} Incoming social posts are mapped to these anchors using Cosine Similarity.
+    \item \textbf{Phase 3: Social Discovery.} Posts that do not match any anchor undergo a second pass of density-based clustering (HDBSCAN) to detect "Social-Only" trends (unreported by news).
+\end{enumerate}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/clustering_pipeline.png}
+    \caption{Social-Aware Hierarchical Clustering (SAHC) Workflow.} \label{fig:clustering}
+\end{figure}
+
+The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first establish "Anchor" centroids (Blue nodes). Incoming Social posts (Green nodes) are then attracted to these anchors based on semantic similarity. Residual noise is finally filtered or clustered into new events by HDBSCAN, effectively reducing spam.
+
+\begin{algorithm}
+    \caption{SAHC-A: Anchor-First Dual-Path Event Detection}
+    \begin{algorithmic}[1]
+        \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
+        \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
+
+        \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
+
+        \State \textbf{// Path 1: Anchor Matching (Fast Path)}
+        \For{each post $p \in B$}
+        \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+        \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
+        \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+        \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
+        \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
+        \If{$keyword\_score > 0.5$}
+        \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
+        \EndIf
+
+        \If{$score \ge \lambda_{match}$}
+        \State Add $p$ to Event $E_{a^*}$
+        \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+        \Else
+        \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+        \EndIf
+        \EndFor
+
+        \State \textbf{// Path 2: Social Discovery (Slow Path)}
+        \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
+        \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
+        \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
+        \For{each cluster $c \in \mathcal{C}_{new}$}
+        \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
+        \If{$U(c) \ge \delta_{significant}$}
+        \State Initialize new Event $E_{new}$ from $c$
+        \State Remove points in $c$ from $\mathcal{G}$
+        \EndIf
+        \EndFor
+
+        \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
+        \EndIf
+
+    \end{algorithmic}
+\end{algorithm}
+
+\textbf{Latency-Optimized Hybrid Matching:}
+To balance semantic understanding and exact entity matching under real-time constraints, we employ a weighted scoring mechanism with a conditional boost.
+Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. This preserves low latency while reducing false attachments.
+\begin{equation}
+    \label{eq:hybrid_real}
+    \text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
+\end{equation}
+where $w_v=0.7$ and $w_k=0.3$ are empirical weights, $\text{KW}(p,a)\in[0,1]$ is the keyword overlap ratio, and a fixed boost $\delta_{boost}=0.1$ is applied when overlap exceeds $\tau=0.5$. This design remains compatible with real-time constraints while reducing false attachments between lexically distinct events.
+
+\subsection{Trend Scoring Logic}
+To determine which events are "Trending", we calculate a Unified Trend Score ($T$) for each cluster based on three weighted signals:
+\begin{equation}
+    T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
+\end{equation}
+In our setting, social streams provide the earliest burst signals, while Google Trends typically peaks later. Therefore, $G$ is used primarily to confirm and prioritize candidate clusters already detected on the Fast Path.
+
+Where the components represent:
+\begin{itemize}
+    \item \textbf{G (Google Search Volume):} The normalized search interest score from Google Trends, serving as a \textbf{confirmatory (lagging) signal} of public attention.
+    \item \textbf{N (News Volume):} The count of distinct mainstream news clusters linked to this event.
+    \item \textbf{F (Facebook Engagement):} The weighted sum of interactions ($Likes + 2 \cdot Comments + 3 \cdot Shares$).
+\end{itemize}
+To handle the power-law distribution of social data, each component is normalized using a \textbf{Log-Min-Max} scale before weighting:
+\begin{equation}
+    S_{component} = 100 \cdot \frac{\log_{10}(1 + v)}{\log_{10}(1 + v_{max})}
+\end{equation}
+Where $v$ is the raw value and $v_{max}$ is an empirical ceiling ($G_{max}=10^6$, $N_{max}=10$, $F_{max}=2\cdot10^4$). Specifically for Facebook ($F$), interactions are weighted: $v_F = Likes + 2 \cdot Comments + 3 \cdot Shares$. This ensures that high-engagement events are categorized correctly even with low volume. A cluster is promoted to the dashboard only if $T > Threshold$.
+
+\section{Dữ liệu và Thiết lập Thực nghiệm}
+
+\subsection{Data Sources}
+Our system monitors two primary data streams, unified into a common schema for processing:
+\begin{itemize}
+    \item \textbf{Social Media (Facebook):} Collected from high-engagement Fanpages (e.g., Theanh28, ThongTinChinhPhu). Data fields include: \texttt{pageName}, \texttt{postId}, \texttt{time} (ISO-8601), \texttt{text} content, and engagement metrics (\texttt{likes}, \texttt{comments}, \texttt{shares}).
+    \item \textbf{Mainstream News:} Articles crawled from verified outlets (VnExpress, Tuoi Tre). Key fields: \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, and \texttt{PublishTime}.
+    \item \textbf{Google Trends:} Real-time search keywords acting as a \textbf{confirmatory/lagging signal} to validate and prioritize candidate clusters detected from social streams.
+\end{itemize}
+
+The experimental dataset consists of \textbf{7,605 unique items} collected from Dec 8 to Dec 22, 2025, including \textbf{4,644 crawled news articles} and \textbf{2,961 social media posts}.
+After content extraction, \textbf{4,603 news articles} contain valid body text and are used for anchoring and embedding. Here, \textbf{2,961} denotes the \emph{unique social posts used in experiments} after deduplication and basic validity checks (raw crawled volume is reported as an approximation).
+
+\subsection{Exploratory Data Analysis}
+Table \ref{tab:data_dist} presents the distribution of our experimental dataset. We observed a significant "Availability Gap": while we crawled over 9,400 news URLs, only \textbf{4,603 articles (48.6\%)} contained extractable body text, whereas \textbf{social media posts (2,961 items)} achieved \emph{near-complete} availability.
+Furthermore, there is a structural divergence: News articles average $>500$ words with formal grammar, while social posts average $<50$ words with frequent slang. This dichotomy necessitates our "Dual-Path" design, where the \textbf{Fast Path} handles the high-velocity, short-text social stream, and the \textbf{Slow Path} leverages LLMs to synthesize the deeper context found in news anchors.
+
+\begin{table}
+    \caption{Dataset Distribution and Availability}\label{tab:data_dist}
+    \centering
+    \begin{tabular}{l c c c}
+        \toprule
+        \textbf{Source Type} & \textbf{Crawled URLs} & \textbf{Valid Content}   & \textbf{Avg Length (words)} \\
+        \midrule
+        Mainstream News      & $\approx 9,400$       & 4,603 (48.6\%)           & $> 500$                     \\
+        Social Media         & $\approx 3,000$       & 2,961 ($\approx 98.7\%$) & $< 50$                      \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Deployment and Operational Environment}
+To ensure reproducibility and scalability, the system is containerized using \textbf{Docker Compose} with the following core services:
+\begin{itemize}
+    \item \textbf{Software Stack:} Apache Kafka 7.5.0, Apache Spark 3.5.0, PostgreSQL 15, MongoDB 6.0.
+    \item \textbf{Hardware:} Optimized for single-node deployment (8GB RAM, 4 vCPUs) or Kubernetes clustering.
+    \item \textbf{Inference:} ONNX Runtime acceleration on NVIDIA T4 GPUs.
+\end{itemize}
+
+\subsubsection{Deployment Benefits}
+The containerized microservices architecture offers three key advantages:
+\begin{enumerate}
+    \item \textbf{Scalability:} The decoupling of Ingestion (Kafka) and Processing (Spark/LLM) allows independent scaling. During high-traffic events (e.g., storms), we can horizontally add Spark Workers without reconfiguring the ingestion layer.
+    \item \textbf{Cost Efficiency:} By offloading heavy batch clustering to local commodity hardware (CPU) and only invoking the paid LLM API for verified clusters (0.01\% of volume), we reduce operational costs by approx. 400x compared to pure LLM-based approaches.
+    \item \textbf{Reproducibility:} The entire stack is defined in \texttt{docker-compose.yml}, ensuring that the "Demo" environment is identical to "Production", eliminating "it works on my machine" issues.
+\end{enumerate}
+
+\subsection{Dataset Construction Strategy}
+To train our specialized models without incurring high labeling costs, we employed a \textbf{Hybrid Labeling Strategy}:
+\begin{enumerate}
+    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs.
+          This reranker is used as an auxiliary matching component (verification / recovery) and as an offline benchmark module.
+    \item \textbf{Active Learning with LLM:} For Sentiment and Taxonomy classification, we used Gemini Pro to pseudo-label roughly 10k samples, then manually reviewed low-confidence scores. This yielded \textbf{4,630 samples for Sentiment} and \textbf{3,687 samples for Taxonomy} training.
+\end{enumerate}
+
+\begin{figure}[h]
+    \centering
+    \begin{verbatim}
+{"text": "Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng.", 
+ "label_sentiment": "Neutral", "label_taxonomy": "T1 - Crisis & Public Risk"}
+{"text": ["Bão số 15 Koto đang ở đâu?", "Áp thấp nhiệt đới mạnh lên thành bão."], 
+ "label_relevance": 1.0}
+\end{verbatim}
+    \caption{JSONL Training Data Examples for Classification and Reranking.} \label{fig:jsonl}
+\end{figure}
+
+\subsection{Model Selection and Fine-tuning}
+We fine-tuned specific models for Vietnamese to serve as the system's backbone. To ensure robustness, we constructed a \textbf{Stress Test Set} containing 20 hard samples per category, specifically targeting edge cases such as "Slang" (social media language), "Storm Synonyms" (ambiguous event naming), and "Domain Overlap". Table \ref{tab:training_config} details the specific training hyperparameters used, and Table \ref{tab:models} shows the final performance metrics on this rigorous test set.
+
+\begin{table}
+    \caption{Detailed Training Configuration and Hyperparameters}\label{tab:training_config}
+    \centering
+    \begin{tabular}{l l l l}
+        \toprule
+        \textbf{Model Target} & \textbf{Base Architecture} & \textbf{Dataset Size} & \textbf{Training Config}        \\
+        \midrule
+        Sentiment             & \texttt{uitnlp/visobert}   & 4,630 (3 classes)     & Epochs: 20, Batch: 32, LR: 2e-5 \\
+        Taxonomy              & \texttt{uitnlp/visobert}   & 3,687 (7 classes)     & Epochs: 20, Batch: 16, LR: 2e-5 \\
+        Reranker              & \texttt{ms-marco-MiniLM}   & 877 pairs (Gold)      & Contractive Loss, Epochs: 20    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/embedding_benchmark.png}
+    \caption{Benchmark results comparing Embedding Models across different edge cases.} \label{fig:benchmark}
+\end{figure}
+
+
+
+Fig. \ref{fig:benchmark} compares the stability (gap between positive/negative pairs) of 5 state-of-the-art models. We define the Stability Gap mathematically as:
+\begin{equation}
+    Gap = Sim(q, pos) - Sim(q, neg)
+\end{equation}
+\texttt{vietnamese-document-embedding} (blue bar) consistently maintains the largest margin across edge cases like "Storm Synonyms" and "Slang", validating its selection as our backbone model.
+
+Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved the best stability (Avg Gap 0.265). Table \ref{tab:embedding_benchmark} details the performance across specific linguistic challenges, defined as follows:
+
+\begin{itemize}
+    \item \textbf{Avg Gap:} The mean stability margin across all test cases.
+    \item \textbf{Storm:} Ability to group diverse storm names (e.g., "Typhoon Yagi", "Storm No.3").
+    \item \textbf{Domain:} Cross-domain retrieval (e.g., matching "Healthcare" query to "Hospital" posts).
+    \item \textbf{Category:} Distinguishing between event types (e.g., "Flood" vs. "Traffic Jam").
+    \item \textbf{Slang:} Handling Vietnamese teen-code and internet slang (e.g., "bão" vs "b4o").
+    \item \textbf{Abbrev:} Resolving common abbreviations (e.g., "HCM" $\rightarrow$ "Ho Chi Minh City").
+\end{itemize}
+
+\textbf{Analysis:} While \texttt{vn-sbert} excels at keyword-heavy tasks like "Storm" grouping (Gap: 0.355), it fails completely on "Slang" (-0.005), indicating it treats slang as noise. In contrast, \texttt{vn-doc-embedding} maintains robust performance on "Slang" (0.283) and "Abbrev" (0.419), making it the superior choice for processing raw social media text where informal language is prevalent.
+
+\begin{table}
+    \caption{Embedding Stability Gap Analysis (Metric: Cosine Distance Diff)}\label{tab:embedding_benchmark}
+    \centering
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l c c c c c c}
+            \toprule
+            \textbf{Model Identifier}                   & \textbf{Avg Gap} $\uparrow$ & \textbf{Storm} $\uparrow$ & \textbf{Domain} $\uparrow$ & \textbf{Category} $\uparrow$ & \textbf{Slang}  $\uparrow$ & \textbf{Abbrev}  $\uparrow$ \\
+            \midrule
+            \textbf{vn-doc-embedding*} \cite{ref_vndoc} & \textbf{0.265}              & 0.239                     & 0.224                      & \textbf{0.162}               & \textbf{0.283}             & \textbf{0.419}              \\
+            vn-bi-encoder                               & 0.193                       & 0.155                     & 0.213                      & 0.107                        & 0.108                      & 0.381                       \\
+            vn-sbert \cite{ref_visobert}                & 0.188                       & \textbf{0.355}            & 0.172                      & 0.033                        & -0.005                     & 0.386                       \\
+            bge-m3 \cite{ref_bge}                       & 0.160                       & -0.003                    & \textbf{0.269}             & 0.070                        & 0.192                      & 0.273                       \\
+            multilingual-e5 \cite{ref_e5}               & 0.058                       & 0.018                     & 0.088                      & 0.022                        & 0.073                      & 0.091                       \\
+            \bottomrule
+        \end{tabular}%
+    }
+\end{table}
+
+\begin{table}
+    \caption{Fine-tuned Model Performance}\label{tab:models}
+    \centering
+    \begin{tabular}{l l c c}
+        \toprule
+        \textbf{Model Task}      & \textbf{Class Type}     & \textbf{Accuracy} ($\uparrow$) & \textbf{Latency} ($\downarrow$) \\
+        \midrule
+        Sentiment Classifier     & 3 classes (Pos/Neg/Neu) & \textbf{93.5\%}                & 12ms                            \\
+        Bi-CrossEncoder Reranker & Relevance Scoring       & 91.0\%                         & 45ms                            \\
+        Taxonomy Classifier      & 7 classes (T1-T7)       & 89.2\%                         & 14ms                            \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Kết quả và Phân tích}
+
+\subsection{Clustering Algorithm Selection}
+We compared our SAHC approach (using HDBSCAN core) against baselines. HDBSCAN was chosen for its superior Noise handling and Balance.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/trend_tsne.png}
+    \caption{t-SNE Visualization of Event Clusters. Colors represent distinct events isolated by the algorithm.} \label{fig:tsne}
+\end{figure}
+
+The t-SNE projection in Fig. \ref{fig:tsne} demonstrates the effectiveness of our clustering. Distinct events (colored clusters) are well-separated in the semantic space, while noise points (gray) are scattered and effectively isolated by the algorithm.
+
+\begin{table}
+    \caption{Clustering Method Comparison}\label{tab:clustering_select}
+    \centering
+    \begin{tabular}{l c c c c c}
+        \toprule
+        \textbf{Method}             & \textbf{Clusters (k)} & \textbf{Noise Pts} & \textbf{Silh. Score} ($\uparrow$) & \textbf{DB Index} ($\downarrow$) & \textbf{Time} ($\downarrow$) \\
+        \midrule
+        K-Means                     & 253                   & 0                  & 0.024                             & 3.177                            & 8.45s                        \\
+        \textbf{HDBSCAN (Baseline)} & \textbf{460}          & 1,984              & 0.109                             & \textbf{2.094}                   & 16.00s                       \\
+        BERTopic                    & 223                   & 1,801              & 0.112                             & 2.363                            & 55.72s                       \\
+        \textbf{SAHC (Ours)}        & \textbf{315}          & \textbf{985}       & \textbf{0.135}                    & \textbf{1.951}                   & \textbf{18.4s}               \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Analysis:} As shown in Table \ref{tab:clustering_select}, \textbf{K-Means} proved unsuitable for social streaming data as it forces all noise into clusters. \textbf{Baseline HDBSCAN}, while correctly identifying noise, suffered from \textbf{over-fragmentation} (460 clusters) and excessive data rejection (1,984 noise points), often breaking single events into multiple micro-clusters.
+Our \textbf{SAHC} approach resolves this by using News Anchors to "bridge" these micro-clusters. This successfully condensed the space into \textbf{315 coherent events} and recovered $\approx 50\%$ of the valid data previously discarded as noise (Noise reduced to 985), significantly boosting the Silhouette Score to \textbf{0.135}.
+
+\subsection{Quantitative Evaluation (Mini-Ground Truth)}
+All label-based clustering metrics (NMI, Purity, BCubed-F1, Entropy) are computed exclusively on the Mini-Ground Truth subset (N=300), as the full dataset does not contain human-annotated event labels.
+Table \ref{tab:minigt} reports the performance of our \textbf{default SAHC setting}, while Table \ref{tab:ablation} further shows that the \textbf{full hybrid pipeline} (adding anchoring and LLM refinement) improves NMI from 0.54 to \textbf{0.5978}.
+
+\begin{table}
+    \caption{Performance on Mini-Ground Truth (N=300) -- Base SAHC Setting}\label{tab:minigt}
+    \centering
+    \begin{tabular}{l c l}
+        \toprule
+        \textbf{Metric}           & \textbf{Value} & \textbf{Interpretation}                   \\
+        \midrule
+        \textbf{NMI} ($\uparrow$) & \textbf{0.54}  & Good mutual information with human labels \\
+        Purity ($\uparrow$)       & 0.65           & High dominant class consistency           \\
+        BCubed-F1 ($\uparrow$)    & 0.35           & Balanced precision/recall for clustering  \\
+        Entropy ($\downarrow$)    & 4.85           & Lower entropy indicates purer clusters    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Metric Definitions:} To ensure a rigorous evaluation, we selected metrics that cover different aspects of clustering quality:
+\begin{itemize}
+    \item \textbf{Normalized Mutual Information (NMI):} Measures the alignment between cluster labels $Y$ and ground truth $C$:
+          \begin{equation}
+              NMI(Y, C) = \frac{2 \cdot I(Y; C)}{H(Y) + H(C)}
+          \end{equation}
+          Where $I$ is mutual information and $H$ is entropy.
+    \item \textbf{Purity:} Quantifies the dominance of the majority class in each cluster:
+          \begin{equation}
+              Purity(\Omega, C) = \frac{1}{N} \sum_k \max_j |\omega_k \cap c_j|
+          \end{equation}
+          Where $N$ is total data points, $\Omega = \{\omega_1, ..., \omega_k\}$ is the set of clusters, and $C = \{c_1, ..., c_j\}$ is the set of ground truth classes.
+    \item \textbf{Entropy:} Measures the homogeneity of a cluster (lower is better):
+          \begin{equation}
+              E(C) = - \sum_{k} \frac{n_k}{n} \log_2 \frac{n_k}{n}
+          \end{equation}
+          Where $n_k$ is the number of points in cluster $k$. A value close to 0 implies the cluster contains only a single class of events.
+    \item \textbf{BCubed-F1:} An element-wise metric that balances cluster homogeneity and completeness. It is the harmonic mean of:
+          \begin{itemize}
+              \item \textit{BCubed Precision ($P_{b^3}$):} Average per-item precision. For each item $x$, it calculates the fraction of items in $x$'s cluster $C(x)$ that share the same class label $L(x)$:
+                    \begin{equation}
+                        P_{b^3} = \frac{1}{N} \sum_{x \in X} \frac{|C(x) \cap L(x)|}{|C(x)|}
+                    \end{equation}
+              \item \textit{BCubed Recall ($R_{b^3}$):} Average per-item recall. For each item $x$, it calculates the fraction of items in $x$'s class $L(x)$ that are grouped into the same cluster $C(x)$:
+                    \begin{equation}
+                        R_{b^3} = \frac{1}{N} \sum_{x \in X} \frac{|C(x) \cap L(x)|}{|L(x)|}
+                    \end{equation}
+          \end{itemize}
+          \begin{equation}
+              F1_{b^3} = 2 \cdot \frac{P_{b^3} \cdot R_{b^3}}{P_{b^3} + R_{b^3}}
+          \end{equation}
+          Unlike purity, BCubed penalizes both over-merging (low Precision) and over-fragmentation (low Recall).
+    \item \textbf{Silhouette Score:} Quantifies how well an object fits its own cluster versus the nearest neighbor cluster:
+          \begin{equation}
+              S(i) = \frac{b(i) - a(i)}{\max\{a(i), b(i)\}}
+          \end{equation}
+          Where $a(i)$ is the mean intra-cluster distance and $b(i)$ is the mean nearest-cluster distance. $S \in [-1, 1]$, where values closer to 1 indicate dense, well-separated clusters.
+\end{itemize}
+
+\subsection{Batch Evaluation and Component Analysis}
+To quantify the contribution of each module, we conduct an ablation study on the \textbf{Mini-Ground Truth} subset (N=300), where label-based metrics (NMI, BCubed-F1, Entropy) are well-defined.
+Table \ref{tab:ablation} shows that progressively adding anchoring and LLM refinement improves clustering agreement with human labels.
+
+\begin{table}
+    \caption{Ablation Study on Mini-Ground Truth (N=300)}\label{tab:ablation}
+    \centering
+    \begin{tabular}{l c c c}
+        \toprule
+        \textbf{Configuration}        & \textbf{NMI} ($\uparrow$) & \textbf{BCubed-F1} ($\uparrow$) & \textbf{Entropy} ($\downarrow$) \\
+        \midrule
+        Baseline (HDBSCAN only)       & 0.53                      & 0.31                            & 4.91                            \\
+        \textbf{Full Hybrid Pipeline} & \textbf{0.5978}           & \textbf{0.3821}                 & \textbf{4.4178}                 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Qualitative Analysis: LLM-as-a-Judge}
+Traditional metrics like Silhouette Score often fail to capture semantic coherence. To address this, we implemented an \textbf{LLM-as-a-Judge} protocol, where a strong instruction-tuned model (Gemini Pro) acts as a proxy for human evaluation.
+\begin{itemize}
+    \item \textbf{Protocol:} The LLM is provided with a cluster's content and asked two questions: (1) "Does this cluster describe a single, distinct event?" (Topic Consistency, rated 0-1), and (2) Given two conflicting clusters, "Which one is more coherent?" (Pairwise Win-Rate).
+    \item \textbf{Prompting:} We employ a "Role-Play" strategy where the LLM acts as an expert news editor. The full prompt specification is provided in Appendix Table \ref{tab:prompt_eval}.
+\end{itemize}
+Using this framework, we evaluated 100 random clusters:
+\begin{itemize}
+    \item \textbf{Clear Events (e.g., "Middle East Conflict"):} Achieved \textbf{Consistency $\approx$ 1.0} and high Win-Rates.
+    \item \textbf{Mixed/Noisy Clusters:} Correctly flagged by the LLM with significantly lower scores (0.64), validating the metric's utility for automated quality assurance.
+\end{itemize}
+
+\subsection{Detailed Case Studies}
+To better understand the system's behavior, we analyze three specific cases from the test deployment:
+
+\begin{enumerate}
+    \item \textbf{Success Case: "Bondi Beach Shooting" (T1).}
+          \begin{itemize}
+              \item \emph{Input:} "{\fontencoding{T5}\selectfont Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng sau vụ tấn công bằng dao.}" (Bondi beach shooting kills 15 people after knife attack.)
+              \item \emph{Analysis:} Despite concurrent news about "Australia Travel", the SAHC algorithm correctly isolated this event due to strong lexical overlap with "Crisis" keywords. The LLM assigned it to \textbf{T1 (Public Risk)} with high confidence (>0.9).
+          \end{itemize}
+
+    \item \textbf{Success Case: "Middle East Conflict" (T1).}
+          \begin{itemize}
+              \item \emph{Metrics:} This cluster achieved a Semantic Consistency score of \textbf{0.96} and a Win-Rate of \textbf{0.67} against noise clusters.
+              \item \emph{Insight:} The high volume of verified news anchors allowed the system to absorb social media reactions effectively without "drifting" into unrelated topics.
+          \end{itemize}
+
+    \item \textbf{Failure Analysis: "Mixed International News".}
+          \begin{itemize}
+              \item \emph{Issue:} The algorithm merged "Vietnamese-origin lawsuit" with "Territorial conflict" into a single cluster.
+              \item \emph{Root Cause:} This likely occurred due to shared diplomatic terminology (e.g., "sovereignty", "international law") acting as spurious vector anchors, bridging two semantically distinct but lexically similar topics.
+              \item \emph{Detection:} Crucially, our \textbf{LLM-as-a-Judge protocol} flagged this error, assigning a low Consistency Score of \textbf{0.64} and a \textbf{0.00 Win-Rate}. This demonstrates the system's ability to automatically detect quality degradation for human review.
+          \end{itemize}
+\end{enumerate}
+
+\section{Thảo luận và Công việc Tương lai}
+
+\subsection{Challenges and Lessons Learned}
+Deploying the system revealed three major technical hurdles:
+\begin{enumerate}
+    \item \textbf{Semantic Ambiguity:} Different communities use disparate terms for the same event (e.g., "Bão Yagi" vs. "Cơn bão số 3"). We addressed this using \textbf{LLM-based Deduplication} (Appendix Table \ref{tab:prompt_dedup}) and the Hybrid Matching score.
+    \item \textbf{Evaluation Gap:} The lack of labeled ground truth in streaming data made validation difficult. We overcame this by establishing a \textbf{"Mini-Ground Truth"} protocol (manually labeling 300 samples) to standardize our NMI and F1 metrics.
+    \item \textbf{Latency vs. Accuracy Trade-off:} Calling LLMs for every cluster introduced a 2-3s latency. We mitigated this by separating the pipeline into a \textbf{Fast Path} (Spark) for instant detection and a \textbf{Slow Path} (Async Workers) for deep analysis. Furthermore, we implemented an \textbf{Incremental Update Rule}: the LLM is only re-triggered if a cluster grows by $>20\%$ in volume, significantly reducing redundant inference costs.
+\end{enumerate}
+
+
+\subsection{Ablation Study and Component Analysis}
+To quantify the contribution of each module, we conducted an ablation study by selectively disabling components (Table \ref{tab:ablation}).
+\begin{itemize}
+    \item \textbf{w/o News Anchors:} Removing anchoring noticeably degrades clustering agreement with human labels, confirming that social data alone is too noisy for coherent clustering.
+    \item \textbf{w/o Heuristic Guard:} Disabling the initial regex filter increased the cluster count by 300\%, but most were "spam" (lottery, weather), causing a 60\% drop in F1-score.
+    \item \textbf{w/o LLM Refinement:} Using raw centroids instead of LLM summaries resulted in vague event titles, reducing the interpretability score (human-eval) from 4.5 to 2.1.
+\end{itemize}
+
+
+
+\subsection{Future Roadmap}
+To scale the system for production use ($>10,000$ EPS), we plan to:
+\begin{itemize}
+    \item \textbf{Model Optimization:} Implement quantization (ONNX/Int8) for the Embedding models to reduce inference cost.
+    \item \textbf{Advanced Sentiment:} Upgrade from 3-class sentiment to fine-grained emotion detection (Anger, Fear, Hope).
+    \item \textbf{Feedback Loop:} Build a mechanism for users to correct cluster labels on the dashboard, feeding data back for Active Learning.
+    \item \textbf{Production Scaling:} Migrate from Spark Local to a full \textbf{Kubernetes/YARN Cluster}.
+\end{itemize}
+
+\section{Cân nhắc Đạo đức và Hạn chế}
+As an AI-integrated system analyzing public discourse, we strictly adhere to ethical data practices.
+\begin{itemize}
+    \item \textbf{Privacy Protection:} While the system processes public posts, we actively mask Personally Identifiable Information (PII) such as phone numbers and specific addresses before storage to prevent misuse. All social media data is aggregated at the cluster level, ensuring no individual user is targeted.
+    \item \textbf{Source Bias:} We acknowledge that our "Anchor" news sources (mainstream media) may carry inherent editorial biases. To mitigate this, the system is designed to capture "Social-Only" events (via HDBSCAN) that may be underreported by mainstream outlets.
+    \item \textbf{AI Safety \& Hallucination:} Large Language Models can occasionally generate plausible but incorrect summaries. We implement a "Human-in-the-Loop" protocol for all high-risk alerts (T1-Crisis), requiring manual verification before dissemination to emergency services.
+\end{itemize}
+
+\section{Kết luận}
+In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection on the Fast Path (2.4s processing latency under our test setup) while maintaining strong clustering quality on the labeled Mini-Ground Truth subset through News Anchoring (base SAHC: NMI = 0.54, Purity = 0.65; full hybrid pipeline: best NMI = 0.5978).
+On the full dataset, intrinsic metrics and LLM-as-a-Judge evaluation further confirm improved cluster coherence over baseline methods. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
+
+\begin{credits}
+    \subsubsection{\ackname} We would like to express our sincere gratitude to Dr. Do Trong Hop and Mr. Nguyen Ngoc Quy for their invaluable supervision, critical insights, and continuous support throughout the development of this research. Their expert guidance on system architecture and methodology was instrumental in the success of this project.
+\end{credits}
+
+\bibliographystyle{splncs04}
+\bibliography{refs}
+
+
+
+\appendix
+\section{Phụ lục: Kỹ thuật Prompt}
+To ensure reproducibility, we provide the specific prompts used in our system's core modules.
+
+\begin{table}[h]
+    \caption{LLM Refinement Prompt (Phase 6)}\label{tab:prompt_refinement}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Senior News Editor (Vietnamese).                                                                                                               \\
+        \textbf{Task:} Identify title and extract 5W1H structure.                                                                                                     \\
+        \textbf{Rules:}                                                                                                                                               \\
+        1. Title: Concise, factual Vietnamese title ($\le$ 15 words).                                                                                                 \\
+        2. Summary: Detailed 4-6 sentences including numbers, dates, locations.                                                                                       \\
+        3. 5W1H: Extract Who, What, Where, When, Why.                                                                                                                 \\
+        4. Advice: Provide actionable strategic advice for State and Business.                                                                                        \\
+        5. Classification: Assign one of 7 categories (T1-T7).                                                                                                        \\
+        \textbf{Output Format:} JSON dict containing \texttt{refined\_title}, \texttt{summary}, \texttt{category}, \texttt{advice\_state}, \texttt{advice\_business}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{LLM-as-a-Judge Prompt (Evaluation)}\label{tab:prompt_eval}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} News Clustering Quality Expert.                                                                                     \\
+        \textbf{Context:} Two unnamed clusters (A and B) consisting of sample posts.                                                       \\
+        \textbf{Task:} Compare and decide:                                                                                                 \\
+        1. Which cluster is more COHERENT (posts discuss the same topic)?                                                                  \\
+        2. Which cluster is CLEARER (less topic mixing)?                                                                                   \\
+        \textbf{Output Format:} JSON dict with \texttt{better\_cluster} ("A", "B", or "Tie"), \texttt{confidence}, and \texttt{reasoning}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Semantic Deduplication Prompt (Phase 4)}\label{tab:prompt_dedup}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Senior News Editor.                                                      \\
+        \textbf{Task:} Identify titles referring to the EXACT SAME single real-world event.     \\
+        \textbf{Criteria for Match (Must match all 3):}                                         \\
+        1. SAME Location (e.g., "Hanoi" vs "Hanoi" $\checkmark$).                               \\
+        2. SAME Timeframe (e.g., "Today" vs "Today" $\checkmark$).                              \\
+        3. SAME Core Entity (e.g., "Typhoon Yagi" vs "Storm No. 3" $\checkmark$).               \\
+        \textbf{Output Format:} JSON dict mapping \texttt{"Original Title": "Canonical Title"}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Google Trends Filter Prompt (Phase 6)}\label{tab:prompt_trends}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Google Trends Classifier (Vietnam).                                                          \\
+        \textbf{Task:} Filter NOISE and MERGE duplicates.                                                           \\
+        \textbf{Filter Rules (Remove):}                                                                             \\
+        1. Weather/Utilities (e.g., "weather today", "lottery results").                                            \\
+        2. Generic Broad Terms (e.g., "love", "news", "video").                                                     \\
+        \textbf{Merge Rules (Group):}                                                                               \\
+        - Combine variants of the same event (e.g., "AFF Cup schedule" + "AFF Cup standings" $\to$ "AFF Cup 2024"). \\
+        \textbf{Output Format:} JSON dict with \texttt{filtered} list and \texttt{merged} map.                      \\
+        \hline
+    \end{tabular}
+\end{table}
+\end{document}
