@@ -240,17 +240,10 @@ The lifecycle of a social post in our system follows five stages:
 \begin{enumerate}
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
-<<<<<<< HEAD
-    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (dense-sparse fusion of cosine similarity and normalized BM25). 
-    We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}. 
-    In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
-    Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
-=======
     \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost).
           We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}.
           In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
           Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
->>>>>>> refs/remotes/origin/main
 
     \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
@@ -378,19 +371,19 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
 
         \State \textbf{// Path 1: Anchor Matching (Fast Path)}
         \For{each post $p \in B$}
-            \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
-            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval}
-            \State $dense\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
-            \State $raw\_bm25 \leftarrow \text{BM25}(p,a^*)$
-            \State $sparse\_score \leftarrow raw\_bm25 \; / \; \max_{a' \in \mathcal{A}} \text{BM25}(p,a')$ \Comment{Max-normalization}
-            \State $score \leftarrow 0.7 \cdot dense\_sim + 0.3 \cdot sparse\_score$ \Comment{Linear Fusion}
-            
-            \If{$score \ge \lambda_{match}$}
-                \State Add $p$ to Event $E_{a^*}$
-                \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
-            \Else
-                \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
-            \EndIf
+        \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+        \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval}
+        \State $dense\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+        \State $raw\_bm25 \leftarrow \text{BM25}(p,a^*)$
+        \State $sparse\_score \leftarrow raw\_bm25 \; / \; \max_{a' \in \mathcal{A}} \text{BM25}(p,a')$ \Comment{Max-normalization}
+        \State $score \leftarrow 0.7 \cdot dense\_sim + 0.3 \cdot sparse\_score$ \Comment{Linear Fusion}
+
+        \If{$score \ge \lambda_{match}$}
+        \State Add $p$ to Event $E_{a^*}$
+        \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+        \Else
+        \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+        \EndIf
         \EndFor
 
         \State \textbf{// Path 2: Social Discovery (Slow Path)}
@@ -413,7 +406,7 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
 
 \textbf{Latency-Optimized Hybrid Matching:}
 To balance semantic understanding and exact entity matching under real-time constraints, we employ a lightweight dense--sparse fusion score that combines cosine similarity and BM25.
-Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. Concretely, it (i) rejects a top-1 attachment if the cross-encoder score falls below a threshold, and (ii) can ``save'' borderline matches after title refinement by re-checking the refined pair. This preserves low latency while reducing false attachments. 
+Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. Concretely, it (i) rejects a top-1 attachment if the cross-encoder score falls below a threshold, and (ii) can ``save'' borderline matches after title refinement by re-checking the refined pair. This preserves low latency while reducing false attachments.
 \begin{equation}
     \label{eq:hybrid_real}
     \text{Score}(p,a) = w_d \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_s \cdot \frac{\text{BM25}(p,a)}{\max_{a' \in \mathcal{A}} \text{BM25}(p,a')},
