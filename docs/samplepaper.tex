@@ -48,10 +48,10 @@
     We present a \textbf{real-time event detection system} built on a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy and a \textbf{dual-path architecture} that combines Spark/Kafka for low-latency detection with asynchronous LLM workers for deep semantic refinement.
     On a \textbf{Mini-Ground Truth} subset (N=300 manually labeled social posts), our full hybrid pipeline achieves \textbf{NMI = 0.598}.
     On the full dataset of 7{,}605 items, we report intrinsic clustering metrics (Silhouette, Davies--Bouldin, noise ratio) and an \textbf{LLM-as-a-Judge} protocol to assess semantic coherence at scale.
-    
+
     \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
 \end{abstract}
-    
+
 %
 %
 %
@@ -92,9 +92,81 @@ Our specific contributions include:
 \end{enumerate}
 
 \section{Related Work}
-Event detection has evolved from statistical methods to neural approaches. Early works relied on term-frequency analysis (TF-IDF) and topic modeling (LDA), which are fast but struggle with short, noisy social texts \cite{ref_bm25}.
-Recent approaches leverage Deep Learning, specifically Transformer-based embeddings (BERT) \cite{ref_bert}, to capture semantic meaning. However, these methods often incur high latency, making them unsuitable for real-time streaming \cite{ref_sbert}.
-Our work bridges this gap by using a density-based clustering algorithm (HDBSCAN) \cite{ref_hdbscan} on top of lightweight embeddings, achieving both speed and semantic depth.
+Event detection from social media has evolved significantly over the past decade, progressing from statistical methods to neural approaches and, most recently, to Large Language Model (LLM)-augmented systems.
+We organize the related literature into four categories: (1) traditional statistical methods, (2) neural and embedding-based approaches, (3) LLM and Retrieval-Augmented Generation (RAG) methods, and (4) real-time streaming architectures.
+Table \ref{tab:related_work} provides a comparative summary of representative approaches.
+
+\subsection{Traditional Statistical Methods}
+Early event detection systems relied heavily on term-frequency analysis and topic modeling.
+\textbf{TF-IDF and BM25} \cite{ref_bm25} approaches identify bursty keywords that deviate from normal frequency patterns, enabling rapid detection of trending topics.
+\textbf{Latent Dirichlet Allocation (LDA)} \cite{ref_lda} and its online variants model documents as mixtures of latent topics, allowing unsupervised discovery of event themes.
+\textbf{EDCoW} \cite{ref_edcow} introduced wavelet-based signal processing to detect ``bursty'' keywords in Twitter streams, using co-occurrence graphs to cluster related terms into events.
+
+\textbf{Strengths:} These methods are computationally efficient and interpretable, making them suitable for high-throughput scenarios.
+\textbf{Limitations:} They struggle with short, noisy social texts where word co-occurrence is sparse, and they cannot capture semantic similarity between lexically different expressions (e.g., ``Typhoon Yagi'' vs. ``Storm No. 3'').
+
+\subsection{Neural and Embedding-Based Approaches}
+The advent of deep learning enabled semantic representation of text, significantly improving event detection quality.
+\textbf{BERT} \cite{ref_bert} and its variants provide contextualized word embeddings that capture nuanced meaning.
+\textbf{Sentence-BERT (SBERT)} \cite{ref_sbert} adapts BERT for efficient sentence-level similarity computation using Siamese networks, enabling fast nearest-neighbor search in embedding space.
+\textbf{BERTopic} \cite{ref_bertopic} combines transformer embeddings with clustering (HDBSCAN) and class-based TF-IDF to produce coherent topic representations.
+
+Clustering algorithms form the backbone of many neural event detection systems.
+\textbf{K-Means} \cite{ref_kmeans} partitions data into $k$ spherical clusters but requires a predefined cluster count and cannot handle noise.
+\textbf{DBSCAN} \cite{ref_dbscan} identifies arbitrary-shaped clusters based on density and explicitly labels noise points, but uses a global density threshold that fails when cluster densities vary.
+\textbf{HDBSCAN} \cite{ref_hdbscan} extends DBSCAN with hierarchical density estimation, automatically identifying clusters of varying densities while isolating noise---making it particularly suitable for social media data where event clusters exhibit diverse engagement levels.
+
+\textbf{Strengths:} Embedding-based methods capture semantic relationships and handle vocabulary variation effectively.
+\textbf{Limitations:} High-dimensional embeddings incur significant computational overhead, and real-time inference remains challenging at scale. Additionally, these methods often require careful hyperparameter tuning (e.g., cluster thresholds) for each domain.
+
+\subsection{LLM and Retrieval-Augmented Generation}
+Large Language Models have recently transformed NLP tasks through emergent reasoning capabilities \cite{ref_llm_reasoning}.
+\textbf{GPT-4, Gemini, and Claude} demonstrate strong zero-shot performance on classification, summarization, and information extraction tasks without task-specific fine-tuning.
+However, LLMs suffer from ``hallucinations''---generating plausible but factually incorrect content---especially when operating without grounding context.
+
+\textbf{Retrieval-Augmented Generation (RAG)} \cite{ref_rag} addresses this limitation by conditioning LLM responses on retrieved relevant documents.
+In the context of event detection, RAG enables grounding LLM summarization in verified social data points, improving factual accuracy.
+Several recent works have explored LLM-based event extraction and classification, though most focus on offline batch processing rather than real-time streaming.
+
+\textbf{Strengths:} LLMs provide superior semantic understanding and can generate interpretable event summaries with structured 5W1H (Who, What, When, Where, Why, How) extraction.
+\textbf{Limitations:} LLM inference is computationally expensive (typically 100-1000$\times$ slower than embedding-based classification), making direct integration into low-latency streaming pipelines impractical.
+
+\subsection{Real-Time Streaming Architectures}
+Real-time event detection requires specialized architectures that balance throughput, latency, and accuracy.
+\textbf{Sakaki et al.} \cite{ref_twitter_earthquake} pioneered real-time earthquake detection from Twitter using Kalman filtering and particle filters to track event propagation.
+\textbf{TwitterNews+} \cite{ref_streaming_survey} proposed a framework combining incremental clustering with named entity recognition for news event detection from Twitter streams.
+
+Modern streaming systems typically employ the \textbf{Lambda Architecture} (batch + stream layers) or the simpler \textbf{Kappa Architecture} (stream-only), using message brokers like Apache Kafka for fault-tolerant ingestion and stream processors like Spark Streaming or Flink for real-time computation.
+
+\textbf{Strengths:} These architectures achieve sub-second latency and horizontal scalability.
+\textbf{Limitations:} Most streaming approaches sacrifice semantic depth for speed, using lightweight features (keywords, hashtags) rather than full semantic understanding.
+
+\subsection{Research Gap and Our Contribution}
+As summarized in Table \ref{tab:related_work}, existing approaches typically optimize for \emph{either} low-latency streaming detection \emph{or} high semantic coherence with LLM reasoning---but practical deployments require \textbf{both} simultaneously.
+Our \textbf{Dual-Path Architecture} addresses this gap by decoupling fast clustering (SAHC on the Fast Path) from deep semantic enrichment (LLM on the Slow Path), achieving real-time latency while maintaining event interpretability.
+Furthermore, we introduce the \textbf{LLM-as-a-Judge} protocol to address the evaluation gap when ground-truth labels are scarce in streaming scenarios.
+
+\begin{table}
+    \caption{Comparison of Event Detection Approaches}\label{tab:related_work}
+    \centering
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l c c c c c}
+            \toprule
+            \textbf{Approach}                        & \textbf{Semantic}      & \textbf{Real-time}  & \textbf{Noise}      & \textbf{Interpretable} & \textbf{Scalable}   \\
+                                                     & \textbf{Understanding} & \textbf{Capable}    & \textbf{Handling}   & \textbf{Output}        &                     \\
+            \midrule
+            TF-IDF / BM25 \cite{ref_bm25}            & Low                    & \checkmark          & Limited             & --                     & \checkmark          \\
+            LDA \cite{ref_lda}                       & Medium                 & --                  & Limited             & \checkmark             & \checkmark          \\
+            EDCoW \cite{ref_edcow}                   & Low                    & \checkmark          & Limited             & --                     & \checkmark          \\
+            BERT + Clustering \cite{ref_bert}        & High                   & --                  & Medium              & --                     & --                  \\
+            BERTopic \cite{ref_bertopic}             & High                   & --                  & \checkmark          & \checkmark             & --                  \\
+            TwitterNews+ \cite{ref_streaming_survey} & Medium                 & \checkmark          & Medium              & --                     & \checkmark          \\
+            \midrule
+            \textbf{Ours (SAHC + LLM)}               & \textbf{High}          & \textbf{\checkmark} & \textbf{\checkmark} & \textbf{\checkmark}    & \textbf{\checkmark} \\
+            \bottomrule
+        \end{tabular}%
+    }
+\end{table}
 
 \section{Preliminaries}
 
@@ -167,10 +239,10 @@ The lifecycle of a social post in our system follows five stages:
 \begin{enumerate}
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
-    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost). 
-    We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}. 
-    In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
-    Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost).
+          We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}.
+          In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
+          Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
 
     \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
@@ -220,10 +292,10 @@ The lifecycle of a social post in our system follows five stages:
     \item \textbf{Slow Path Intelligence (Async Workers):}
           \begin{itemize}
               \item Designed to decouple heavy operations from the ingestion stream. Workers poll confirmed clusters and:
-                  \begin{enumerate}
-                    \item Query \textbf{Google Trends API} to fetch search volume (G-score), using the filter prompt in Appendix Table \ref{tab:prompt_trends}. This signal is treated as \textbf{confirmatory/lagging}: it typically accumulates after an event is already visible on social streams, and is therefore used to validate and prioritize clusters rather than to trigger initial detection.
-                    \item Employ a \textbf{Context-Aware Prompting} strategy with Gemini Pro to synthesize coherent summaries.
-                  \end{enumerate}
+                    \begin{enumerate}
+                        \item Query \textbf{Google Trends API} to fetch search volume (G-score), using the filter prompt in Appendix Table \ref{tab:prompt_trends}. This signal is treated as \textbf{confirmatory/lagging}: it typically accumulates after an event is already visible on social streams, and is therefore used to validate and prioritize clusters rather than to trigger initial detection.
+                        \item Employ a \textbf{Context-Aware Prompting} strategy with Gemini Pro to synthesize coherent summaries.
+                    \end{enumerate}
           \end{itemize}
 \end{itemize}
 
@@ -245,9 +317,9 @@ A valid event cluster $C_i$ must satisfy two conditions:
 \begin{enumerate}
     \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
     \item \textbf{Impact:} $U(C_i) \geq \delta_{min}$, where $U(C_i)$ is the number of \emph{distinct users} discussing the event:
-        \begin{equation}
-        U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
-        \end{equation}
+          \begin{equation}
+              U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
+          \end{equation}
 
 \end{enumerate}
 
@@ -259,16 +331,16 @@ To ensure high-quality input for the clustering engine, raw data from both paths
 
 \begin{itemize}
     \item \textbf{Fast Path (Social Speed):} Given the high-throughput nature of social streams, we apply minimal, latency-optimized cleaning:
-    \begin{itemize}
-        \item \textbf{Heuristic Filtering:} We discard posts with length $<20$ characters (insufficient semantic context for embedding) or $>800$ characters (high likelihood of marketing spam or irrelevant boilerplate), and remove known "credit" patterns (e.g., "cre:", "via:") which do not contribute to event identity.
-        \item \textbf{Unicode Normalization:} Converting all text to NFC format and lowercasing to handle Vietnamese diacritics consistently.
-    \end{itemize}
+          \begin{itemize}
+              \item \textbf{Heuristic Filtering:} We discard posts with length $<20$ characters (insufficient semantic context for embedding) or $>800$ characters (high likelihood of marketing spam or irrelevant boilerplate), and remove known "credit" patterns (e.g., "cre:", "via:") which do not contribute to event identity.
+              \item \textbf{Unicode Normalization:} Converting all text to NFC format and lowercasing to handle Vietnamese diacritics consistently.
+          \end{itemize}
 
     \item \textbf{Slow Path (News Precision):} News data, used as high-confidence anchors, undergoes deep structural parsing:
-    \begin{itemize}
-        \item \textbf{Structural Extraction:} We use Regex to separate metadata (Author, Date, Location) from the body content, ensuring only the core narrative affects the centroid.
-        \item \textbf{Alias Injection (Thesaurus):} To bridge the vocabulary gap between formal news and informal social posts, we inject known aliases into news vectors (e.g., mapping "Typhoon No. 3" $\to$ "Typhoon Yagi").
-    \end{itemize}
+          \begin{itemize}
+              \item \textbf{Structural Extraction:} We use Regex to separate metadata (Author, Date, Location) from the body content, ensuring only the core narrative affects the centroid.
+              \item \textbf{Alias Injection (Thesaurus):} To bridge the vocabulary gap between formal news and informal social posts, we inject known aliases into news vectors (e.g., mapping "Typhoon No. 3" $\to$ "Typhoon Yagi").
+          \end{itemize}
 \end{itemize}
 
 \subsection{Social-Aware Hierarchical Clustering (SAHC)}
@@ -295,41 +367,41 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
         \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
 
         \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
-        
+
         \State \textbf{// Path 1: Anchor Matching (Fast Path)}
         \For{each post $p \in B$}
-            \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
-            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
-            \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
-            \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
-            \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
-            \If{$keyword\_score > 0.5$}
-                \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
-            \EndIf
-            
-            \If{$score \ge \lambda_{match}$}
-                \State Add $p$ to Event $E_{a^*}$
-                \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
-            \Else
-                \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
-            \EndIf
+        \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+        \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
+        \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+        \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
+        \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
+        \If{$keyword\_score > 0.5$}
+        \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
+        \EndIf
+
+        \If{$score \ge \lambda_{match}$}
+        \State Add $p$ to Event $E_{a^*}$
+        \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+        \Else
+        \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+        \EndIf
         \EndFor
 
         \State \textbf{// Path 2: Social Discovery (Slow Path)}
         \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
         \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
-            \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
-            \For{each cluster $c \in \mathcal{C}_{new}$}
-                \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
-                \If{$U(c) \ge \delta_{significant}$}
-                    \State Initialize new Event $E_{new}$ from $c$
-                    \State Remove points in $c$ from $\mathcal{G}$
-                \EndIf
-            \EndFor
-
-            \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
+        \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
+        \For{each cluster $c \in \mathcal{C}_{new}$}
+        \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
+        \If{$U(c) \ge \delta_{significant}$}
+        \State Initialize new Event $E_{new}$ from $c$
+        \State Remove points in $c$ from $\mathcal{G}$
         \EndIf
-        
+        \EndFor
+
+        \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
+        \EndIf
+
     \end{algorithmic}
 \end{algorithm}
 
@@ -337,8 +409,8 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
 To balance semantic understanding and exact entity matching under real-time constraints, we employ a weighted scoring mechanism with a conditional boost.
 Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. This preserves low latency while reducing false attachments.
 \begin{equation}
-\label{eq:hybrid_real}
-\text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
+    \label{eq:hybrid_real}
+    \text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
 \end{equation}
 where $w_v=0.7$ and $w_k=0.3$ are empirical weights, $\text{KW}(p,a)\in[0,1]$ is the keyword overlap ratio, and a fixed boost $\delta_{boost}=0.1$ is applied when overlap exceeds $\tau=0.5$. This design remains compatible with real-time constraints while reducing false attachments between lexically distinct events.
 
@@ -383,9 +455,9 @@ Furthermore, there is a structural divergence: News articles average $>500$ word
     \centering
     \begin{tabular}{l c c c}
         \toprule
-        \textbf{Source Type} & \textbf{Crawled URLs} & \textbf{Valid Content} & \textbf{Avg Length (words)} \\
+        \textbf{Source Type} & \textbf{Crawled URLs} & \textbf{Valid Content}   & \textbf{Avg Length (words)} \\
         \midrule
-        Mainstream News      & $\approx 9,400$       & 4,603 (48.6\%)         & $> 500$                     \\
+        Mainstream News      & $\approx 9,400$       & 4,603 (48.6\%)           & $> 500$                     \\
         Social Media         & $\approx 3,000$       & 2,961 ($\approx 98.7\%$) & $< 50$                      \\
         \bottomrule
     \end{tabular}
@@ -410,8 +482,8 @@ The containerized microservices architecture offers three key advantages:
 \subsection{Dataset Construction Strategy}
 To train our specialized models without incurring high labeling costs, we employed a \textbf{Hybrid Labeling Strategy}:
 \begin{enumerate}
-    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs. 
-    This reranker is used as an auxiliary matching component (verification / recovery) and as an offline benchmark module.
+    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs.
+          This reranker is used as an auxiliary matching component (verification / recovery) and as an offline benchmark module.
     \item \textbf{Active Learning with LLM:} For Sentiment and Taxonomy classification, we used Gemini Pro to pseudo-label roughly 10k samples, then manually reviewed low-confidence scores. This yielded \textbf{4,630 samples for Sentiment} and \textbf{3,687 samples for Taxonomy} training.
 \end{enumerate}
 
@@ -476,13 +548,13 @@ Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved 
     \resizebox{\textwidth}{!}{%
         \begin{tabular}{l c c c c c c}
             \toprule
-            \textbf{Model Identifier}  & \textbf{Avg Gap} $\uparrow$  & \textbf{Storm} $\uparrow$ & \textbf{Domain} $\uparrow$ & \textbf{Category} $\uparrow$ & \textbf{Slang}  $\uparrow$& \textbf{Abbrev}  $\uparrow$ \\
+            \textbf{Model Identifier}                   & \textbf{Avg Gap} $\uparrow$ & \textbf{Storm} $\uparrow$ & \textbf{Domain} $\uparrow$ & \textbf{Category} $\uparrow$ & \textbf{Slang}  $\uparrow$ & \textbf{Abbrev}  $\uparrow$ \\
             \midrule
-            \textbf{vn-doc-embedding*} \cite{ref_vndoc} & \textbf{0.265}   & 0.239          & 0.224           & \textbf{0.162}    & \textbf{0.283} & \textbf{0.419}  \\
-            vn-bi-encoder              & 0.193            & 0.155          & 0.213           & 0.107             & 0.108          & 0.381           \\
-            vn-sbert \cite{ref_visobert}                   & 0.188            & \textbf{0.355} & 0.172           & 0.033             & -0.005         & 0.386           \\
-            bge-m3 \cite{ref_bge}                     & 0.160            & -0.003         & \textbf{0.269}  & 0.070             & 0.192          & 0.273           \\
-            multilingual-e5 \cite{ref_e5}            & 0.058            & 0.018          & 0.088           & 0.022             & 0.073          & 0.091           \\
+            \textbf{vn-doc-embedding*} \cite{ref_vndoc} & \textbf{0.265}              & 0.239                     & 0.224                      & \textbf{0.162}               & \textbf{0.283}             & \textbf{0.419}              \\
+            vn-bi-encoder                               & 0.193                       & 0.155                     & 0.213                      & 0.107                        & 0.108                      & 0.381                       \\
+            vn-sbert \cite{ref_visobert}                & 0.188                       & \textbf{0.355}            & 0.172                      & 0.033                        & -0.005                     & 0.386                       \\
+            bge-m3 \cite{ref_bge}                       & 0.160                       & -0.003                    & \textbf{0.269}             & 0.070                        & 0.192                      & 0.273                       \\
+            multilingual-e5 \cite{ref_e5}               & 0.058                       & 0.018                     & 0.088                      & 0.022                        & 0.073                      & 0.091                       \\
             \bottomrule
         \end{tabular}%
     }
@@ -495,9 +567,9 @@ Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved 
         \toprule
         \textbf{Model Task}      & \textbf{Class Type}     & \textbf{Accuracy} ($\uparrow$) & \textbf{Latency} ($\downarrow$) \\
         \midrule
-        Sentiment Classifier     & 3 classes (Pos/Neg/Neu) & \textbf{93.5\%}   & 12ms             \\
-        Bi-CrossEncoder Reranker & Relevance Scoring       & 91.0\%            & 45ms             \\
-        Taxonomy Classifier      & 7 classes (T1-T7)       & 89.2\%            & 14ms             \\
+        Sentiment Classifier     & 3 classes (Pos/Neg/Neu) & \textbf{93.5\%}                & 12ms                            \\
+        Bi-CrossEncoder Reranker & Relevance Scoring       & 91.0\%                         & 45ms                            \\
+        Taxonomy Classifier      & 7 classes (T1-T7)       & 89.2\%                         & 14ms                            \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -522,10 +594,10 @@ The t-SNE projection in Fig. \ref{fig:tsne} demonstrates the effectiveness of ou
         \toprule
         \textbf{Method}             & \textbf{Clusters (k)} & \textbf{Noise Pts} & \textbf{Silh. Score} ($\uparrow$) & \textbf{DB Index} ($\downarrow$) & \textbf{Time} ($\downarrow$) \\
         \midrule
-        K-Means                     & 253                   & 0                  & 0.024                & 3.177             & 8.45s          \\
-        \textbf{HDBSCAN (Baseline)} & \textbf{460}          & 1,984              & 0.109                & \textbf{2.094}    & 16.00s         \\
-        BERTopic                    & 223                   & 1,801              & 0.112                & 2.363             & 55.72s         \\
-        \textbf{SAHC (Ours)}        & \textbf{315}          & \textbf{985}       & \textbf{0.135}       & \textbf{1.951}    & \textbf{18.4s} \\
+        K-Means                     & 253                   & 0                  & 0.024                             & 3.177                            & 8.45s                        \\
+        \textbf{HDBSCAN (Baseline)} & \textbf{460}          & 1,984              & 0.109                             & \textbf{2.094}                   & 16.00s                       \\
+        BERTopic                    & 223                   & 1,801              & 0.112                             & 2.363                            & 55.72s                       \\
+        \textbf{SAHC (Ours)}        & \textbf{315}          & \textbf{985}       & \textbf{0.135}                    & \textbf{1.951}                   & \textbf{18.4s}               \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -542,12 +614,12 @@ Table \ref{tab:minigt} reports the performance of our \textbf{default SAHC setti
     \centering
     \begin{tabular}{l c l}
         \toprule
-        \textbf{Metric} & \textbf{Value} & \textbf{Interpretation}                   \\
+        \textbf{Metric}           & \textbf{Value} & \textbf{Interpretation}                   \\
         \midrule
-        \textbf{NMI} ($\uparrow$)    & \textbf{0.54}  & Good mutual information with human labels \\
-        Purity ($\uparrow$)          & 0.65           & High dominant class consistency           \\
-        BCubed-F1 ($\uparrow$)       & 0.35           & Balanced precision/recall for clustering  \\
-        Entropy ($\downarrow$)       & 4.85           & Lower entropy indicates purer clusters    \\
+        \textbf{NMI} ($\uparrow$) & \textbf{0.54}  & Good mutual information with human labels \\
+        Purity ($\uparrow$)       & 0.65           & High dominant class consistency           \\
+        BCubed-F1 ($\uparrow$)    & 0.35           & Balanced precision/recall for clustering  \\
+        Entropy ($\downarrow$)    & 4.85           & Lower entropy indicates purer clusters    \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -687,7 +759,7 @@ In this work, we presented a novel \textbf{Dual-Path Event Detection} framework 
 On the full dataset, intrinsic metrics and LLM-as-a-Judge evaluation further confirm improved cluster coherence over baseline methods. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
 
 \begin{credits}
-\subsubsection{\ackname} We would like to express our sincere gratitude to Dr. Do Trong Hop and Mr. Nguyen Ngoc Quy for their invaluable supervision, critical insights, and continuous support throughout the development of this research. Their expert guidance on system architecture and methodology was instrumental in the success of this project.
+    \subsubsection{\ackname} We would like to express our sincere gratitude to Dr. Do Trong Hop and Mr. Nguyen Ngoc Quy for their invaluable supervision, critical insights, and continuous support throughout the development of this research. Their expert guidance on system architecture and methodology was instrumental in the success of this project.
 \end{credits}
 
 \bibliographystyle{splncs04}
@@ -737,13 +809,13 @@ To ensure reproducibility, we provide the specific prompts used in our system's 
     \centering
     \begin{tabular}{|p{0.95\linewidth}|}
         \hline
-        \textbf{Role:} Senior News Editor.                                                                          \\
-        \textbf{Task:} Identify titles referring to the EXACT SAME single real-world event.                         \\
-        \textbf{Criteria for Match (Must match all 3):}                                                             \\
-        1. SAME Location (e.g., "Hanoi" vs "Hanoi" $\checkmark$).                                                   \\
-        2. SAME Timeframe (e.g., "Today" vs "Today" $\checkmark$).                                                  \\
-        3. SAME Core Entity (e.g., "Typhoon Yagi" vs "Storm No. 3" $\checkmark$).                                   \\
-        \textbf{Output Format:} JSON dict mapping \texttt{"Original Title": "Canonical Title"}.                     \\
+        \textbf{Role:} Senior News Editor.                                                      \\
+        \textbf{Task:} Identify titles referring to the EXACT SAME single real-world event.     \\
+        \textbf{Criteria for Match (Must match all 3):}                                         \\
+        1. SAME Location (e.g., "Hanoi" vs "Hanoi" $\checkmark$).                               \\
+        2. SAME Timeframe (e.g., "Today" vs "Today" $\checkmark$).                              \\
+        3. SAME Core Entity (e.g., "Typhoon Yagi" vs "Storm No. 3" $\checkmark$).               \\
+        \textbf{Output Format:} JSON dict mapping \texttt{"Original Title": "Canonical Title"}. \\
         \hline
     \end{tabular}
 \end{table}
