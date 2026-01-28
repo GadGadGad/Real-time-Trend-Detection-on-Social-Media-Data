@@ -167,7 +167,11 @@ The lifecycle of a social post in our system follows five stages:
 \begin{enumerate}
     \item \textbf{Ingestion Layer:} Python crawlers, orchestrated by \textbf{Airflow}, continuously collect raw text from 40+ high-traffic Fanpages. Data is normalized to JSON format and pushed to the \textbf{Apache Kafka} topic \texttt{posts\_stream\_v1}, with \textbf{Zookeeper} handling cluster coordination.
     \item \textbf{Filtering (Spark Streaming):} The \textbf{Spark} engine consumes the Kafka stream in micro-batches. A Heuristic Guard drops routine noise, while a \textbf{Smart Query Constructor} expands potential trend keywords (e.g., "Sea Games" $\to$ "Sea Games 33 Schedule") to increase recall.
-    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost). Posts that fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+    \item \textbf{Clustering (Fast Path):} Valid social posts are vectorized using ONNX models and \textbf{matched to Anchor vectors} (News/Trends) using a \textbf{latency-optimized hybrid score} (cosine similarity with a heuristic keyword boost). 
+    We support a Cross-Encoder reranking module at the matching stage; however, to satisfy real-time constraints, the \textbf{online deployment uses a lightweight verification strategy} that only re-scores the winning candidate (Top-1) as a \textbf{verification gate}. 
+    In offline analysis or configurable modes, the system can be extended to rerank Top-$K$ candidates for higher precision.
+    Posts that are rejected by the verification gate or fail the threshold are buffered as \textit{residual} for the \textbf{Discovery} step (HDBSCAN).
+
     \item \textbf{Intelligence (Slow Path):} Asynchronous \textbf{Python Workers} poll confirmed clusters from the \textbf{PostgreSQL} unified store. A cluster is considered \emph{significant} and eligible for LLM enrichment only if it reaches the impact threshold in terms of \textbf{distinct users} ($U(C)\ge \delta_{significant}$). Workers then query \textbf{Gemini Pro} to extract structured 5W1H summaries and deduplicate overlapping topics (see Appendix Table \ref{tab:prompt_refinement}).
     \item \textbf{Visualization:} The Dashboard polls the PostgreSQL database to display verified, enriched events in real-time.
 \end{enumerate}
@@ -185,7 +189,7 @@ The lifecycle of a social post in our system follows five stages:
                 \item \textbf{Input:} Crawler fetches raw text "Bão số 3 giật cấp 12..." from fanpage \textit{ThongTinChinhPhu}.
                 \item \textbf{Ingestion:} Kafka producer serializes it to JSON and pushes to topic \texttt{posts\_stream\_v1} (Partition 0).
                 \item \textbf{Filtration:} Spark Streaming consumes the message. The Heuristic Guard permits it, and Smart Query expands context to "Typhoon Yagi tracking".
-                \item \textbf{Clustering:} The Onnx Worker maps it to vector $\mathbf{v}$. SAHC identifies the nearest News Anchor "Typhoon Yagi" (Similarity $> 0.85$) and attaches the post.
+                \item \textbf{Clustering:} The Onnx Worker maps it to vector $\mathbf{v}$. SAHC identifies the best-matching News Anchor "Typhoon Yagi" (Hybrid Score $> \lambda_{match}$) and attaches the post.
                 \item \textbf{Intelligence:} The cluster grows beyond the significance threshold. An async worker triggers Gemini Pro, which returns a structured summary: "Typhoon Yagi approaching Quang Ninh."
                 \item \textbf{Output:} The Dashboard receives the specific update and displays a "Public Risk" alert on the live map.
             \end{enumerate}
@@ -296,11 +300,12 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
         \For{each post $p \in B$}
             \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
             \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
-            \State $score \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
-            \If{$\text{KW}(p,a^*) = 1$}
-                \State $score \leftarrow score + \delta_{bonus}$ \Comment{Heuristic keyword boosting}
+            \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+            \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
+            \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
+            \If{$keyword\_score > 0.5$}
+                \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
             \EndIf
-
             
             \If{$score \ge \lambda_{match}$}
                 \State Add $p$ to Event $E_{a^*}$
@@ -329,7 +334,8 @@ The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first
 \end{algorithm}
 
 \textbf{Latency-Optimized Hybrid Matching:}
-To balance semantic understanding and exact entity matching without the overhead of cross-encoders, we employ a weighted scoring mechanism with a conditional boost:
+To balance semantic understanding and exact entity matching under real-time constraints, we employ a weighted scoring mechanism with a conditional boost.
+Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. This preserves low latency while reducing false attachments.
 \begin{equation}
 \label{eq:hybrid_real}
 \text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
@@ -362,7 +368,7 @@ Our system monitors two primary data streams, unified into a common schema for p
 \begin{itemize}
     \item \textbf{Social Media (Facebook):} Collected from high-engagement Fanpages (e.g., Theanh28, ThongTinChinhPhu). Data fields include: \texttt{pageName}, \texttt{postId}, \texttt{time} (ISO-8601), \texttt{text} content, and engagement metrics (\texttt{likes}, \texttt{comments}, \texttt{shares}).
     \item \textbf{Mainstream News:} Articles crawled from verified outlets (VnExpress, Tuoi Tre). Key fields: \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, and \texttt{PublishTime}.
-    \item \textbf{Google Trends:} Real-time search keywords acting as "Leading Signals" to guide the initial filtering and prioritization of social clusters.
+    \item \textbf{Google Trends:} Real-time search keywords acting as a \textbf{confirmatory/lagging signal} to validate and prioritize candidate clusters detected from social streams.
 \end{itemize}
 
 The experimental dataset consists of \textbf{7,605 unique items} collected from Dec 8 to Dec 22, 2025, including \textbf{4,644 crawled news articles} and \textbf{2,961 social media posts}.
@@ -404,7 +410,8 @@ The containerized microservices architecture offers three key advantages:
 \subsection{Dataset Construction Strategy}
 To train our specialized models without incurring high labeling costs, we employed a \textbf{Hybrid Labeling Strategy}:
 \begin{enumerate}
-    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs.
+    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs. 
+    This reranker is used as an auxiliary matching component (verification / recovery) and as an offline benchmark module.
     \item \textbf{Active Learning with LLM:} For Sentiment and Taxonomy classification, we used Gemini Pro to pseudo-label roughly 10k samples, then manually reviewed low-confidence scores. This yielded \textbf{4,630 samples for Sentiment} and \textbf{3,687 samples for Taxonomy} training.
 \end{enumerate}
 
