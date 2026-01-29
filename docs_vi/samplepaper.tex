@@ -14,6 +14,8 @@
 \usepackage{array}
 \usepackage{algorithm}
 \usepackage[noend]{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
 \usepackage[a4paper,left=30mm,right=30mm]{geometry}
 %
 \begin{document}
@@ -446,6 +448,94 @@ Hệ thống của chúng tôi giám sát hai luồng dữ liệu chính, đư�
 
 Bộ dữ liệu thử nghiệm bao gồm \textbf{7.605 mục duy nhất} được thu thập từ 8 đến 22 tháng 12, 2025, bao gồm \textbf{4.644 bài báo tin tức được crawl} và \textbf{2.961 bài đăng mạng xã hội}.
 Sau khi trích xuất nội dung, \textbf{4.603 bài báo tin tức} chứa văn bản body hợp lệ và được sử dụng cho neo và embedding. Ở đây, \textbf{2.961} biểu thị \emph{các bài đăng xã hội duy nhất được sử dụng trong thử nghiệm} sau khi khử trùng lặp và kiểm tra hợp lệ cơ bản (khối lượng crawl thô được báo cáo như một xấp xỉ).
+
+\subsection{Phương pháp Thu thập Dữ liệu}
+Để đảm bảo bao phủ toàn diện cảnh quan số Việt Nam, chúng tôi sử dụng chiến lược thu thập lai kết hợp các scraper tùy chỉnh và API bên thứ ba:
+
+\begin{itemize}
+    \item \textbf{Thu thập Bài báo Tin tức:} Chúng tôi phát triển các web scraper Python tùy chỉnh cho năm tờ báo Việt Nam lớn: VnExpress, Tuổi Trẻ, Thanh Niên, Người Lao Động và VietnamNet. Mỗi scraper triển khai:
+          \begin{itemize}
+              \item Khám phá bài báo đa luồng với pool worker có thể cấu hình
+              \item Lọc theo khoảng thời gian cho thu thập lịch sử có mục tiêu
+              \item Logic retry tự động với exponential backoff để đảm bảo độ bền
+              \item Khử trùng lặp qua URL caching để cho phép crawl tăng dần
+              \item Trích xuất có cấu trúc metadata (tiêu đề, tác giả, thời gian đăng, danh mục) và nội dung bài báo đầy đủ sử dụng BeautifulSoup
+          \end{itemize}
+          Các scraper được điều phối qua Apache Airflow DAGs, chạy theo lịch có thể cấu hình (mặc định: mỗi 6 giờ) để nắm bắt tin tức nóng trong khi tuân thủ rate limits.
+
+    \item \textbf{Thu thập Mạng Xã hội:} Đối với các bài đăng công khai trên Facebook, chúng tôi sử dụng Apify\footnote{\url{https://apify.com/}}, một nền tảng web scraping dựa trên đám mây. Actor Facebook Pages Scraper của Apify được cấu hình để giám sát hơn 40 Fanpage Việt Nam có lưu lượng cao, trích xuất văn bản bài đăng, dấu thời gian và các chỉ số tương tác (likes, comments, shares). Phương pháp này đảm bảo tuân thủ điều khoản dịch vụ của nền tảng đồng thời cung cấp truy cập dữ liệu đáng tin cậy, có khả năng mở rộng mà không cần xác thực API trực tiếp.
+
+    \item \textbf{Google Trends:} Các truy vấn tìm kiếm xu hướng thời gian thực cho Việt Nam được lấy qua unofficial Google Trends API wrapper, cung cấp tín hiệu xác nhận trễ cho ưu tiên hóa sự kiện.
+\end{itemize}
+
+\begin{figure}[ht]
+    \centering
+    \scalebox{0.75}{
+        \begin{tikzpicture}[
+            node distance=0.8cm and 1.2cm,
+            box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
+            source/.style={box, fill=blue!20},
+            process/.style={box, fill=orange!20},
+            storage/.style={box, fill=green!20},
+            arrow/.style={-{Stealth[scale=0.8]}, thick}
+            ]
+            % Airflow Scheduler
+            \node[process] (airflow) {Airflow\\Scheduler};
+
+            % News Sources
+            \node[source, right=1.5cm of airflow, yshift=1.6cm] (vne) {VnExpress};
+            \node[source, right=1.5cm of airflow, yshift=0.8cm] (tt) {Tuổi Trẻ};
+            \node[right=2.5cm of airflow, font=\large] (dots) {$\vdots$};
+            \node[source, right=1.5cm of airflow, yshift=-0.8cm] (tn) {Thanh Niên};
+            \node[source, right=1.5cm of airflow, yshift=-1.6cm] (nld) {NLD / VNN};
+
+            % Scraper Workers
+            \node[process, right=1.2cm of tt, yshift=-0.4cm] (workers) {Multi-Thread\\Workers};
+
+            % Processing steps
+            \node[process, right=1.2cm of workers] (extract) {HTML Parse\\+ Extract};
+            \node[process, right=1.2cm of extract] (dedup) {Dedup\\Cache};
+
+            % Storage
+            \node[storage, right=1.2cm of dedup] (csv) {CSV / DB\\Storage};
+
+            % Arrows
+            \draw[arrow] (airflow) -- (vne);
+            \draw[arrow] (airflow) -- (tt);
+            \draw[arrow] (airflow) -- (tn);
+            \draw[arrow] (airflow) -- (nld);
+
+            \draw[arrow] (vne) -- (workers);
+            \draw[arrow] (tt) -- (workers);
+            \draw[arrow] (tn) -- (workers);
+            \draw[arrow] (nld) -- (workers);
+
+            \draw[arrow] (workers) -- (extract);
+            \draw[arrow] (extract) -- (dedup);
+            \draw[arrow] (dedup) -- (csv);
+
+            % Retry loop
+            \draw[arrow, dashed] (extract.south) -- ++(0,-0.5) -| node[pos=0.25, below, font=\scriptsize] {Retry} (workers.south);
+        \end{tikzpicture}
+    }
+    \caption{Pipeline Thu thập Bài báo Tin tức.}
+    \label{fig:news_pipeline}
+\end{figure}
+
+\noindent Hình \ref{fig:news_pipeline} minh họa quy trình thu thập bài báo tin tức. Mỗi thành phần đóng một vai trò cụ thể:
+\begin{itemize}
+    \item \textbf{Airflow Scheduler:} Apache Airflow điều phối các tác vụ crawl qua Directed Acyclic Graphs (DAGs). Mỗi nguồn tin tức có một DAG riêng được cấu hình chạy theo lịch 6 giờ, đảm bảo nắm bắt kịp thời tin tức nóng trong khi tránh quá tải máy chủ. Airflow cung cấp khả năng chịu lỗi, tự động retry và giám sát tập trung qua giao diện web.
+
+    \item \textbf{Nguồn Tin tức (VnExpress, Tuổi Trẻ, Thanh Niên, NLD/VNN):} Đây là năm tờ báo Việt Nam lớn được nhắm đến bởi các scraper của chúng tôi. Mỗi nguồn có một triển khai scraper tùy chỉnh phù hợp với cấu trúc HTML và sơ đồ phân trang cụ thể của nó. Các scraper hỗ trợ cả crawl tăng dần (bài báo mới nhất) và thu thập lịch sử (truy vấn theo khoảng thời gian).
+
+    \item \textbf{Multi-Thread Workers:} Mỗi scraper tạo một pool worker threads có thể cấu hình (mặc định: 10) để song song hóa các HTTP requests. Điều này giảm đáng kể tổng thời gian crawl trong khi tuân thủ rate limits thông qua request throttling. Workers sử dụng session chia sẻ với connection pooling để tăng hiệu quả.
+
+    \item \textbf{HTML Parse + Extract:} Các phản hồi HTML thô được phân tích cú pháp sử dụng BeautifulSoup. Logic trích xuất là cụ thể theo nguồn, nhắm vào các phần tử có cấu trúc (ví dụ: \texttt{article-body}, \texttt{h1.title}) để trích xuất tiêu đề, tác giả, thời gian đăng, danh mục và nội dung bài báo đầy đủ. Các lần trích xuất thất bại kích hoạt cơ chế retry với exponential backoff.
+
+    \item \textbf{Dedup Cache:} Một cache dựa trên URL (lưu trữ dưới dạng file local hoặc Redis) theo dõi các bài báo đã crawl trước đó. Trước khi xử lý, mỗi URL được kiểm tra với cache này để bỏ qua các bản sao, cho phép crawl tăng dần hiệu quả giữa các lần chạy.
+
+    \item \textbf{CSV/DB Storage:} Các bài báo đã xác thực được lưu trữ dưới định dạng CSV để di động và tùy chọn chèn vào PostgreSQL cho truy vấn hạ nguồn. Mỗi bản ghi bao gồm tất cả metadata được trích xuất và văn bản bài báo đầy đủ.
+\end{itemize}
 
 \subsection{Phân tích Dữ liệu Khám phá}
 Bảng \ref{tab:data_dist} trình bày phân phối bộ dữ liệu thử nghiệm của chúng tôi. Chúng tôi quan sát thấy một ``Khoảng cách Sẵn có'' đáng kể: trong khi chúng tôi crawl hơn 9.400 URL tin tức, chỉ \textbf{4.603 bài báo (48,6\%)} chứa văn bản body có thể trích xuất, trong khi \textbf{bài đăng mạng xã hội (2.961 mục)} đạt \emph{gần như hoàn toàn} về tính sẵn có.
