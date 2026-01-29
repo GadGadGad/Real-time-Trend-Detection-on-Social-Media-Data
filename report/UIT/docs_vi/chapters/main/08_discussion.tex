@@ -12,5 +12,6 @@ Triển khai hệ thống đã bộc lộ ba trở ngại kỹ thuật chính:
 Để định lượng đóng góp của từng module, chúng tôi thực hiện nghiên cứu khử (ablation study) bằng cách vô hiệu hóa các thành phần có chọn lọc (Bảng \ref{tab:ablation}).
 \begin{itemize}
     \item \textbf{Không có News Anchors:} Loại bỏ neo làm giảm đáng kể sự đồng thuận phân cụm với nhãn của người, xác nhận rằng dữ liệu xã hội đơn độc quá nhiễu cho phân cụm mạch lạc.
+    \item \textbf{Không có Heuristic Guard:} Việc vô hiệu hóa bộ lọc regex ban đầu đã làm tăng số lượng cụm lên 300\%, nhưng phần lớn là ``rác'' (xổ số, thời tiết), khiến điểm F1 giảm 60\%.
     \item \textbf{Không có LLM Refinement:} Sử dụng centroid thô thay vì tóm tắt LLM dẫn đến tiêu đề sự kiện mơ hồ, giảm điểm khả năng diễn giải (đánh giá người) từ 4.5 xuống 2.1.
 \end{itemize}
