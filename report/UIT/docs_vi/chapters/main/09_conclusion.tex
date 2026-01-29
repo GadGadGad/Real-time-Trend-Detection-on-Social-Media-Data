@@ -1,0 +1,14 @@
+\chapter{Kết luận và Công việc Tương lai}
+\section{Kết luận}
+
+Trong công trình này, chúng tôi trình bày một framework \textbf{Phát hiện Sự kiện Hai Đường (Dual-Path Event Detection)} mới giúp dung hòa hiệu quả sự đánh đổi giữa khả năng đáp ứng thời gian thực và chiều sâu ngữ nghĩa. Bằng cách tách rời phân cụm nhạy cảm với độ trễ (Fast Path) khỏi suy luận LLM tốn kém tính toán (Slow Path), hệ thống của chúng tôi đạt được phát hiện sự kiện gần như tức thời trên Fast Path (2.4s độ trễ xử lý trong thiết lập thử nghiệm của chúng tôi) trong khi duy trì chất lượng phân cụm mạnh trên tập con Mini-Ground Truth đã gán nhãn thông qua News Anchoring (SAHC cơ bản: NMI = 0.54, Purity = 0.65; pipeline lai đầy đủ: NMI tốt nhất = 0.5978).
+Trên bộ dữ liệu đầy đủ, các chỉ số nội tại và đánh giá LLM-as-a-Judge xác nhận thêm tính nhất quán cụm được cải thiện so với các phương pháp cơ sở. Chúng tôi chứng minh rằng các phương pháp dựa trên mật độ truyền thống đơn độc không đủ cho dữ liệu xã hội nhiễu, đòi hỏi phương pháp lai nơi tin tức đã xác nhận đóng vai trò ổn định ngữ nghĩa. Công việc tương lai sẽ tập trung vào triển khai các mô hình embedding lượng tử hóa đến thiết bị biên và tích hợp tín hiệu đa phương thức (hình ảnh/video) để nâng cao nhận thức tình huống cho quản lý khủng hoảng.
+
+\section{Công việc Tương lai}
+Để mở rộng hệ thống hướng tới triển khai sản xuất ($>10.000$ sự kiện mỗi giây), chúng tôi lên kế hoạch các mở rộng sau:
+\begin{itemize}
+    \item \textbf{Tối ưu hóa Mô hình:} Áp dụng lượng tử hóa (ONNX/INT8) và suy luận nhận thức batch để giảm độ trễ và chi phí embedding trong khi bảo toàn chất lượng phân cụm.
+    \item \textbf{Mô hình hóa Cảm xúc Nâng cao:} Mở rộng sentiment 3 lớp hiện tại thành cảm xúc chi tiết (ví dụ: Giận dữ, Sợ hãi, Hy vọng) để mô tả tốt hơn động lực khủng hoảng và phản ứng của công chúng.
+    \item \textbf{Vòng Phản hồi Từ Người dùng:} Thêm công cụ chỉnh sửa mức dashboard (gộp/tách cụm, gán lại nhãn taxonomy) và đưa các chỉnh sửa đã xác thực vào Active Learning cho cải tiến liên tục.
+    \item \textbf{Mở rộng Sản xuất:} Chuyển từ Spark Local sang triển khai phân tán trên \textbf{Kubernetes/YARN}, cho phép mở rộng theo chiều ngang độc lập của Kafka, Spark executors, và LLM workers.
+\end{itemize}

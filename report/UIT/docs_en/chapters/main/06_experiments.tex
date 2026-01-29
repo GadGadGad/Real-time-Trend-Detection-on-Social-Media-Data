@@ -1,0 +1,228 @@
+\chapter{Data and Experimental Setup}
+
+\section{Data Sources}
+Our system monitors two primary data streams, unified into a common schema for processing:
+\begin{itemize}
+    \item \textbf{Social Media (Facebook):} Collected from high-engagement Fanpages (e.g., Theanh28, ThongTinChinhPhu). Data fields include: \texttt{pageName}, \texttt{postId}, \texttt{time} (ISO-8601), \texttt{text} content, and engagement metrics (\texttt{likes}, \texttt{comments}, \texttt{shares}).
+    \item \textbf{Mainstream News:} Articles crawled from verified outlets (VnExpress, Tuoi Tre). Key fields: \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, and \texttt{PublishTime}.
+    \item \textbf{Google Trends:} Real-time search keywords acting as a \textbf{confirmatory/lagging signal} to validate and prioritize candidate clusters detected from social streams.
+\end{itemize}
+
+The experimental dataset consists of \textbf{7,605 unique items} collected from Dec 8 to Dec 22, 2025, including \textbf{4,644 crawled news articles} and \textbf{2,961 social media posts}.
+After content extraction, \textbf{4,603 news articles} contain valid body text and are used for anchoring and embedding. Here, \textbf{2,961} denotes the \emph{unique social posts used in experiments} after deduplication and basic validity checks (raw crawled volume is reported as an approximation).
+
+\section{Data Collection Methodology}
+To ensure comprehensive coverage of the Vietnamese digital landscape, we employed a hybrid collection strategy combining custom-built scrapers and third-party APIs:
+
+\begin{itemize}
+    \item \textbf{News Article Collection:} We developed custom Python web scrapers for five major Vietnamese news outlets: VnExpress\footnote{\url{https://vnexpress.net/}}, Tuoi Tre\footnote{\url{https://tuoitre.vn/}}, Thanh Nien\footnote{\url{https://thanhnien.vn/}}, Nguoi Lao Dong\footnote{\url{https://nguoilaudong.vn/}}, and VietnamNet\footnote{\url{https://vietnamnet.vn/}}. Each scraper implements:
+          \begin{itemize}
+              \item Multi-threaded article discovery with configurable worker pools
+              \item Date-range filtering for targeted historical collection
+              \item Automatic retry logic with exponential backoff for resilience
+              \item Deduplication via URL caching to enable incremental crawling
+              \item Structured extraction of metadata (title, author, publish time, category) and full article content using BeautifulSoup
+          \end{itemize}
+          The scrapers are orchestrated via Apache Airflow DAGs, running on configurable schedules (default: every 6 hours) to capture breaking news while respecting rate limits.
+
+    \item \textbf{Social Media Collection:} For Facebook public page posts, we utilized Apify\footnote{\url{https://apify.com/}}, a cloud-based web scraping platform. Apify's Facebook Pages Scraper actor was configured to monitor 40+ high-traffic Vietnamese Fanpages, extracting post text, timestamps, and engagement metrics (likes, comments, shares). This approach ensures compliance with platform terms of service while providing reliable, scalable data access without direct API authentication overhead.
+
+    \item \textbf{Google Trends:} Real-time trending search queries for Vietnam are fetched via the unofficial Google Trends API wrapper, providing a lagging confirmatory signal for event prioritization.
+\end{itemize}
+
+\begin{figure}[ht]
+    \centering
+    \scalebox{0.75}{
+        \begin{tikzpicture}[
+            node distance=0.8cm and 1.2cm,
+            box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
+            source/.style={box, fill=blue!20},
+            process/.style={box, fill=orange!20},
+            storage/.style={box, fill=green!20},
+            arrow/.style={-{Stealth[scale=0.8]}, thick}
+            ]
+            % Airflow Scheduler
+            \node[process] (airflow) {Airflow\\Scheduler};
+
+            % News Sources
+            \node[source, right=1.5cm of airflow, yshift=1.6cm] (vne) {VnExpress};
+            \node[source, right=1.5cm of airflow, yshift=0.8cm] (tt) {Tuoi Tre};
+            \node[right=2.5cm of airflow, font=\large] (dots) {$\vdots$};
+            \node[source, right=1.5cm of airflow, yshift=-0.8cm] (tn) {Thanh Nien};
+            \node[source, right=1.5cm of airflow, yshift=-1.6cm] (nld) {NLD / VNN};
+
+            % Scraper Workers
+            \node[process, right=1.2cm of tt, yshift=-0.4cm] (workers) {Multi-Thread\\Workers};
+
+            % Processing steps
+            \node[process, right=1.2cm of workers] (extract) {HTML Parse\\+ Extract};
+            \node[process, right=1.2cm of extract] (dedup) {Dedup\\Cache};
+
+            % Storage
+            \node[storage, right=1.2cm of dedup] (csv) {CSV / DB\\Storage};
+
+            % Arrows
+            \draw[arrow] (airflow) -- (vne);
+            \draw[arrow] (airflow) -- (tt);
+            \draw[arrow] (airflow) -- (tn);
+            \draw[arrow] (airflow) -- (nld);
+
+            \draw[arrow] (vne) -- (workers);
+            \draw[arrow] (tt) -- (workers);
+            \draw[arrow] (tn) -- (workers);
+            \draw[arrow] (nld) -- (workers);
+
+            \draw[arrow] (workers) -- (extract);
+            \draw[arrow] (extract) -- (dedup);
+            \draw[arrow] (dedup) -- (csv);
+
+            % Retry loop
+            \draw[arrow, dashed] (extract.south) -- ++(0,-0.5) -| node[pos=0.25, below, font=\scriptsize] {Retry} (workers.south);
+        \end{tikzpicture}
+    }
+    \caption{News Article Collection Pipeline.}
+    \label{fig:news_pipeline}
+\end{figure}
+
+\noindent Fig. \ref{fig:news_pipeline} illustrates the news article collection workflow. Each component serves a specific role:
+\begin{itemize}
+    \item \textbf{Airflow Scheduler:} Apache Airflow orchestrates the crawling tasks via Directed Acyclic Graphs (DAGs). Each news source has a dedicated DAG configured to run on a 6-hour schedule, ensuring timely capture of breaking news while avoiding excessive server load. Airflow provides fault tolerance, automatic retries, and centralized monitoring through its web UI.
+
+    \item \textbf{News Sources (VnExpress, Tuoi Tre, Thanh Nien, NLD/VNN):} These represent the five major Vietnamese news outlets targeted by our scrapers. Each source has a custom scraper implementation tailored to its specific HTML structure and pagination scheme. The scrapers support both incremental crawling (latest articles) and historical collection (date-range queries).
+
+    \item \textbf{Multi-Thread Workers:} Each scraper spawns a configurable pool of worker threads (default: 10) to parallelize HTTP requests. This significantly reduces total crawl time while respecting rate limits through request throttling. Workers use a shared session with connection pooling for efficiency.
+
+    \item \textbf{HTML Parse + Extract:} Raw HTML responses are parsed using BeautifulSoup. The extraction logic is source-specific, targeting structured elements (e.g., \texttt{article-body}, \texttt{h1.title}) to extract title, author, publish time, category, and full article content. Failed extractions trigger the retry mechanism with exponential backoff.
+
+    \item \textbf{Dedup Cache:} A URL-based cache (stored as a local file or Redis) tracks previously crawled articles. Before processing, each URL is checked against this cache to skip duplicates, enabling efficient incremental crawling across runs.
+
+    \item \textbf{CSV/DB Storage:} Validated articles are persisted in CSV format for portability and optionally inserted into PostgreSQL for downstream querying. Each record includes all extracted metadata and the full article text.
+\end{itemize}
+
+\section{Exploratory Data Analysis}
+Table \ref{tab:data_dist} presents the distribution of our experimental dataset. We observed a significant "Availability Gap": while we crawled over 9,400 news URLs, only \textbf{4,603 articles (48.6\%)} contained extractable body text, whereas \textbf{social media posts (2,961 items)} achieved \emph{near-complete} availability.
+Furthermore, there is a structural divergence: News articles average $>500$ words with formal grammar, while social posts average $<50$ words with frequent slang. This dichotomy necessitates our "Dual-Path" design, where the \textbf{Fast Path} handles the high-velocity, short-text social stream, and the \textbf{Slow Path} leverages LLMs to synthesize the deeper context found in news anchors.
+
+\begin{table}
+    \caption{Dataset Distribution and Availability}\label{tab:data_dist}
+    \centering
+    \begin{tabular}{l c c c}
+        \toprule
+        \textbf{Source Type} & \textbf{Crawled URLs} & \textbf{Valid Content}   & \textbf{Avg Length (words)} \\
+        \midrule
+        Mainstream News      & $\approx 9,400$       & 4,603 (48.6\%)           & $> 500$                     \\
+        Social Media         & $\approx 3,000$       & 2,961 ($\approx 98.7\%$) & $< 50$                      \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Deployment and Operational Environment}
+To ensure reproducibility and scalability, the system is containerized using \textbf{Docker Compose} with the following core services:
+\begin{itemize}
+    \item \textbf{Software Stack:} Apache Kafka 7.5.0, Apache Spark 3.5.0, PostgreSQL 15, MongoDB 6.0.
+    \item \textbf{Hardware:} Optimized for single-node deployment (32GB RAM, 4 vCPUs) or Kubernetes clustering.
+    \item \textbf{Inference:} ONNX Runtime acceleration on NVIDIA P100 GPUs.
+\end{itemize}
+
+\subsection{Deployment Benefits}
+The containerized microservices architecture offers three key advantages:
+\begin{enumerate}
+    \item \textbf{Scalability:} The decoupling of Ingestion (Kafka) and Processing (Spark/LLM) allows independent scaling. During high-traffic events (e.g., storms), we can horizontally add Spark Workers without reconfiguring the ingestion layer.
+    \item \textbf{Cost Efficiency:} By offloading heavy batch clustering to local commodity hardware (CPU) and only invoking the paid LLM API for verified clusters (0.01\% of volume), we reduce operational costs by approx. 400x compared to pure LLM-based approaches.
+    \item \textbf{Reproducibility:} The entire stack is defined in \texttt{docker-compose.yml}, ensuring that the "Demo" environment is identical to "Production", eliminating "it works on my machine" issues.
+\end{enumerate}
+
+\section{Dataset Construction Strategy}
+To train our specialized models without incurring high labeling costs, we employed a \textbf{Hybrid Labeling Strategy}:
+\begin{enumerate}
+    \item \textbf{Self-Supervised Learning:} For the Cross-Encoder Reranker, we mined "Hard Negatives" (similar keywords but different semantics) to create 877 high-quality pairs.
+          This reranker is used as an auxiliary matching component (verification / recovery) and as an offline benchmark module.
+    \item \textbf{Active Learning with LLM:} For Sentiment and Taxonomy classification, we used Gemini Pro to pseudo-label roughly 10k samples, then manually reviewed low-confidence scores. This yielded \textbf{4,630 samples for Sentiment} and \textbf{3,687 samples for Taxonomy} training.
+\end{enumerate}
+
+\begin{figure}[h]
+    \centering
+    \begin{verbatim}
+{"text": "Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng.", 
+ "label_sentiment": "Neutral", "label_taxonomy": "T1 - Crisis & Public Risk"}
+{"text": ["Bão số 15 Koto đang ở đâu?", "Áp thấp nhiệt đới mạnh lên thành bão."], 
+ "label_relevance": 1.0}
+\end{verbatim}
+    \caption{JSONL Training Data Examples for Classification and Reranking.} \label{fig:jsonl}
+\end{figure}
+
+\section{Model Selection and Fine-tuning}
+We fine-tuned specific models for Vietnamese to serve as the system's backbone. To ensure robustness, we constructed a \textbf{Stress Test Set} containing 20 hard samples per category, specifically targeting edge cases such as "Slang" (social media language), "Storm Synonyms" (ambiguous event naming), and "Domain Overlap". Table \ref{tab:training_config} details the specific training hyperparameters used, and Table \ref{tab:models} shows the final performance metrics on this rigorous test set.
+
+\begin{table}
+    \caption{Detailed Training Configuration and Hyperparameters}\label{tab:training_config}
+    \centering
+    \begin{tabular}{l l l l}
+        \toprule
+        \textbf{Model Target} & \textbf{Base Architecture} & \textbf{Dataset Size} & \textbf{Training Config}        \\
+        \midrule
+        Sentiment             & \texttt{uitnlp/visobert}   & 4,630 (3 classes)     & Epochs: 20, Batch: 32, LR: 2e-5 \\
+        Taxonomy              & \texttt{uitnlp/visobert}   & 3,687 (7 classes)     & Epochs: 20, Batch: 16, LR: 2e-5 \\
+        Reranker              & \texttt{ms-marco-MiniLM}   & 877 pairs (Gold)      & Contractive Loss, Epochs: 20    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/embedding_benchmark.png}
+    \caption{Benchmark results comparing Embedding Models across different edge cases.} \label{fig:benchmark}
+\end{figure}
+
+
+
+Fig. \ref{fig:benchmark} compares the stability (gap between positive/negative pairs) of 5 state-of-the-art models. We define the Stability Gap mathematically as:
+\begin{equation}
+    Gap = Sim(q, pos) - Sim(q, neg)
+\end{equation}
+\texttt{vietnamese-document-embedding} (blue bar) consistently maintains the largest margin across edge cases like "Storm Synonyms" and "Slang", validating its selection as our backbone model.
+
+Results showed that \texttt{dangvantuan/vietnamese-document-embedding} achieved the best stability (Avg Gap 0.265). Table \ref{tab:embedding_benchmark} details the performance across specific linguistic challenges, defined as follows:
+
+\begin{itemize}
+    \item \textbf{Avg Gap:} The mean stability margin across all test cases.
+    \item \textbf{Storm:} Ability to group diverse storm names (e.g., "Typhoon Yagi", "Storm No.3").
+    \item \textbf{Domain:} Cross-domain retrieval (e.g., matching "Healthcare" query to "Hospital" posts).
+    \item \textbf{Category:} Distinguishing between event types (e.g., "Flood" vs. "Traffic Jam").
+    \item \textbf{Slang:} Handling Vietnamese teen-code and internet slang (e.g., "bão" vs "b4o").
+    \item \textbf{Abbrev:} Resolving common abbreviations (e.g., "HCM" $\rightarrow$ "Ho Chi Minh City").
+\end{itemize}
+
+\textbf{Analysis:} While \texttt{vn-sbert} excels at keyword-heavy tasks like "Storm" grouping (Gap: 0.355), it fails completely on "Slang" (-0.005), indicating it treats slang as noise. In contrast, \texttt{vn-doc-embedding} maintains robust performance on "Slang" (0.283) and "Abbrev" (0.419), making it the superior choice for processing raw social media text where informal language is prevalent.
+
+\begin{table}
+    \caption{Embedding Stability Gap Analysis (Metric: Cosine Distance Diff)}\label{tab:embedding_benchmark}
+    \centering
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l c c c c c c}
+            \toprule
+            \textbf{Model Identifier}                   & \textbf{Avg Gap} $\uparrow$ & \textbf{Storm} $\uparrow$ & \textbf{Domain} $\uparrow$ & \textbf{Category} $\uparrow$ & \textbf{Slang}  $\uparrow$ & \textbf{Abbrev}  $\uparrow$ \\
+            \midrule
+            \textbf{vn-doc-embedding*} \cite{ref_vndoc} & \textbf{0.265}              & 0.239                     & 0.224                      & \textbf{0.162}               & \textbf{0.283}             & \textbf{0.419}              \\
+            vn-bi-encoder                               & 0.193                       & 0.155                     & 0.213                      & 0.107                        & 0.108                      & 0.381                       \\
+            vn-sbert \cite{ref_visobert}                & 0.188                       & \textbf{0.355}            & 0.172                      & 0.033                        & -0.005                     & 0.386                       \\
+            bge-m3 \cite{ref_bge}                       & 0.160                       & -0.003                    & \textbf{0.269}             & 0.070                        & 0.192                      & 0.273                       \\
+            multilingual-e5 \cite{ref_e5}               & 0.058                       & 0.018                     & 0.088                      & 0.022                        & 0.073                      & 0.091                       \\
+            \bottomrule
+        \end{tabular}%
+    }
+\end{table}
+
+\begin{table}
+    \caption{Fine-tuned Model Performance}\label{tab:models}
+    \centering
+    \begin{tabular}{l l c c}
+        \toprule
+        \textbf{Model Task}      & \textbf{Class Type}     & \textbf{Accuracy} ($\uparrow$) & \textbf{Latency} ($\downarrow$) \\
+        \midrule
+        Sentiment Classifier     & 3 classes (Pos/Neg/Neu) & \textbf{93.5\%}                & 12ms                            \\
+        Bi-CrossEncoder Reranker & Relevance Scoring       & 91.0\%                         & 45ms                            \\
+        Taxonomy Classifier      & 7 classes (T1-T7)       & 89.2\%                         & 14ms                            \\
+        \bottomrule
+    \end{tabular}
+\end{table}

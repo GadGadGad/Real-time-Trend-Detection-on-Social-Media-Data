@@ -1,0 +1,10 @@
+\section{Ethical Considerations and Limitations}
+As an AI-integrated system analyzing public discourse, we follow ethical data practices and explicitly acknowledge key limitations.
+\begin{itemize}
+    \item \textbf{Privacy Protection:} Although the system processes public posts, we mask Personally Identifiable Information (PII) such as phone numbers and specific addresses before storage. We present results at the \emph{cluster/event} level to avoid targeting individuals.
+    \item \textbf{Source Bias and Coverage:} News ``anchors'' may reflect editorial bias or incomplete coverage. To mitigate this, the pipeline explicitly supports \textbf{Social-only} event discovery (via HDBSCAN) so that underreported topics can still surface; nevertheless, anchor choice can influence what becomes ``verified'' in downstream summaries.
+    \item \textbf{LLM Safety and Reliability:} LLMs can produce plausible but incorrect summaries. We therefore restrict LLM usage to \emph{post-hoc enrichment} (not triggering detection) and apply a \textbf{Human-in-the-Loop} verification policy for high-risk alerts (T1--Crisis) before any external escalation.
+\end{itemize}
+
+
+

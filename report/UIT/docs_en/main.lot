@@ -1,0 +1,24 @@
+\babel@toc {english}{}\relax 
+\addvspace {10pt}
+\addvspace {10pt}
+\contentsline {table}{\numberline {2.1}{\ignorespaces Comparison of Event Detection and Classification Approaches}}{6}{table.caption.11}%
+\addvspace {10pt}
+\addvspace {10pt}
+\addvspace {10pt}
+\addvspace {10pt}
+\contentsline {table}{\numberline {6.1}{\ignorespaces Dataset Distribution and Availability}}{23}{table.caption.15}%
+\contentsline {table}{\numberline {6.1}{\ignorespaces Detailed Training Configuration and Hyperparameters}}{24}{table.caption.17}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces Embedding Stability Gap Analysis (Metric: Cosine Distance Diff)}}{26}{table.caption.19}%
+\contentsline {table}{\numberline {6.3}{\ignorespaces Fine-tuned Model Performance}}{26}{table.caption.20}%
+\addvspace {10pt}
+\contentsline {table}{\numberline {7.1}{\ignorespaces Clustering Method Comparison}}{28}{table.caption.22}%
+\contentsline {table}{\numberline {7.1}{\ignorespaces Performance on Mini-Ground Truth (N=300) -- Base SAHC Setting}}{28}{table.caption.23}%
+\contentsline {table}{\numberline {7.1}{\ignorespaces Ablation Study on Mini-Ground Truth (N=300)}}{30}{table.caption.24}%
+\addvspace {10pt}
+\addvspace {10pt}
+\addvspace {10pt}
+\addvspace {10pt}
+\contentsline {table}{\numberline {A.1}{\ignorespaces LLM Refinement Prompt (Phase 6)}}{37}{table.caption.25}%
+\contentsline {table}{\numberline {A.2}{\ignorespaces LLM-as-a-Judge Prompt (Evaluation)}}{37}{table.caption.26}%
+\contentsline {table}{\numberline {A.3}{\ignorespaces Semantic Deduplication Prompt (Phase 4)}}{38}{table.caption.27}%
+\contentsline {table}{\numberline {A.4}{\ignorespaces Google Trends Filter Prompt (Phase 6)}}{38}{table.caption.28}%

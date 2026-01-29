@@ -1,0 +1,76 @@
+\section{Công trình Liên quan}
+Phát hiện sự kiện từ mạng xã hội đã phát triển đáng kể trong thập kỷ qua, tiến triển từ các phương pháp thống kê đến các phương pháp neural và, gần đây nhất, đến các hệ thống được tăng cường bởi Mô hình Ngôn ngữ Lớn (LLM).
+Chúng tôi tổ chức tài liệu liên quan thành bốn loại: (1) các phương pháp thống kê truyền thống, (2) các phương pháp neural và dựa trên embedding, (3) các phương pháp LLM và Tạo sinh Tăng cường Truy xuất (RAG), và (4) các kiến trúc luồng thời gian thực.
+Bảng \ref{tab:related_work} cung cấp tóm tắt so sánh các phương pháp đại diện.
+
+\subsection{Các Phương pháp Thống kê Truyền thống}
+Các hệ thống phát hiện sự kiện ban đầu phụ thuộc nhiều vào phân tích tần suất từ và mô hình hóa chủ đề.
+Các phương pháp \textbf{TF-IDF và BM25} \cite{ref_bm25} xác định các từ khóa bùng nổ lệch khỏi mô hình tần suất bình thường, cho phép phát hiện nhanh các chủ đề xu hướng.
+\textbf{Latent Dirichlet Allocation (LDA)} \cite{ref_lda} và các biến thể trực tuyến của nó mô hình hóa tài liệu như hỗn hợp các chủ đề ẩn, cho phép khám phá không giám sát các chủ đề sự kiện.
+\textbf{EDCoW} \cite{ref_edcow} giới thiệu xử lý tín hiệu dựa trên wavelet để phát hiện các từ khóa ``bùng nổ'' trong luồng Twitter, sử dụng đồ thị đồng xuất hiện để phân cụm các thuật ngữ liên quan thành sự kiện.
+
+\textbf{Điểm mạnh:} Các phương pháp này hiệu quả về tính toán và có thể diễn giải, làm cho chúng phù hợp với các kịch bản thông lượng cao.
+\textbf{Hạn chế:} Chúng gặp khó khăn với các văn bản mạng xã hội ngắn, nhiễu nơi sự đồng xuất hiện từ thưa thớt, và chúng không thể nắm bắt sự tương đồng ngữ nghĩa giữa các biểu thức khác nhau về từ vựng (ví dụ: ``Bão Yagi'' so với ``Bão số 3'').
+
+\subsection{Các Phương pháp Neural và Dựa trên Embedding}
+Sự ra đời của học sâu cho phép biểu diễn ngữ nghĩa của văn bản, cải thiện đáng kể chất lượng phát hiện sự kiện.
+\textbf{BERT} \cite{ref_bert} và các biến thể của nó cung cấp nhúng từ ngữ cảnh hóa nắm bắt ý nghĩa tinh tế.
+\textbf{Sentence-BERT (SBERT)} \cite{ref_sbert} thay đổi BERT cho tính toán tương đồng cấp câu hiệu quả sử dụng mạng Siamese, cho phép tìm kiếm lân cận nhanh trong không gian embedding.
+\textbf{BERTopic} \cite{ref_bertopic} kết hợp embeddings transformer với phân cụm (HDBSCAN) và TF-IDF dựa trên lớp để tạo biểu diễn chủ đề mạch lạc.
+
+Các thuật toán phân cụm tạo thành xương sống của nhiều hệ thống phát hiện sự kiện neural.
+\textbf{K-Means} \cite{ref_kmeans} phân chia dữ liệu thành $k$ cụm cầu nhưng đòi hỏi số cụm được xác định trước và không thể xử lý nhiễu.
+\textbf{DBSCAN} \cite{ref_dbscan} xác định các cụm hình dạng tùy ý dựa trên mật độ và gán nhãn rõ ràng các điểm nhiễu, nhưng sử dụng ngưỡng mật độ toàn cục thất bại khi mật độ cụm thay đổi.
+\textbf{HDBSCAN} \cite{ref_hdbscan} mở rộng DBSCAN với ước lượng mật độ phân cấp, tự động xác định các cụm có mật độ khác nhau trong khi cô lập nhiễu---làm cho nó đặc biệt phù hợp với dữ liệu mạng xã hội nơi các cụm sự kiện thể hiện mức độ tương tác đa dạng.
+
+\textbf{Điểm mạnh:} Các phương pháp dựa trên embedding nắm bắt các mối quan hệ ngữ nghĩa và xử lý biến đổi từ vựng hiệu quả.
+\textbf{Hạn chế:} Các embeddings chiều cao gây ra chi phí tính toán đáng kể, và suy luận thời gian thực vẫn còn là thách thức ở quy mô. Ngoài ra, các phương pháp này thường đòi hỏi điều chỉnh siêu tham số cẩn thận (ví dụ: ngưỡng cụm) cho từng miền.
+
+\subsection{LLM và Tạo sinh Tăng cường Truy xuất}
+Các Mô hình Ngôn ngữ Lớn gần đây đã chuyển đổi các nhiệm vụ NLP thông qua khả năng suy luận nổi bật \cite{ref_llm_reasoning}.
+\textbf{GPT-4, Gemini và Claude} thể hiện hiệu suất zero-shot mạnh mẽ trên các nhiệm vụ phân loại, tóm tắt và trích xuất thông tin mà không cần tinh chỉnh riêng cho nhiệm vụ.
+Tuy nhiên, LLMs gặp phải vấn đề ``ảo giác''---tạo nội dung có vẻ hợp lý nhưng không chính xác về thực tế---đặc biệt khi hoạt động mà không có ngữ cảnh nền tảng.
+
+\textbf{Tạo sinh Tăng cường Truy xuất (RAG)} \cite{ref_rag} giải quyết hạn chế này bằng cách điều kiện hóa câu trả lời LLM trên các tài liệu liên quan được truy xuất.
+Trong ngữ cảnh phát hiện sự kiện, RAG cho phép căn cứ tóm tắt LLM trên các điểm dữ liệu xã hội đã được xác minh, cải thiện độ chính xác thực tế.
+Một số công trình gần đây đã khám phá trích xuất và phân loại sự kiện dựa trên LLM, mặc dù hầu hết tập trung vào xử lý theo lô ngoại tuyến thay vì luồng thời gian thực.
+
+\textbf{Điểm mạnh:} LLMs cung cấp hiểu biết ngữ nghĩa vượt trội và có thể tạo các tóm tắt sự kiện có thể diễn giải với trích xuất 5W1H cấu trúc (Ai, Cái gì, Khi nào, Ở đâu, Tại sao, Như thế nào).
+\textbf{Hạn chế:} Suy luận LLM tốn kém tính toán (thường chậm hơn 100-1000$\times$ so với phân loại dựa trên embedding), làm cho việc tích hợp trực tiếp vào các pipeline luồng độ trễ thấp không khả thi.
+
+\subsection{Các Kiến trúc Luồng Thời gian Thực}
+Phát hiện sự kiện thời gian thực đòi hỏi các kiến trúc chuyên biệt cân bằng thông lượng, độ trễ và độ chính xác.
+\textbf{Sakaki và cộng sự} \cite{ref_twitter_earthquake} tiên phong trong phát hiện động đất thời gian thực từ Twitter sử dụng bộ lọc Kalman và bộ lọc hạt để theo dõi sự lan truyền sự kiện.
+\textbf{TwitterNews+} \cite{ref_streaming_survey} đề xuất một framework kết hợp phân cụm tăng dần với nhận dạng thực thể được đặt tên cho phát hiện sự kiện tin tức từ luồng Twitter.
+
+Các hệ thống luồng hiện đại thường sử dụng \textbf{Kiến trúc Lambda} (lớp batch + luồng) hoặc \textbf{Kiến trúc Kappa} đơn giản hơn (chỉ luồng), sử dụng các message broker như Apache Kafka cho thu nhập chống lỗi và các bộ xử lý luồng như Spark Streaming hoặc Flink cho tính toán thời gian thực.
+
+\textbf{Điểm mạnh:} Các kiến trúc này đạt độ trễ dưới giây và khả năng mở rộng theo chiều ngang.
+\textbf{Hạn chế:} Hầu hết các phương pháp luồng hy sinh chiều sâu ngữ nghĩa để đổi lấy tốc độ, sử dụng các đặc trưng nhẹ (từ khóa, hashtag) thay vì hiểu biết ngữ nghĩa đầy đủ.
+
+\subsection{Khoảng trống Nghiên cứu và Đóng góp của Chúng tôi}
+Như tóm tắt trong Bảng \ref{tab:related_work}, các phương pháp hiện có thường tối ưu hóa cho \emph{hoặc} phát hiện luồng độ trễ thấp \emph{hoặc} tính nhất quán ngữ nghĩa cao với suy luận LLM---nhưng các triển khai thực tế đòi hỏi \textbf{cả hai} đồng thời.
+\textbf{Dual-Path Architecture} của chúng tôi giải quyết khoảng trống này bằng cách tách rời phân cụm nhanh (SAHC trên Fast Path) khỏi làm giàu ngữ nghĩa sâu (LLM trên Slow Path), đạt độ trễ thời gian thực trong khi duy trì khả năng diễn giải sự kiện.
+Hơn nữa, chúng tôi giới thiệu giao thức \textbf{LLM-as-a-Judge} để giải quyết khoảng trống đánh giá khi nhãn ground-truth khan hiếm trong các kịch bản luồng.
+
+\begin{table}[H]
+    \caption{So sánh các Phương pháp Phát hiện Sự kiện}\label{tab:related_work}
+    \centering
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l c c c c c}
+            \toprule
+            \textbf{Approach}                        & \textbf{Semantic}      & \textbf{Real-time}  & \textbf{Noise}      & \textbf{Interpretable} & \textbf{Scalable}   \\
+                                                     & \textbf{Understanding} & \textbf{Capable}    & \textbf{Handling}   & \textbf{Output}        &                     \\
+            \midrule
+            TF-IDF / BM25 \cite{ref_bm25}            & Low                    & \checkmark          & Limited             & --                     & \checkmark          \\
+            LDA \cite{ref_lda}                       & Medium                 & --                  & Limited             & \checkmark             & \checkmark          \\
+            EDCoW \cite{ref_edcow}                   & Low                    & \checkmark          & Limited             & --                     & \checkmark          \\
+            BERT + Clustering \cite{ref_bert}        & High                   & --                  & Medium              & --                     & --                  \\
+            BERTopic \cite{ref_bertopic}             & High                   & --                  & \checkmark          & \checkmark             & --                  \\
+            TwitterNews+ \cite{ref_streaming_survey} & Medium                 & \checkmark          & Medium              & --                     & \checkmark          \\
+            \midrule
+            \textbf{Ours (SAHC + LLM)}               & \textbf{High}          & \textbf{\checkmark} & \textbf{\checkmark} & \textbf{\checkmark}    & \textbf{\checkmark} \\
+            \bottomrule
+        \end{tabular}%
+    }
+\end{table}
