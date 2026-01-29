@@ -64,11 +64,11 @@ Chúng tôi sử dụng chiến lược thu thập lai kết hợp scraper tùy 
     \label{fig:news_pipeline}
 \end{figure}
 
-\noindent Hình \autoref{fig:news_pipeline} tóm tắt pipeline thu thập tin tức: Airflow điều phối theo lịch; scraper workers tải và trích xuất nội dung; hệ thống khử trùng lặp theo URL để crawl tăng dần; dữ liệu được lưu trữ để phục vụ các bước downstream.
+\noindent \autoref{fig:news_pipeline} tóm tắt pipeline thu thập tin tức: Airflow điều phối theo lịch; scraper workers tải và trích xuất nội dung; hệ thống khử trùng lặp theo URL để crawl tăng dần; dữ liệu được lưu trữ để phục vụ các bước downstream.
 
 
 \subsection{Phân tích Dữ liệu Khám phá}
-Bảng \autoref{tab:data_dist} trình bày phân phối bộ dữ liệu thử nghiệm. Chúng tôi quan sát thấy ``Khoảng cách Sẵn có'': dù crawl hơn $\approx 9.400$ URL tin tức, chỉ \textbf{4.603 bài báo (48,6\%)} có body trích xuất được; trong khi \textbf{bài đăng mạng xã hội (2.961 mục)} đạt mức sẵn có gần như hoàn toàn. Ngoài ra, hai nguồn có độ dài và phong cách khác biệt: bài báo thường $>500$ từ, còn bài đăng xã hội thường $<50$ từ và nhiều tiếng lóng. Sự phân đôi này thúc đẩy thiết kế hai đường xử lý: \textbf{Fast Path} cho văn bản ngắn tốc độ cao, và \textbf{Slow Path} tận dụng ngữ cảnh sâu từ neo tin tức.
+\autoref{tab:data_dist} trình bày phân phối bộ dữ liệu thử nghiệm. Chúng tôi quan sát thấy ``Khoảng cách Sẵn có'': dù crawl hơn $\approx 9.400$ URL tin tức, chỉ \textbf{4.603 bài báo (48,6\%)} có body trích xuất được; trong khi \textbf{bài đăng mạng xã hội (2.961 mục)} đạt mức sẵn có gần như hoàn toàn. Ngoài ra, hai nguồn có độ dài và phong cách khác biệt: bài báo thường $>500$ từ, còn bài đăng xã hội thường $<50$ từ và nhiều tiếng lóng. Sự phân đôi này thúc đẩy thiết kế hai đường xử lý: \textbf{Fast Path} cho văn bản ngắn tốc độ cao, và \textbf{Slow Path} tận dụng ngữ cảnh sâu từ neo tin tức.
 
 \begin{table}
     \caption{Phân phối Dataset và Tính Sẵn có}\label{tab:data_dist}
@@ -137,7 +137,7 @@ Mô hình tốt nhất được lựa chọn theo hiệu suất trên tập vali
 
 
 \subsection{Lựa chọn Mô hình và Tinh chỉnh}
-Chúng tôi tinh chỉnh các mô hình cụ thể cho tiếng Việt để phục vụ làm xương sống của hệ thống. Để đảm bảo tính mạnh mẽ, chúng tôi xây dựng một \textbf{Bộ Kiểm tra Stress} chứa 20 mẫu khó mỗi loại, đặc biệt nhắm vào các trường hợp biên như ``Tiếng lóng'' (ngôn ngữ mạng xã hội), ``Từ đồng nghĩa Bão'' (đặt tên sự kiện mơ hồ), và ``Chồng chéo Miền''. \autoref{tab:training_config} chi tiết các siêu tham số huấn luyện cụ thể, và Bảng \autoref{tab:models} hiển thị các metric hiệu suất cuối cùng trên bộ kiểm tra nghiêm ngặt này.
+Chúng tôi tinh chỉnh các mô hình cụ thể cho tiếng Việt để phục vụ làm xương sống của hệ thống. Để đảm bảo tính mạnh mẽ, chúng tôi xây dựng một \textbf{Bộ Kiểm tra Stress} chứa 20 mẫu khó mỗi loại, đặc biệt nhắm vào các trường hợp biên như ``Tiếng lóng'' (ngôn ngữ mạng xã hội), ``Từ đồng nghĩa Bão'' (đặt tên sự kiện mơ hồ), và ``Chồng chéo Miền''. \autoref{tab:training_config} chi tiết các siêu tham số huấn luyện cụ thể, và \autoref{tab:models} hiển thị các metric hiệu suất cuối cùng trên bộ kiểm tra nghiêm ngặt này.
 
 \begin{table}[htbp]
     \caption{Cấu hình Huấn luyện Chi tiết và Siêu tham số}
@@ -165,13 +165,13 @@ Chúng tôi tinh chỉnh các mô hình cụ thể cho tiếng Việt để ph�
 
 
 
-Hình \autoref{fig:benchmark} so sánh độ ổn định (khoảng cách giữa cặp dương/âm) của 5 mô hình tiên tiến nhất. Chúng tôi định nghĩa Khoảng cách Ổn định theo toán học như:
+\autoref{fig:benchmark} so sánh độ ổn định (khoảng cách giữa cặp dương/âm) của 5 mô hình tiên tiến nhất. Chúng tôi định nghĩa Khoảng cách Ổn định theo toán học như:
 \begin{equation}
     Gap = Sim(q, pos) - Sim(q, neg)
 \end{equation}
 \texttt{vietnamese-document-embedding} (thanh xanh) duy trì biên độ lớn nhất nhất quán trên các trường hợp biên như ``Từ đồng nghĩa Bão'' và ``Tiếng lóng'', xác nhận việc lựa chọn nó làm mô hình xương sống của chúng tôi.
 
-Kết quả cho thấy \texttt{dangvantuan/vietnamese-document-embedding} đạt độ ổn định tốt nhất (Gap Trung bình 0,265). Bảng \autoref{tab:embedding_benchmark} chi tiết hiệu suất trên các thách thức ngôn ngữ cụ thể, được định nghĩa như sau:
+Kết quả cho thấy \texttt{dangvantuan/vietnamese-document-embedding} đạt độ ổn định tốt nhất (Gap Trung bình 0,265). \autoref{tab:embedding_benchmark} chi tiết hiệu suất trên các thách thức ngôn ngữ cụ thể, được định nghĩa như sau:
 
 \begin{itemize}
     \item \textbf{Gap Trung bình:} Biên độ ổn định trung bình trên tất cả các trường hợp kiểm tra.
@@ -217,5 +217,5 @@ Kết quả cho thấy \texttt{dangvantuan/vietnamese-document-embedding} đạt
 \end{table}
 
 \noindent\textbf{Chỉ số đánh giá Reranker:}
-Với module Cross-Encoder Reranker, giá trị \textbf{91,0\%} trong Bảng \autoref{tab:models} thể hiện \textbf{Binary Classification Accuracy} trên tập kiểm thử gồm các cặp (Query, Document) tích cực và tiêu cực khó (\textit{hard negatives}). Trong pipeline thực tế, độ chính xác cao này giúp Reranker đóng vai trò như một \textbf{verification gate}: giảm trường hợp ghép sai neo tin tức từ bước truy xuất dense ban đầu, qua đó hạn chế false positives trong quá trình hình thành và cập nhật cụm sự kiện.
+Với module Cross-Encoder Reranker, giá trị \textbf{91,0\%} trong \autoref{tab:models} thể hiện \textbf{Binary Classification Accuracy} trên tập kiểm thử gồm các cặp (Query, Document) tích cực và tiêu cực khó (\textit{hard negatives}). Trong pipeline thực tế, độ chính xác cao này giúp Reranker đóng vai trò như một \textbf{verification gate}: giảm trường hợp ghép sai neo tin tức từ bước truy xuất dense ban đầu, qua đó hạn chế false positives trong quá trình hình thành và cập nhật cụm sự kiện.
 
