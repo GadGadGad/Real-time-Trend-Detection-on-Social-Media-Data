@@ -83,23 +83,45 @@ Bảng \autoref{tab:data_dist} trình bày phân phối bộ dữ liệu thử n
     \end{tabular}
 \end{table}
 
+\subsubsection{Mini-Ground Truth cho đánh giá Clustering}
+Do dữ liệu streaming không có nhãn sự kiện chuẩn ở quy mô lớn, chúng tôi xây dựng tập \textbf{Mini-Ground Truth} gồm \textbf{300 bài đăng} để đánh giá định lượng chất lượng gom cụm.
+Quy trình tạo nhãn gồm:
+\begin{enumerate}
+    \item \textbf{Lấy mẫu phần tầng (Stratified Sampling):} sử dụng script lấy mẫu để chọn bài đăng theo các khung giờ/ngày khác nhau và theo mức tương tác (high/medium/low), nhằm đảm bảo độ phủ cả giai đoạn bình thường và giai đoạn có sự kiện nóng.
+    \item \textbf{Gán nhãn sự kiện:} hai người gán nhãn độc lập nhóm các bài đăng vào cùng một sự kiện dựa trên nội dung, thực thể nhắc đến, và tính nhất quán theo thời gian.
+    \item \textbf{Giải quyết bất đồng:} các trường hợp bất đồng được rà soát lại và thống nhất nhãn cuối cùng để tạo \textbf{Gold Label}.
+\end{enumerate}
+Tập Mini-Ground Truth này được dùng để tính các chỉ số \textbf{NMI, Purity, BCubed-F1} khi so sánh các phương pháp clustering.
+
 \subsection{Triển khai và Môi trường Vận hành}
-Hệ thống được container hóa bằng \textbf{Docker Compose}. Các thành phần chính gồm Kafka, Spark, PostgreSQL và MongoDB; suy luận embedding sử dụng ONNX Runtime. Mục tiêu của cấu hình này là đảm bảo tính tái lập giữa môi trường demo và vận hành.
+Hệ thống được container hóa bằng \textbf{Docker Compose} nhằm đảm bảo tính tái lập giữa môi trường demo và vận hành. Kiến trúc microservices bao gồm các dịch vụ ingest (Kafka), xử lý luồng (Spark Structured Streaming), và lưu trữ (PostgreSQL/MongoDB). Module suy luận (Embedding/Reranker/Classifier) được triển khai tách biệt để có thể tăng tốc bằng GPU.
 
-
-\subsubsection{Lợi ích Triển khai}
+\subsubsection{Cấu hình phần mềm và phần cứng}
 \begin{itemize}
-    \item \textbf{Mở rộng độc lập:} tách thu nhập và xử lý giúp mở rộng theo tải.
-    \item \textbf{Hiệu quả vận hành:} chỉ gọi LLM cho các cụm đã xác minh để giảm chi phí.
-    \item \textbf{Tái lập:} môi trường được định nghĩa thống nhất bằng Docker Compose.
+    \item \textbf{Software stack:} Kafka, Spark Structured Streaming, PostgreSQL, MongoDB, và các service phụ trợ được đóng gói bằng Docker Compose.
+    \item \textbf{Phần cứng (Pipeline):} cấu hình demo chạy single-node với \textbf{4 vCPU, 16GB RAM}; Spark chạy ở chế độ local/standalone tùy mức tải.
+    \item \textbf{Phần cứng (Inference):} tăng tốc suy luận mô hình (Embedding/Reranker) bằng \textbf{NVIDIA T4 (16GB VRAM)} thông qua ONNX Runtime (CUDA Execution Provider). Trong trường hợp không có GPU, hệ thống fallback sang CPU với độ trễ cao hơn.
 \end{itemize}
 
-\subsection{Dataset Construction Strategy}
+\subsubsection{Lợi ích triển khai}
+\begin{itemize}
+    \item \textbf{Mở rộng độc lập:} tách ingest (Kafka) và processing (Spark/LLM) cho phép tăng số worker xử lý độc lập khi lưu lượng tăng đột biến.
+    \item \textbf{Tối ưu chi phí:} chiến lược Fast Path lọc nhiễu trên hạ tầng cục bộ; chỉ gọi API LLM tốn phí cho các cụm đã đạt ngưỡng xác minh.
+    \item \textbf{Tái lập:} toàn bộ cấu hình dịch vụ được định nghĩa nhất quán trong \texttt{docker-compose.yml}, giảm lỗi “khác môi trường”.
+\end{itemize}
+
+
+\subsection{Chiến lược xây dựng dữ liệu}
 Để huấn luyện mô hình với chi phí gán nhãn thấp, nhóm dùng \textbf{Hybrid Labeling Strategy}:
 \begin{enumerate}
     \item \textbf{Tự giám sát (Reranker):} khai thác hard negatives để tạo \textbf{877 cặp} chất lượng cao; reranker dùng như thành phần khớp bổ trợ (xác minh/khôi phục) và module benchmark offline.
     \item \textbf{Học tích cực với LLM (Sentiment/Taxonomy):} dùng Gemini Pro gán nhãn giả khoảng \textbf{10k} mẫu, sau đó rà soát thủ công các điểm độ tin cậy thấp, thu được \textbf{4.630 mẫu Sentiment} và \textbf{3.687 mẫu Taxonomy} cho huấn luyện.
 \end{enumerate}
+
+\subsubsection{Giao thức huấn luyện và đánh giá}
+Các tập dữ liệu huấn luyện cho \textit{Sentiment} và \textit{Taxonomy} được chia theo tỷ lệ \textbf{80/10/10} tương ứng \textbf{Train/Validation/Test} bằng phương pháp \textbf{stratified split} nhằm giữ phân phối nhãn ổn định. Toàn bộ phép chia sử dụng seed cố định (\texttt{seed=42}) để đảm bảo tính tái lập.
+
+Mô hình tốt nhất được lựa chọn theo hiệu suất trên tập validation, ưu tiên \textbf{Macro-F1} để giảm ảnh hưởng của mất cân bằng lớp (ví dụ một số nhãn taxonomy xuất hiện nhiều hơn). Khi báo cáo kết quả cuối cùng, chúng tôi trình bày \textbf{Accuracy} và (khi cần) các chỉ số \textbf{Precision/Recall/Macro-F1} để phản ánh chất lượng theo từng lớp.
 
 \begin{figure}[htbp]
   \centering
@@ -188,8 +210,12 @@ Kết quả cho thấy \texttt{dangvantuan/vietnamese-document-embedding} đạt
         \textbf{Nhiệm vụ Mô hình} & \textbf{Loại Lớp}   & \textbf{Độ chính xác} ($\uparrow$) & \textbf{Độ trễ} ($\downarrow$) \\
         \midrule
         Bộ phân loại Sentiment    & 3 lớp (Pos/Neg/Neu) & \textbf{93,5\%}                    & 12ms                           \\
-        Bi-CrossEncoder Reranker  & Xếp hạng Relevance  & 91,0\%                             & 45ms                           \\
+        Bi-CrossEncoder Reranker  & Xếp hạng Relevance  & Accuracy (pairs) = 91,0\%          & 45ms                           \\
         Bộ phân loại Taxonomy     & 7 lớp (T1-T7)       & 89,2\%                             & 14ms                           \\
         \bottomrule
     \end{tabular}
 \end{table}
+
+\noindent\textbf{Chỉ số đánh giá Reranker:}
+Với module Cross-Encoder Reranker, giá trị \textbf{91,0\%} trong Bảng \autoref{tab:models} thể hiện \textbf{Binary Classification Accuracy} trên tập kiểm thử gồm các cặp (Query, Document) tích cực và tiêu cực khó (\textit{hard negatives}). Trong pipeline thực tế, độ chính xác cao này giúp Reranker đóng vai trò như một \textbf{verification gate}: giảm trường hợp ghép sai neo tin tức từ bước truy xuất dense ban đầu, qua đó hạn chế false positives trong quá trình hình thành và cập nhật cụm sự kiện.
+
