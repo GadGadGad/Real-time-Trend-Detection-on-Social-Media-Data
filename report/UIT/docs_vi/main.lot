@@ -1,13 +1,13 @@
 \babel@toc {english}{}\relax 
-\contentsline {table}{\numberline {2.1}{\ignorespaces So sánh các Phương pháp Phát hiện Sự kiện}}{4}{table.caption.5}%
-\contentsline {table}{\numberline {6.1}{\ignorespaces Phân phối Dataset và Tính Sẵn có}}{13}{table.caption.9}%
-\contentsline {table}{\numberline {6.2}{\ignorespaces Cấu hình Huấn luyện Chi tiết và Siêu tham số}}{14}{table.caption.11}%
-\contentsline {table}{\numberline {6.3}{\ignorespaces Embedding Stability Gap Analysis (Metric: Cosine Distance Diff)}}{15}{table.caption.13}%
-\contentsline {table}{\numberline {6.4}{\ignorespaces Hiệu suất Mô hình Đã Tinh chỉnh}}{15}{table.caption.14}%
-\contentsline {table}{\numberline {7.1}{\ignorespaces So sánh Phương pháp Phân cụm}}{16}{table.caption.16}%
-\contentsline {table}{\numberline {7.2}{\ignorespaces Hiệu suất trên Mini-Ground Truth (N=300) -- Cài đặt SAHC Cơ sở}}{17}{table.caption.17}%
-\contentsline {table}{\numberline {7.3}{\ignorespaces Nghiên cứu Ablation trên Mini-Ground Truth (N=300)}}{17}{table.caption.18}%
-\contentsline {table}{\numberline {A.1}{\ignorespaces Prompt Tinh chỉnh LLM (Giai đoạn 6)}}{24}{table.caption.19}%
-\contentsline {table}{\numberline {A.2}{\ignorespaces Prompt LLM-làm-Giám-khảo (Đánh giá)}}{24}{table.caption.20}%
-\contentsline {table}{\numberline {A.3}{\ignorespaces Prompt Loại bỏ Trùng lặp Ngữ nghĩa (Giai đoạn 4)}}{24}{table.caption.21}%
-\contentsline {table}{\numberline {A.4}{\ignorespaces Prompt Lọc Google Trends (Giai đoạn 6)}}{25}{table.caption.22}%
+\contentsline {table}{\numberline {2.1}{\ignorespaces So sánh các Phương pháp Phát hiện Sự kiện}}{4}{table.caption.4}%
+\contentsline {table}{\numberline {6.1}{\ignorespaces Phân phối Dataset và Tính Sẵn có}}{12}{table.caption.8}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces Cấu hình Huấn luyện Chi tiết và Siêu tham số}}{13}{table.caption.10}%
+\contentsline {table}{\numberline {6.3}{\ignorespaces Embedding Stability Gap Analysis (Metric: Cosine Distance Diff)}}{15}{table.caption.12}%
+\contentsline {table}{\numberline {6.4}{\ignorespaces Hiệu suất Mô hình Đã Tinh chỉnh}}{15}{table.caption.13}%
+\contentsline {table}{\numberline {7.1}{\ignorespaces So sánh Phương pháp Phân cụm}}{15}{table.caption.15}%
+\contentsline {table}{\numberline {7.2}{\ignorespaces Hiệu suất trên Mini-Ground Truth (N=300) -- Cài đặt SAHC Cơ sở}}{16}{table.caption.16}%
+\contentsline {table}{\numberline {7.3}{\ignorespaces Nghiên cứu Ablation trên Mini-Ground Truth (N=300)}}{17}{table.caption.17}%
+\contentsline {table}{\numberline {A.1}{\ignorespaces Prompt Tinh chỉnh LLM (Giai đoạn 6)}}{23}{table.caption.18}%
+\contentsline {table}{\numberline {A.2}{\ignorespaces Prompt LLM-làm-Giám-khảo (Đánh giá)}}{23}{table.caption.19}%
+\contentsline {table}{\numberline {A.3}{\ignorespaces Prompt Loại bỏ Trùng lặp Ngữ nghĩa (Giai đoạn 4)}}{23}{table.caption.20}%
+\contentsline {table}{\numberline {A.4}{\ignorespaces Prompt Lọc Google Trends (Giai đoạn 6)}}{24}{table.caption.21}%
