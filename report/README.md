@@ -13,7 +13,7 @@ The reports are organized into two main templates:
 - **UIT** (University of Information Technology Style):
   > **Recommended**: This template is fully featured and consistent with the format used by the rest of the class.
   - `docs_en`: English version (Standard Release).
-  - `docs_vi`: Vietnamese version (Translated Version).
+  - `docs_vi`: Vietnamese version (Translated Version) <- Recommended.
 
 ## Usage
 

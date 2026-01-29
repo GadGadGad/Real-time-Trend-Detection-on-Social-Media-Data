@@ -5,120 +5,135 @@ Cho $\mathcal{S} = \{p_1, p_2, ..., p_n\}$ là một luồng liên tục các b�
 Mục tiêu của phát hiện sự kiện thời gian thực là ánh xạ luồng này thành một tập các cụm rời rạc $\mathcal{C} = \{C_1, C_2, ..., C_k\}$, nơi mỗi cụm $C_i$ đại diện cho một sự kiện thực tế.
 Một cụm sự kiện hợp lệ $C_i$ phải thỏa mãn hai điều kiện:
 \begin{enumerate}
-    \item \textbf{Kết dính:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
-    \item \textbf{Tác động:} $U(C_i) \geq \delta_{min}$, nơi $U(C_i)$ là số \emph{người dùng riêng biệt} thảo luận sự kiện:
-          \begin{equation}
-              U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
-          \end{equation}
+      \item \textbf{Kết dính:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
+      \item \textbf{Tác động:} $U(C_i) \geq \delta_{min}$, nơi $U(C_i)$ là số \emph{người dùng riêng biệt} thảo luận sự kiện:
+            \begin{equation}
+                  U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
+            \end{equation}
 
 \end{enumerate}
 
 Trong thực tế, chúng tôi sử dụng $\delta_{significant}$ như ngưỡng tác động vận hành trong hệ thống luồng (thường $\delta_{significant}\ge \delta_{min}$) để quyết định khi nào một cụm được đề bạt cho làm giàu và trực quan hóa.
 
-\section{Tiền xử lý và Chuẩn hóa Dữ liệu}
+\section{Thu thập và Tiền xử lý Dữ liệu}
 
-Để đảm bảo đầu vào chất lượng cao cho engine phân cụm, dữ liệu thô từ cả hai đường trải qua các bước tiền xử lý cụ thể:
+\subsection{Triển khai Thu thập với Apache Airflow}
+Lớp thu thập dữ liệu (Ingestion Layer) được điều phối bởi \textbf{Apache Airflow}, đảm bảo tính ổn định và khả năng phục hồi của hệ thống.
+\begin{itemize}
+      \item \textbf{Cấu trúc DAG:} Mỗi nguồn dữ liệu (Facebook Fanpage, nguồn tin tức) được ánh xạ thành một task riêng biệt trong Directed Acyclic Graph (DAG). Các task chạy song song để tối đa hóa thông lượng.
+      \item \textbf{Cơ chế Retry:} Airflow được cấu hình với chính sách \texttt{retries=3} và \texttt{retry\_delay=5 phút}. Nếu crawler gặp lỗi (ví dụ: rate limit hoặc lỗi mạng), Airflow tự động lập lịch chạy lại mà không cần can thiệp thủ công.
+\end{itemize}
+
+\subsection{Pipeline Dữ liệu với Apache Kafka}
+Dữ liệu thô sau khi thu thập được chuẩn hóa thành JSON và đẩy vào \textbf{Apache Kafka} để phân phối đến các consumers.
+\begin{itemize}
+      \item \textbf{Topic Partitioning:} Topic \texttt{posts\_stream\_v1} được cấu hình với 3 partitions. Điều này cho phép Spark Consumers đọc song song từ nhiều partitions, tăng tốc độ xử lý.
+      \item \textbf{Ordering Key:} Chúng tôi sử dụng \texttt{post\_id} làm partitioning key. Điều này đảm bảo tất cả các cập nhật (updates/edits) của cùng một bài đăng luôn được đẩy vào cùng một partition, duy trì thứ tự thời gian chính xác khi xử lý cập nhật.
+\end{itemize}
+
+\subsection{Chiến lược Tiền xử lý Dữ liệu}
+Để đảm bảo đầu vào chất lượng cao cho engine phân cụm, dữ liệu thô từ cả hai đường trải qua các bước tiền xử lý cụ thể sử dụng \textbf{Spark Structured Streaming}:
 
 \begin{itemize}
-    \item \textbf{Fast Path (Tốc độ Xã hội):} Với bản chất thông lượng cao của luồng xã hội, chúng tôi áp dụng làm sạch tối thiểu, tối ưu độ trễ:
-          \begin{itemize}
-              \item \textbf{Lọc Heuristic:} Chúng tôi loại bỏ các bài đăng có độ dài $<20$ ký tự (ngữ cảnh ngữ nghĩa không đủ cho embedding) hoặc $>800$ ký tự (khả năng cao là spam tiếp thị hoặc boilerplate không liên quan), và xóa các mẫu ``credit'' đã biết (ví dụ: ``cre:'', ``via:'') không đóng góp vào nhận dạng sự kiện.
-              \item \textbf{Chuẩn hóa Unicode:} Chuyển đổi tất cả văn bản sang định dạng NFC và chuyển chữ thường để xử lý dấu tiếng Việt nhất quán.
-          \end{itemize}
+      \item \textbf{Fast Path (Tốc độ Xã hội):} Với bản chất thông lượng cao của luồng xã hội, chúng tôi áp dụng làm sạch tối thiểu, tối ưu độ trễ:
+            \begin{itemize}
+                  \item \textbf{Lọc Heuristic:} Chúng tôi loại bỏ các bài đăng có độ dài $<20$ ký tự (ngữ cảnh ngữ nghĩa không đủ cho embedding) hoặc $>800$ ký tự (khả năng cao là spam tiếp thị hoặc boilerplate không liên quan), và xóa các mẫu ``credit'' đã biết (ví dụ: ``cre:'', ``via:'') không đóng góp vào nhận dạng sự kiện.
+                  \item \textbf{Chuẩn hóa Unicode:} Chuyển đổi tất cả văn bản sang định dạng NFC và chuyển chữ thường để xử lý dấu tiếng Việt nhất quán.
+            \end{itemize}
 
-    \item \textbf{Slow Path (Độ chính xác Tin tức):} Dữ liệu tin tức, được sử dụng làm neo độ tin cậy cao, trải qua phân tích cấu trúc sâu:
-          \begin{itemize}
-              \item \textbf{Trích xuất Cấu trúc:} Chúng tôi sử dụng Regex để tách metadata (Tác giả, Ngày, Địa điểm) khỏi nội dung, đảm bảo chỉ câu chuyện cốt lõi ảnh hưởng đến centroid.
-              \item \textbf{Chèn Bí danh (Thesaurus):} Để nối liền khoảng cách từ vựng giữa tin tức chính thức và bài đăng xã hội không chính thức, chúng tôi chèn các bí danh đã biết vào các vector tin tức (ví dụ: ánh xạ ``Bão số 3'' $\to$ ``Bão Yagi'').
-          \end{itemize}
+      \item \textbf{Slow Path (Độ chính xác Tin tức):} Dữ liệu tin tức, được sử dụng làm neo độ tin cậy cao, trải qua phân tích cấu trúc sâu:
+            \begin{itemize}
+                  \item \textbf{Trích xuất Cấu trúc:} Chúng tôi sử dụng Regex để tách metadata (Tác giả, Ngày, Địa điểm) khỏi nội dung, đảm bảo chỉ câu chuyện cốt lõi ảnh hưởng đến centroid.
+                  \item \textbf{Chèn Bí danh (Thesaurus):} Để nối liền khoảng cách từ vựng giữa tin tức chính thức và bài đăng xã hội không chính thức, chúng tôi chèn các bí danh đã biết vào các vector tin tức (ví dụ: ánh xạ ``Bão số 3'' $\to$ ``Bão Yagi'').
+            \end{itemize}
 \end{itemize}
 
 \section{Phân cụm Phân cấp Nhận thức Xã hội (SAHC)}
 
 Phân cụm tiêu chuẩn (K-Means, DBSCAN) thường thất bại trên dữ liệu xã hội do nhiễu. SAHC hoạt động theo ba giai đoạn:
 \begin{enumerate}
-    \item \textbf{Giai đoạn 1: Neo Tin tức.} Chúng tôi trước tiên phân cụm các bài báo Tin tức đã xác minh để tạo thành ``Anchor Centroids''. Chúng đại diện cho các sự kiện độ tin cậy cao.
-    \item \textbf{Giai đoạn 2: Gắn Xã hội.} Các bài đăng xã hội đến được ánh xạ đến các neo này sử dụng Cosine Similarity.
-    \item \textbf{Giai đoạn 3: Khám phá Xã hội.} Các bài đăng không khớp với bất kỳ neo nào trải qua lượt phân cụm dựa trên mật độ thứ hai (HDBSCAN) để phát hiện các xu hướng ``Chỉ-Xã-hội'' (không được tin tức đưa).
+      \item \textbf{Giai đoạn 1: Neo Tin tức.} Chúng tôi trước tiên phân cụm các bài báo Tin tức đã xác minh để tạo thành ``Anchor Centroids''. Chúng đại diện cho các sự kiện độ tin cậy cao.
+      \item \textbf{Giai đoạn 2: Gắn Xã hội.} Các bài đăng xã hội đến được ánh xạ đến các neo này sử dụng Cosine Similarity.
+      \item \textbf{Giai đoạn 3: Khám phá Xã hội.} Các bài đăng không khớp với bất kỳ neo nào trải qua lượt phân cụm dựa trên mật độ thứ hai (HDBSCAN) để phát hiện các xu hướng ``Chỉ-Xã-hội'' (không được tin tức đưa).
 \end{enumerate}
 
 \begin{figure}[h]
-    \centering
-    \includegraphics[width=0.8\textwidth]{figures/clustering_pipeline.png}
-    \caption{Quy trình Phân cụm Phân cấp Nhận thức Xã hội (SAHC).} \label{fig:clustering}
+      \centering
+      \includegraphics[width=0.8\textwidth]{figures/clustering_pipeline.png}
+      \caption{Quy trình Phân cụm Phân cấp Nhận thức Xã hội (SAHC).} \label{fig:clustering}
 \end{figure}
 
 Quy trình SAHC được trực quan hóa trong Hình \ref{fig:clustering}. Các bài báo tin tức trước tiên thiết lập các centroid ``Neo'' (Nút Xanh dương). Các bài đăng Xã hội đến (Nút Xanh lá) sau đó được hút đến các neo này dựa trên độ tương đồng ngữ nghĩa. Nhiễu dư cuối cùng được lọc hoặc phân cụm thành các sự kiện mới bởi HDBSCAN, giảm hiệu quả spam.
 
 \begin{algorithm}
-    \caption{SAHC-A: Anchor-First Dual-Path Event Detection}
-    \begin{algorithmic}[1]
-        \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
-        \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
+      \caption{SAHC-A: Anchor-First Dual-Path Event Detection}
+      \begin{algorithmic}[1]
+            \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
+            \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
 
-        \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
+            \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
 
-        \State \textbf{// Path 1: Anchor Matching (Fast Path)}
-        \For{each post $p \in B$}
-        \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
-        \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
-        \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
-        \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
-        \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
-        \If{$keyword\_score > 0.5$}
-        \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
-        \EndIf
+            \State \textbf{// Path 1: Anchor Matching (Fast Path)}
+            \For{each post $p \in B$}
+            \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval by cosine}
+            \State $vector\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+            \State $keyword\_score \leftarrow \text{KW}(p,a^*)$ \Comment{Keyword overlap in $[0,1]$}
+            \State $score \leftarrow 0.7 \cdot vector\_sim + 0.3 \cdot keyword\_score$
+            \If{$keyword\_score > 0.5$}
+            \State $score \leftarrow score + 0.1$ \Comment{Conditional boost}
+            \EndIf
 
-        \If{$score \ge \lambda_{match}$}
-        \State Add $p$ to Event $E_{a^*}$
-        \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
-        \Else
-        \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
-        \EndIf
-        \EndFor
+            \If{$score \ge \lambda_{match}$}
+            \State Add $p$ to Event $E_{a^*}$
+            \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+            \Else
+            \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+            \EndIf
+            \EndFor
 
-        \State \textbf{// Path 2: Social Discovery (Slow Path)}
-        \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
-        \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
-        \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
-        \For{each cluster $c \in \mathcal{C}_{new}$}
-        \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
-        \If{$U(c) \ge \delta_{significant}$}
-        \State Initialize new Event $E_{new}$ from $c$
-        \State Remove points in $c$ from $\mathcal{G}$
-        \EndIf
-        \EndFor
+            \State \textbf{// Path 2: Social Discovery (Slow Path)}
+            \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
+            \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
+            \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
+            \For{each cluster $c \in \mathcal{C}_{new}$}
+            \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
+            \If{$U(c) \ge \delta_{significant}$}
+            \State Initialize new Event $E_{new}$ from $c$
+            \State Remove points in $c$ from $\mathcal{G}$
+            \EndIf
+            \EndFor
 
-        \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
-        \EndIf
+            \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
+            \EndIf
 
-    \end{algorithmic}
+      \end{algorithmic}
 \end{algorithm}
 
 \textbf{Khớp Hybrid Tối ưu Độ trễ:}
 Để cân bằng hiểu biết ngữ nghĩa và khớp thực thể chính xác dưới các ràng buộc thời gian thực, chúng tôi sử dụng cơ chế tính điểm có trọng số với tăng cường có điều kiện.
 Ngoài ra, chúng tôi tích hợp module Cross-Encoder tùy chọn: trong cấu hình online hiện tại, nó hoạt động như \textbf{cổng xác minh/khôi phục} bằng cách chỉ tính lại điểm ứng viên hàng đầu khi cần, thay vì thực hiện reranking Top-$K$ đầy đủ. Điều này duy trì độ trễ thấp trong khi giảm gắn sai.
 \begin{equation}
-    \label{eq:hybrid_real}
-    \text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
+      \label{eq:hybrid_real}
+      \text{Score}(p,a) = w_v \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_k \cdot \text{KW}(p,a) + \delta_{boost} \cdot \mathbb{I}(\text{KW}(p,a) > \tau),
 \end{equation}
 nơi $w_v=0,7$ và $w_k=0,3$ là các trọng số thực nghiệm, $\text{KW}(p,a)\in[0,1]$ là tỷ lệ trùng lặp từ khóa, và tăng cường cố định $\delta_{boost}=0,1$ được áp dụng khi trùng lặp vượt $\tau=0,5$. Thiết kế này vẫn tương thích với các ràng buộc thời gian thực trong khi giảm gắn sai giữa các sự kiện khác biệt về từ vựng.
 
 \section{Logic Tính Điểm Xu hướng}
 Để xác định sự kiện nào đang ``Trending'', chúng tôi tính Điểm Xu hướng Thống nhất ($T$) cho mỗi cụm dựa trên ba tín hiệu có trọng số:
 \begin{equation}
-    T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
+      T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
 \end{equation}
 Trong thiết lập của chúng tôi, luồng xã hội cung cấp các tín hiệu bùng nổ sớm nhất, trong khi Google Trends thường đạt đỉnh sau. Do đó, $G$ được sử dụng chủ yếu để xác nhận và ưu tiên các cụm ứng viên đã được phát hiện trên Fast Path.
 
 Nơi các thành phần đại diện cho:
 \begin{itemize}
-    \item \textbf{G (Khối lượng Tìm kiếm Google):} Điểm quan tâm tìm kiếm chuẩn hóa từ Google Trends, phục vụ như \textbf{tín hiệu xác nhận (trễ)} của sự chú ý công chúng.
-    \item \textbf{N (Khối lượng Tin tức):} Số lượng cụm tin tức chính thống riêng biệt liên kết với sự kiện này.
-    \item \textbf{F (Tương tác Facebook):} Tổng có trọng số của tương tác ($Likes + 2 \cdot Comments + 3 \cdot Shares$).
+      \item \textbf{G (Khối lượng Tìm kiếm Google):} Điểm quan tâm tìm kiếm chuẩn hóa từ Google Trends, phục vụ như \textbf{tín hiệu xác nhận (trễ)} của sự chú ý công chúng.
+      \item \textbf{N (Khối lượng Tin tức):} Số lượng cụm tin tức chính thống riêng biệt liên kết với sự kiện này.
+      \item \textbf{F (Tương tác Facebook):} Tổng có trọng số của tương tác ($Likes + 2 \cdot Comments + 3 \cdot Shares$).
 \end{itemize}
 Để xử lý phân phối power-law của dữ liệu xã hội, mỗi thành phần được chuẩn hóa sử dụng thang \textbf{Log-Min-Max} trước khi cho trọng số:
 \begin{equation}
-    S_{component} = 100 \cdot \frac{\log_{10}(1 + v)}{\log_{10}(1 + v_{max})}
+      S_{component} = 100 \cdot \frac{\log_{10}(1 + v)}{\log_{10}(1 + v_{max})}
 \end{equation}
 Nơi $v$ là giá trị thô và $v_{max}$ là trần thực nghiệm ($G_{max}=10^6$, $N_{max}=10$, $F_{max}=2\cdot10^4$). Cụ thể cho Facebook ($F$), các tương tác được cho trọng số: $v_F = Likes + 2 \cdot Comments + 3 \cdot Shares$. Điều này đảm bảo rằng các sự kiện tương tác cao được phân loại đúng ngay cả với khối lượng thấp. Một cụm chỉ được đưa lên dashboard khi $T > Ngưỡng$.

@@ -5,118 +5,133 @@ Let $\mathcal{S} = \{p_1, p_2, ..., p_n\}$ be a continuous stream of social medi
 The goal of real-time event detection and classification is to map this stream into a set of disjoint clusters $\mathcal{C} = \{C_1, C_2, ..., C_k\}$, where each cluster $C_i$ represents a real-world event.
 A valid event cluster $C_i$ must satisfy two conditions:
 \begin{enumerate}
-    \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
-    \item \textbf{Impact:} $U(C_i) \geq \delta_{min}$, where $U(C_i)$ is the number of \emph{distinct users} discussing the event:
-          \begin{equation}
-              U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
-          \end{equation}
+      \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
+      \item \textbf{Impact:} $U(C_i) \geq \delta_{min}$, where $U(C_i)$ is the number of \emph{distinct users} discussing the event:
+            \begin{equation}
+                  U(C_i) = \left|\left\{u_t \;\middle|\; p_t \in C_i\right\}\right|.
+            \end{equation}
 
 \end{enumerate}
 
 In practice, we use $\delta_{significant}$ as the operational impact threshold in the streaming system (typically $\delta_{significant}\ge \delta_{min}$) to decide when a cluster is promoted for enrichment and visualization.
 
-\subsection{Data Preprocessing and Normalization}
+\subsection{Data Acquisition and Preprocessing}
 
-To ensure high-quality input for the clustering engine, raw data from both paths undergoes specific preprocessing steps:
+\subsubsection{Acquisition Deployment with Apache Airflow}
+The Ingestion Layer is orchestrated by \textbf{Apache Airflow}, ensuring system stability and resilience.
+\begin{itemize}
+      \item \textbf{DAG Structure:} Each data source (Facebook Fanpage, official news source) is mapped to a distinct task in a Directed Acyclic Graph (DAG). Tasks run in parallel to maximize throughput.
+      \item \textbf{Retry Mechanism:} Airflow is configured with a policy of \texttt{retries=3} and \texttt{retry\_delay=5 minutes}. If a crawler encounters errors (e.g., rate limits or network faults), Airflow automatically reschedules the run without manual intervention.
+\end{itemize}
+
+\subsubsection{Data Pipeline with Apache Kafka}
+Raw data after collection is serialized into JSON and pushed to \textbf{Apache Kafka} for distribution to consumers.
+\begin{itemize}
+      \item \textbf{Topic Partitioning:} The topic \texttt{posts\_stream\_v1} is configured with 3 partitions. This allows Spark Consumers to read in parallel from multiple partitions, accelerating processing speed.
+      \item \textbf{Ordering Key:} We use \texttt{post\_id} as the partitioning key. This ensures all updates/edits for the same post are pushed to the same partition, maintaining correct chronological order during update processing.
+\end{itemize}
+
+\subsubsection{Data Preprocessing Strategy}
+To ensure high-quality input for the clustering engine, raw data from both paths undergoes specific preprocessing steps using \textbf{Spark Structured Streaming}:
 
 \begin{itemize}
-    \item \textbf{Fast Path (Social Speed):} Given the high-throughput nature of social streams, we apply minimal, latency-optimized cleaning:
-          \begin{itemize}
-              \item \textbf{Heuristic Filtering:} We discard posts with length $<20$ characters (insufficient semantic context for embedding) or $>800$ characters (high likelihood of marketing spam or irrelevant boilerplate), and remove known "credit" patterns (e.g., "cre:", "via:") which do not contribute to event identity.
-              \item \textbf{Unicode Normalization:} Converting all text to NFC format and lowercasing to handle Vietnamese diacritics consistently.
-          \end{itemize}
+      \item \textbf{Fast Path (Social Speed):} Given the high-throughput nature of social streams, we apply minimal, latency-optimized cleaning:
+            \begin{itemize}
+                  \item \textbf{Heuristic Filtering:} We discard posts with length $<20$ characters (insufficient semantic context for embedding) or $>800$ characters (high likelihood of marketing spam or irrelevant boilerplate), and remove known "credit" patterns (e.g., "cre:", "via:") which do not contribute to event identity.
+                  \item \textbf{Unicode Normalization:} Converting all text to NFC format and lowercasing to handle Vietnamese diacritics consistently.
+            \end{itemize}
 
-    \item \textbf{Slow Path (News Precision):} News data, used as high-confidence anchors, undergoes deep structural parsing:
-          \begin{itemize}
-              \item \textbf{Structural Extraction:} We use Regex to separate metadata (Author, Date, Location) from the body content, ensuring only the core narrative affects the centroid.
-              \item \textbf{Alias Injection (Thesaurus):} To bridge the vocabulary gap between formal news and informal social posts, we inject known aliases into news vectors (e.g., mapping "Typhoon No. 3" $\to$ "Typhoon Yagi").
-          \end{itemize}
+      \item \textbf{Slow Path (News Precision):} News data, used as high-confidence anchors, undergoes deep structural parsing:
+            \begin{itemize}
+                  \item \textbf{Structural Extraction:} We use Regex to separate metadata (Author, Date, Location) from the body content, ensuring only the core narrative affects the centroid.
+                  \item \textbf{Alias Injection (Thesaurus):} To bridge the vocabulary gap between formal news and informal social posts, we inject known aliases into news vectors (e.g., mapping "Typhoon No. 3" $\to$ "Typhoon Yagi").
+            \end{itemize}
 \end{itemize}
 
 \subsection{Social-Aware Hierarchical Clustering (SAHC)}
 
 Standard clustering (K-Means, DBSCAN) often fails on social data due to noise. SAHC operates in three phases:
 \begin{enumerate}
-    \item \textbf{Phase 1: News Anchoring.} We first cluster verified News articles to form "Anchor Centroids". These represent high-confidence events.
-    \item \textbf{Phase 2: Social Attachment.} Incoming social posts are mapped to these anchors using Cosine Similarity.
-    \item \textbf{Phase 3: Social Discovery.} Posts that do not match any anchor undergo a second pass of density-based clustering (HDBSCAN) to detect "Social-Only" trends (unreported by news).
+      \item \textbf{Phase 1: News Anchoring.} We first cluster verified News articles to form "Anchor Centroids". These represent high-confidence events.
+      \item \textbf{Phase 2: Social Attachment.} Incoming social posts are mapped to these anchors using Cosine Similarity.
+      \item \textbf{Phase 3: Social Discovery.} Posts that do not match any anchor undergo a second pass of density-based clustering (HDBSCAN) to detect "Social-Only" trends (unreported by news).
 \end{enumerate}
 
 \begin{figure}[h]
-    \centering
-    \includegraphics[width=0.8\textwidth]{figures/clustering_pipeline.png}
-    \caption{Social-Aware Hierarchical Clustering (SAHC) Workflow.} \label{fig:clustering}
+      \centering
+      \includegraphics[width=0.8\textwidth]{figures/clustering_pipeline.png}
+      \caption{Social-Aware Hierarchical Clustering (SAHC) Workflow.} \label{fig:clustering}
 \end{figure}
 
 The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first establish "Anchor" centroids (Blue nodes). Incoming Social posts (Green nodes) are then attracted to these anchors based on semantic similarity. Residual noise is finally filtered or clustered into new events by HDBSCAN, effectively reducing spam.
 
 \begin{algorithm}
-    \caption{SAHC-A: Anchor-First Dual-Path Event Detection and Classification}
-    \begin{algorithmic}[1]
-        \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
-        \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
+      \caption{SAHC-A: Anchor-First Dual-Path Event Detection and Classification}
+      \begin{algorithmic}[1]
+            \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
+            \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
 
-        \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
+            \State $\mathcal{R}_{batch} \leftarrow \emptyset$ \Comment{Unmatched posts in this batch}
 
-        \State \textbf{// Path 1: Anchor Matching (Fast Path)}
-        \For{each post $p \in B$}
-        \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
-        \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval}
-        \State $dense\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
-        \State $raw\_bm25 \leftarrow \text{BM25}(p,a^*)$
-        \State $sparse\_score \leftarrow raw\_bm25 \; / \; \max_{a' \in \mathcal{A}} \text{BM25}(p,a')$ \Comment{Max-normalization}
-        \State $score \leftarrow 0.7 \cdot dense\_sim + 0.3 \cdot sparse\_score$ \Comment{Linear Fusion}
+            \State \textbf{// Path 1: Anchor Matching (Fast Path)}
+            \For{each post $p \in B$}
+            \State $\mathbf{v}_p \leftarrow \text{Encoder}(p_{text})$
+            \State $a^* \leftarrow \arg\max_{a \in \mathcal{A}} \cos(\mathbf{v}_p,\mathbf{v}_a)$ \Comment{Fast retrieval}
+            \State $dense\_sim \leftarrow \cos(\mathbf{v}_p,\mathbf{v}_{a^*})$
+            \State $raw\_bm25 \leftarrow \text{BM25}(p,a^*)$
+            \State $sparse\_score \leftarrow raw\_bm25 \; / \; \max_{a' \in \mathcal{A}} \text{BM25}(p,a')$ \Comment{Max-normalization}
+            \State $score \leftarrow 0.7 \cdot dense\_sim + 0.3 \cdot sparse\_score$ \Comment{Linear Fusion}
 
-        \If{$score \ge \lambda_{match}$}
-        \State Add $p$ to Event $E_{a^*}$
-        \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
-        \Else
-        \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
-        \EndIf
-        \EndFor
+            \If{$score \ge \lambda_{match}$}
+            \State Add $p$ to Event $E_{a^*}$
+            \State Update Centroid: $\mathbf{v}_{a^*} \leftarrow (1-\alpha)\mathbf{v}_{a^*} + \alpha\mathbf{v}_p$ \Comment{Moving Average}
+            \Else
+            \State $\mathcal{R}_{batch} \leftarrow \mathcal{R}_{batch} \cup \{p\}$
+            \EndIf
+            \EndFor
 
-        \State \textbf{// Path 2: Social Discovery (Slow Path)}
-        \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
-        \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
-        \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
-        \For{each cluster $c \in \mathcal{C}_{new}$}
-        \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
-        \If{$U(c) \ge \delta_{significant}$}
-        \State Initialize new Event $E_{new}$ from $c$
-        \State Remove points in $c$ from $\mathcal{G}$
-        \EndIf
-        \EndFor
+            \State \textbf{// Path 2: Social Discovery (Slow Path)}
+            \State $\mathcal{G} \leftarrow \mathcal{G} \cup \mathcal{R}_{batch}$ \Comment{Merge with global buffer}
+            \If{$|\mathcal{G}| \ge N_{min\_clustering}$}
+            \State $\mathcal{C}_{new} \leftarrow \text{HDBSCAN}(\mathcal{G}, \min_{pts}=5, \epsilon=0.3)$
+            \For{each cluster $c \in \mathcal{C}_{new}$}
+            \State $U(c) \leftarrow \left|\{u(p)\;|\; p \in c\}\right|$ \Comment{Distinct user count}
+            \If{$U(c) \ge \delta_{significant}$}
+            \State Initialize new Event $E_{new}$ from $c$
+            \State Remove points in $c$ from $\mathcal{G}$
+            \EndIf
+            \EndFor
 
-        \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
-        \EndIf
+            \State Prune old points from $\mathcal{G}$ \Comment{Time-decay cleanup}
+            \EndIf
 
-    \end{algorithmic}
+      \end{algorithmic}
 \end{algorithm}
 
 \textbf{Latency-Optimized Hybrid Matching:}
 To balance semantic understanding and exact entity matching under real-time constraints, we employ a lightweight dense--sparse fusion score that combines cosine similarity and BM25.
 Additionally, we integrate an optional Cross-Encoder module: in the current online configuration it acts as a \textbf{verification/recovery gate} by re-scoring only the top candidate when needed, rather than performing full Top-$K$ reranking. Concretely, it (i) rejects a top-1 attachment if the cross-encoder score falls below a threshold, and (ii) can ``save'' borderline matches after title refinement by re-checking the refined pair. This preserves low latency while reducing false attachments.
 \begin{equation}
-    \label{eq:hybrid_real}
-    \text{Score}(p,a) = w_d \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_s \cdot \frac{\text{BM25}(p,a)}{\max_{a' \in \mathcal{A}} \text{BM25}(p,a')},
+      \label{eq:hybrid_real}
+      \text{Score}(p,a) = w_d \cdot \cos(\mathbf{v}_p,\mathbf{v}_a) + w_s \cdot \frac{\text{BM25}(p,a)}{\max_{a' \in \mathcal{A}} \text{BM25}(p,a')},
 \end{equation}
 where $w_d=0.7, w_s=0.3$ are the default fusion weights in our implementation. The sparse BM25 score is \textbf{max-normalized} across the candidate set $\mathcal{A}$ to ensure scale consistency with the cosine similarity component (after cosine rescaling/clipping in implementation).
 
 \subsection{Trend Scoring Logic}
 To determine which events are "Trending", we calculate a Unified Trend Score ($T$) for each cluster based on three weighted signals:
 \begin{equation}
-    T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
+      T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
 \end{equation}
 In our setting, social streams provide the earliest burst signals, while Google Trends typically peaks later. Therefore, $G$ is used primarily to confirm and prioritize candidate clusters already detected on the Fast Path.
 
 Where the components represent:
 \begin{itemize}
-    \item \textbf{G (Google Search Volume):} The normalized search interest score from Google Trends, serving as a \textbf{confirmatory (lagging) signal} of public attention.
-    \item \textbf{N (News Volume):} The count of distinct mainstream news clusters linked to this event.
-    \item \textbf{F (Facebook Engagement):} The weighted sum of interactions ($Likes + 2 \cdot Comments + 3 \cdot Shares$).
+      \item \textbf{G (Google Search Volume):} The normalized search interest score from Google Trends, serving as a \textbf{confirmatory (lagging) signal} of public attention.
+      \item \textbf{N (News Volume):} The count of distinct mainstream news clusters linked to this event.
+      \item \textbf{F (Facebook Engagement):} The weighted sum of interactions ($Likes + 2 \cdot Comments + 3 \cdot Shares$).
 \end{itemize}
 To handle the power-law distribution of social data, each component is normalized using a \textbf{Log-Min-Max} scale before weighting:
 \begin{equation}
-    S_{component} = 100 \cdot \frac{\log_{10}(1 + v)}{\log_{10}(1 + v_{max})}
+      S_{component} = 100 \cdot \frac{\log_{10}(1 + v)}{\log_{10}(1 + v_{max})}
 \end{equation}
 Where $v$ is the raw value and $v_{max}$ is an empirical ceiling ($G_{max}=10^6$, $N_{max}=10$, $F_{max}=2\cdot10^4$). Specifically for Facebook ($F$), interactions are weighted: $v_F = Likes + 2 \cdot Comments + 3 \cdot Shares$. This ensures that high-engagement events are categorized correctly even with low volume. A cluster is promoted to the dashboard only if $T > Threshold$.

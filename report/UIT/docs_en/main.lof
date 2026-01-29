@@ -4,15 +4,15 @@
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}
-\contentsline {figure}{\numberline {4.1}{\ignorespaces Proposed System Architecture: Dual-Path Processing (Fast Path vs. Slow Path).}}{10}{figure.caption.12}%
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Proposed System Architecture: Dual-Path Processing (Fast Path vs. Slow Path).}}{11}{figure.caption.12}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Social-Aware Hierarchical Clustering (SAHC) Workflow.}}{16}{figure.caption.13}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Social-Aware Hierarchical Clustering (SAHC) Workflow.}}{17}{figure.caption.13}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {6.1}{\ignorespaces News Article Collection Pipeline.}}{20}{figure.caption.14}%
-\contentsline {figure}{\numberline {6.1}{\ignorespaces JSONL Training Data Examples for Classification and Reranking.}}{23}{figure.caption.16}%
-\contentsline {figure}{\numberline {6.1}{\ignorespaces Benchmark results comparing Embedding Models across different edge cases.}}{24}{figure.caption.18}%
+\contentsline {figure}{\numberline {6.1}{\ignorespaces News Article Collection Pipeline.}}{21}{figure.caption.14}%
+\contentsline {figure}{\numberline {6.1}{\ignorespaces JSONL Training Data Examples for Classification and Reranking.}}{24}{figure.caption.16}%
+\contentsline {figure}{\numberline {6.1}{\ignorespaces Benchmark results comparing Embedding Models across different edge cases.}}{25}{figure.caption.18}%
 \addvspace {10pt}
-\contentsline {figure}{\numberline {7.1}{\ignorespaces t-SNE Visualization of Event Clusters. Colors represent distinct events isolated by the algorithm.}}{26}{figure.caption.21}%
+\contentsline {figure}{\numberline {7.1}{\ignorespaces t-SNE Visualization of Event Clusters. Colors represent distinct events isolated by the algorithm.}}{27}{figure.caption.21}%
 \addvspace {10pt}
 \addvspace {10pt}
 \addvspace {10pt}

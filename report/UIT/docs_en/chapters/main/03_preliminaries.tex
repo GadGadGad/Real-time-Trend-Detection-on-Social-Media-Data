@@ -11,13 +11,40 @@ Despite their prowess, LLMs suffer from "hallucinations"—generating plausible 
 \end{equation}
 In our system, we adapt this paradigm by treating "Clusters" as the retrieved context $z$, grounding the LLM's summarization in verified social data points.
 
-\section{Real-time Streaming Architectures}
-Modern event detection and classification requires handling data with high velocity and volume. The \textbf{Kappa Architecture} simplifies the traditional Lambda Architecture by treating everything as a stream, utilizing a robust log-based message broker like Apache Kafka.
-Kafka partitions data across distributed brokers, ensuring fault tolerance and high throughput. Consumers read data from these partitions using offsets $O$, maintaining exactly-once processing guarantees:
+\section{Stream Processing Architectures and Technologies}
+Modern event detection requires handling data with high velocity and volume. To address this, the system adopts advanced technologies in big data and real-time stream processing.
+
+\subsection{Kappa Architecture}
+The \textbf{Kappa Architecture} simplifies the traditional Lambda Architecture by treating everything as a stream, eliminating the separate Batch Layer to reduce the complexity of maintaining dual codebases. This model relies on a robust message broker as an immutable log buffer, allowing data reprocessing (when logic changes) by replaying the stream from the beginning without a separate batch system.
+
+\subsection{Apache Kafka}
+Apache Kafka serves as the backbone of the Kappa architecture, functioning as a fault-tolerant distributed pub-sub messaging system.
+In the system, Kafka is employed with the following mechanisms:
+\begin{itemize}
+    \item \textbf{Decoupling:} Separates data crawling modules (Producers) from the processing engine (Consumers/Spark), stabilizing the system during traffic spikes.
+    \item \textbf{Log Storage:} Crawler data is serialized into JSON and pushed to \textbf{Topics} (e.g., \texttt{posts\_stream\_v1}). Topics are divided into \textbf{Partitions} to increase parallel write throughput. Consumers track reading positions via \textbf{offsets}, ensuring data integrity.
+\end{itemize}
+Consumption latency (Lag) is a critical metric for monitoring system health:
 \begin{equation}
     \text{Lag}(t) = \text{Offset}_{produce}(t) - \text{Offset}_{consume}(t)
 \end{equation}
-For processing, \textbf{Spark Structured Streaming} treats live data streams as an unbounded input table. It processes textual data in micro-batches (e.g., 200ms intervals), enabling the application of batch-like operations (such as aggregations and joins) on streaming data with minimal latency overhead.
+
+\subsection{Apache Spark Structured Streaming}
+\textbf{Spark Structured Streaming} is a stream processing engine built on Spark SQL, treating live data streams as an unbounded input table.
+Its operation in the system includes:
+\begin{itemize}
+    \item \textbf{Micro-batching:} Processes streaming data in small batches (e.g., 200ms/batch). This allows applying Spark SQL engine optimizations (Catalyst Optimizer) to achieve high throughput.
+    \item \textbf{Exactly-once Semantics:} Uses Checkpointing and Write-ahead Logs (WAL) to ensure each message is processed exactly once, even during system failures.
+    \item \textbf{Pandas UDF:} Integrates with Python AI libraries (like PyTorch, Transformers) via User Defined Functions (UDF) to perform text vectorization directly on the data stream.
+\end{itemize}
+
+\subsection{Apache Airflow}
+\textbf{Apache Airflow} is a workflow orchestration platform managing the Data Ingestion Layer.
+Specific roles:
+\begin{itemize}
+    \item \textbf{DAG Management:} Crawler tasks are defined as Directed Acyclic Graphs (DAGs), enabling visualization of dependencies and execution flows.
+    \item \textbf{Scheduling and Self-Healing:} Airflow schedules periodic runs (e.g., every 5 minutes) for crawlers and automatically retries failed tasks due to network errors or timeouts, ensuring continuous input data.
+\end{itemize}
 
 \section{Density-Based Clustering (HDBSCAN)}
 Unlike centroid-based methods (K-Means) which assume spherical clusters, Hierarchical Density-Based Spatial Clustering of Applications with Noise (HDBSCAN) \cite{ref_hdbscan} identifies clusters of varying densities and shapes.
