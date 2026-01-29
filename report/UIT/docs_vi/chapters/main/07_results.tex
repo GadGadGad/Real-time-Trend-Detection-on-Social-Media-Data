@@ -9,7 +9,7 @@ Chúng tôi so sánh phương pháp SAHC của chúng tôi (sử dụng lõi HDB
     \caption{Trực quan hóa t-SNE của các Cụm Sự kiện. Các màu đại diện cho các sự kiện riêng biệt được cô lập bởi thuật toán.} \label{fig:tsne}
 \end{figure}
 
-Phiếu chiếu t-SNE trong Hình \ref{fig:tsne} chứng minh hiệu quả của phân cụm của chúng tôi. Các sự kiện riêng biệt (các cụm màu) được phân tách tốt trong không gian ngữ nghĩa, trong khi các điểm nhiễu (xám) phân tán và được cô lập hiệu quả bởi thuật toán.
+Phiếu chiếu t-SNE trong Hình \autoref{fig:tsne} chứng minh hiệu quả của phân cụm của chúng tôi. Các sự kiện riêng biệt (các cụm màu) được phân tách tốt trong không gian ngữ nghĩa, trong khi các điểm nhiễu (xám) phân tán và được cô lập hiệu quả bởi thuật toán.
 
 \begin{table}[htbp]
     \caption{So sánh Phương pháp Phân cụm}
@@ -30,12 +30,12 @@ Phiếu chiếu t-SNE trong Hình \ref{fig:tsne} chứng minh hiệu quả của
 \end{table}
 
 
-\textbf{Phân tích:} Như hiển thị trong Bảng \ref{tab:clustering_select}, \textbf{K-Means} cho thấy không phù hợp với dữ liệu luồng xã hội vì nó ép tất cả nhiễu vào các cụm. \textbf{HDBSCAN Baseline}, trong khi xác định đúng nhiễu, chịu \textbf{phân mảnh quá mức} (460 cụm) và loại bỏ dữ liệu quá nhiều (1.984 điểm nhiễu), thường chia các sự kiện đơn lẻ thành nhiều micro-cụm.
+\textbf{Phân tích:} Như hiển thị trong Bảng \autoref{tab:clustering_select}, \textbf{K-Means} cho thấy không phù hợp với dữ liệu luồng xã hội vì nó ép tất cả nhiễu vào các cụm. \textbf{HDBSCAN Baseline}, trong khi xác định đúng nhiễu, chịu \textbf{phân mảnh quá mức} (460 cụm) và loại bỏ dữ liệu quá nhiều (1.984 điểm nhiễu), thường chia các sự kiện đơn lẻ thành nhiều micro-cụm.
 Phương pháp \textbf{SAHC} của chúng tôi giải quyết điều này bằng cách sử dụng News Anchors để ``nối'' các micro-cụm này. Điều này thành công cô đặc không gian thành \textbf{315 sự kiện mạch lạc} và khôi phục $\approx 50\%$ dữ liệu hợp lệ trước đó bị loại bỏ là nhiễu (Nhiễu giảm xuống 985), tăng đáng kể Silhouette Score lên \textbf{0,135}.
 
 \subsection{Đánh giá Định lượng (Mini-Ground Truth)}
 Tất cả các metric phân cụm dựa trên nhãn (NMI, Purity, BCubed-F1, Entropy) được tính toán chỉ trên tập con Mini-Ground Truth (N=300), vì bộ dữ liệu đầy đủ không chứa nhãn sự kiện do con người chú thích.
-Bảng \ref{tab:minigt} báo cáo hiệu suất của \textbf{cài đặt SAHC mặc định}, trong khi Bảng \ref{tab:ablation} cho thấy thêm rằng \textbf{pipeline hybrid đầy đủ} (thêm anchoring và tinh chỉnh LLM) cải thiện NMI từ 0,54 lên \textbf{0,5978}.
+Bảng \autoref{tab:minigt} báo cáo hiệu suất của \textbf{cài đặt SAHC mặc định}, trong khi Bảng \autoref{tab:ablation} cho thấy thêm rằng \textbf{pipeline hybrid đầy đủ} (thêm anchoring và tinh chỉnh LLM) cải thiện NMI từ 0,54 lên \textbf{0,5978}.
 
 \begin{table}
     \caption{Hiệu suất trên Mini-Ground Truth (N=300) -- Cài đặt SAHC Cơ sở}\label{tab:minigt}
@@ -57,7 +57,7 @@ Các định nghĩa và công thức chi tiết được trình bày trong \text
 
 \subsection{Đánh giá Batch và Phân tích Thành phần}
 Để lượng hóa đóng góp của mỗi module, chúng tôi tiến hành nghiên cứu ablation trên tập con \textbf{Mini-Ground Truth} (N=300), nơi các metric dựa trên nhãn (NMI, BCubed-F1, Entropy) được định nghĩa tốt.
-Bảng \ref{tab:ablation} cho thấy việc thêm dần anchoring và tinh chỉnh LLM cải thiện sự phù hợp phân cụm với nhãn người.
+Bảng \autoref{tab:ablation} cho thấy việc thêm dần anchoring và tinh chỉnh LLM cải thiện sự phù hợp phân cụm với nhãn người.
 
 \begin{table}
     \caption{Nghiên cứu Ablation trên Mini-Ground Truth (N=300)}\label{tab:ablation}
@@ -76,10 +76,10 @@ Bảng \ref{tab:ablation} cho thấy việc thêm dần anchoring và tinh chỉ
 \end{table}
 
 \subsection{Phân tích Định tính: LLM-làm-Giám-khảo}
-Các metric truyền thống như Silhouette Score thường không nắm bắt được tính mạch lạc ngữ nghĩa. Để giải quyết điều này, chúng tôi triển khai giao thức \textbf{LLM-làm-Giám-khảo}, nơi một mô hình instruction-tuned mạnh (Gemini Pro) hoạt động như proxy cho đánh giá của con người.
+Các metric truyền thống như Silhouette Score thường không nắm bắt được tính mạch lạc ngữ nghĩa. Để giải quyết điều này, nhóm triển khai giao thức \textbf{LLM-làm-Giám-khảo}, nơi một mô hình instruction-tuned mạnh (Gemini Pro) hoạt động như proxy cho đánh giá của con người.
 \begin{itemize}
     \item \textbf{Giao thức:} LLM được cung cấp nội dung của một cụm và được hỏi hai câu hỏi: (1) ``Cụm này có mô tả một sự kiện duy nhất, riêng biệt không?'' (Tính Nhất quán Chủ đề, đánh giá 0-1), và (2) Cho hai cụm xung đột, ``Cụm nào mạch lạc hơn?'' (Tỷ lệ Thắng Theo cặp).
-    \item \textbf{Prompting:} Chúng tôi sử dụng chiến lược ``Role-Play'' nơi LLM đóng vai như một biên tập viên tin tức chuyên gia. Đặc tả prompt đầy đủ được cung cấp trong Phụ lục Bảng \ref{tab:prompt_eval}.
+    \item \textbf{Prompting:} Chúng tôi sử dụng chiến lược ``Role-Play'' nơi LLM đóng vai như một biên tập viên tin tức chuyên gia. Đặc tả prompt đầy đủ được cung cấp trong Phụ lục Bảng \autoref{tab:prompt_eval}.
 \end{itemize}
 Sử dụng framework này, chúng tôi đánh giá 100 cụm ngẫu nhiên:
 \begin{itemize}

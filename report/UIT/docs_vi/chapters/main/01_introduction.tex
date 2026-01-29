@@ -7,7 +7,7 @@ Các nền tảng mạng xã hội đã trở thành nguồn thông tin thời g
     \caption{Bảng điều khiển Hệ thống: Trực quan hóa thời gian thực các sự kiện xu hướng và cảm xúc của chúng tôi.} \label{fig:dashboard}
 \end{figure}
 
-Như minh họa trong Hình \ref{fig:dashboard}, bảng điều khiển hệ thống tích hợp ba chế độ xem chính: (1) Danh sách xếp hạng thời gian thực các sự kiện xu hướng; (2) Biểu đồ chuỗi thời gian theo dõi sự tiến hóa cảm xúc; và (3) Bản đồ địa lý làm nổi bật các điểm nóng sự kiện. Giao diện này cho phép các bên liên quan nhanh chóng nắm bắt "Cái gì, Ở đâu và Như thế nào" của các vấn đề mới nổi.
+Như minh họa trong Hình \autoref{fig:dashboard}, bảng điều khiển hệ thống tích hợp ba chế độ xem chính: (1) Danh sách xếp hạng thời gian thực các sự kiện xu hướng; (2) Biểu đồ chuỗi thời gian theo dõi sự tiến hóa cảm xúc; và (3) Bản đồ địa lý làm nổi bật các điểm nóng sự kiện. Giao diện này cho phép các bên liên quan nhanh chóng nắm bắt "Cái gì, Ở đâu và Như thế nào" của các vấn đề mới nổi.
 
 \noindent\textbf{Khoảng trống Nghiên cứu.}
 Các pipeline phát hiện sự kiện hiện có thường tối ưu hóa cho (i) phát hiện luồng độ trễ thấp sử dụng phân cụm thống kê hoặc dựa trên embedding nhẹ, hoặc (ii) tính nhất quán ngữ nghĩa cao và khả năng diễn giải sử dụng suy luận neural/LLM nặng hơn.
@@ -17,7 +17,7 @@ Tuy nhiên, các triển khai thực tế đòi hỏi \emph{cả ba} đồng th�
 \noindent\textbf{Câu hỏi Nghiên cứu.}
 Chúng tôi nghiên cứu các câu hỏi sau:
 \begin{itemize}
-    \item \textbf{RQ1:} Làm thế nào chúng ta có thể phát hiện các sự kiện mới nổi từ luồng mạng xã hội nhiễu với ràng buộc độ trễ nghiêm ngặt ($<10$s) trong khi giảm thiểu sự phân mảnh và nhiễu?
+    \item \textbf{RQ1:} Làm thế nào chúng ta có thể phát hiện các sự kiện mới nổi từ luồng mạng xã hội nhiễu với ràng buộc độ trễ nghiêm ngặt ($<10$s) trong khi giảm sự phân mảnh và nhiễu?
     \item \textbf{RQ2:} Làm thế nào chúng ta có thể cải thiện tính nhất quán ngữ nghĩa và khả năng diễn giải sự kiện mà không chặn pipeline luồng?
     \item \textbf{RQ3:} Làm thế nào chúng ta có thể đánh giá chất lượng phân cụm ở quy mô khi nhãn người đầy đủ không có sẵn cho dữ liệu luồng?
 \end{itemize}

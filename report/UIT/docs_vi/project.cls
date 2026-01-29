@@ -72,6 +72,18 @@
 \setsecnumdepth{subsection}
 \settocdepth{subsection}
 
+% ---- Compact spacing for headings (memoir) ----
+% Negative before-skip: prevents large whitespace at top of page
+\setbeforesecskip{-0.6\baselineskip}
+\setaftersecskip{0.25\baselineskip}
+
+\setbeforesubsecskip{-0.5\baselineskip}
+\setaftersubsecskip{0.2\baselineskip}
+
+\setbeforesubsubsecskip{-0.4\baselineskip}
+\setaftersubsubsecskip{0.15\baselineskip}
+
+
 % Set numwidths
 \setlength{\cfttablenumwidth}{3em}
 \setlength{\cftfigurenumwidth}{3em}

@@ -3,7 +3,7 @@
 \subsection{Thách thức và Bài học Rút ra}
 Triển khai hệ thống đã bộc lộ ba trở ngại kỹ thuật chính:
 \begin{enumerate}
-    \item \textbf{Sự mơ hồ Ngữ nghĩa:} Các cộng đồng khác nhau sử dụng các thuật ngữ khác nhau cho cùng một sự kiện (ví dụ: ``Bão Yagi'' vs. ``Cơn bão số 3''). Chúng tôi giải quyết vấn đề này bằng \textbf{LLM-based Deduplication} (Phụ lục Bảng \ref{tab:prompt_dedup}) và điểm Hybrid Matching.
+    \item \textbf{Sự mơ hồ Ngữ nghĩa:} Các cộng đồng khác nhau sử dụng các thuật ngữ khác nhau cho cùng một sự kiện (ví dụ: ``Bão Yagi'' vs. ``Cơn bão số 3''). Chúng tôi giải quyết vấn đề này bằng \textbf{LLM-based Deduplication} (Phụ lục Bảng \autoref{tab:prompt_dedup}) và điểm Hybrid Matching.
     \item \textbf{Khoảng trống Đánh giá:} Việc thiếu nhãn ground truth trong dữ liệu luồng gây khó khăn cho việc xác thực. Chúng tôi vượt qua bằng cách thiết lập giao thức \textbf{``Mini-Ground Truth''} (gán nhãn thủ công 300 mẫu) để chuẩn hóa các chỉ số NMI và F1.
     \item \textbf{Đánh đổi Độ trễ vs. Độ chính xác:} Gọi LLM cho mỗi cụm tạo ra độ trễ 2-3s. Chúng tôi giảm thiểu bằng cách tách pipeline thành \textbf{Fast Path} (Spark) cho phát hiện tức thì và \textbf{Slow Path} (Async Workers) cho phân tích sâu. Ngoài ra, chúng tôi triển khai \textbf{Quy tắc Cập nhật Tăng dần}: LLM chỉ được kích hoạt lại nếu cụm tăng $>20\%$ về khối lượng, giảm đáng kể chi phí suy luận dư thừa.
 \end{enumerate}
@@ -17,7 +17,7 @@ Với tư cách là một hệ thống tích hợp AI phân tích diễn ngôn c
 \end{itemize}
 
 \subsection{Hàm ý Thiết kế từ Nghiên cứu Khử}
-Kết quả nghiên cứu khử (Bảng \ref{tab:ablation}) cho thấy hệ thống chỉ đạt hiệu quả khi các thành phần được phối hợp đầy đủ.
+Kết quả nghiên cứu khử (Bảng \autoref{tab:ablation}) cho thấy hệ thống chỉ đạt hiệu quả khi các thành phần được phối hợp đầy đủ.
 Các \textbf{News Anchors} đóng vai trò then chốt trong việc ổn định phân cụm trước dữ liệu xã hội nhiễu; \textbf{Heuristic Guard} giúp kiểm soát nhiễu đầu vào và ngăn bùng nổ cụm không có ý nghĩa; trong khi \textbf{LLM Refinement} là yếu tố quyết định khả năng diễn giải của sự kiện.
 Những quan sát này củng cố lựa chọn thiết kế pipeline nhiều tầng, trong đó các bộ lọc nhẹ và phân cụm nhanh được ưu tiên ở giai đoạn phát hiện, còn LLM được sử dụng có chọn lọc cho làm giàu ngữ nghĩa hậu kỳ.
 
