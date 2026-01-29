@@ -1,0 +1,16 @@
+\chapter{Thảo luận}
+
+\section{Thách thức và Bài học Rút ra}
+Triển khai hệ thống đã bộc lộ ba trở ngại kỹ thuật chính:
+\begin{enumerate}
+    \item \textbf{Sự mơ hồ Ngữ nghĩa:} Các cộng đồng khác nhau sử dụng các thuật ngữ khác nhau cho cùng một sự kiện (ví dụ: ``Bão Yagi'' vs. ``Cơn bão số 3''). Chúng tôi giải quyết vấn đề này bằng \textbf{LLM-based Deduplication} (Phụ lục Bảng \ref{tab:prompt_dedup}) và điểm Hybrid Matching.
+    \item \textbf{Khoảng trống Đánh giá:} Việc thiếu nhãn ground truth trong dữ liệu luồng gây khó khăn cho việc xác thực. Chúng tôi vượt qua bằng cách thiết lập giao thức \textbf{``Mini-Ground Truth''} (gán nhãn thủ công 300 mẫu) để chuẩn hóa các chỉ số NMI và F1.
+    \item \textbf{Đánh đổi Độ trễ vs. Độ chính xác:} Gọi LLM cho mỗi cụm tạo ra độ trễ 2-3s. Chúng tôi giảm thiểu bằng cách tách pipeline thành \textbf{Fast Path} (Spark) cho phát hiện tức thì và \textbf{Slow Path} (Async Workers) cho phân tích sâu. Ngoài ra, chúng tôi triển khai \textbf{Quy tắc Cập nhật Tăng dần}: LLM chỉ được kích hoạt lại nếu cụm tăng $>20\%$ về khối lượng, giảm đáng kể chi phí suy luận dư thừa.
+\end{enumerate}
+
+\section{Nghiên cứu Khử (Ablation Study) và Phân tích Thành phần}
+Để định lượng đóng góp của từng module, chúng tôi thực hiện nghiên cứu khử (ablation study) bằng cách vô hiệu hóa các thành phần có chọn lọc (Bảng \ref{tab:ablation}).
+\begin{itemize}
+    \item \textbf{Không có News Anchors:} Loại bỏ neo làm giảm đáng kể sự đồng thuận phân cụm với nhãn của người, xác nhận rằng dữ liệu xã hội đơn độc quá nhiễu cho phân cụm mạch lạc.
+    \item \textbf{Không có LLM Refinement:} Sử dụng centroid thô thay vì tóm tắt LLM dẫn đến tiêu đề sự kiện mơ hồ, giảm điểm khả năng diễn giải (đánh giá người) từ 4.5 xuống 2.1.
+\end{itemize}

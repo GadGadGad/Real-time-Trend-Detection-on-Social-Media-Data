@@ -1,0 +1,102 @@
+\documentclass[a4paper, oneside]{project}
+\usepackage[utf8]{vietnam}
+\usepackage{placeins}
+\usepackage{csquotes}
+\usepackage{amsfonts}
+\usepackage{textcomp}
+\usepackage{dblfloatfix}
+\usepackage{subfig}
+\usepackage{lineno}
+\usepackage{amssymb}
+\usepackage{tabularx,booktabs}
+\usepackage{longtable, lipsum}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{lscape}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage[sorting=nyt]{biblatex}
+\usepackage{mathtools}
+\usepackage{lipsum}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{makecell}
+\usepackage{blindtext}
+\usepackage{subfiles} % Chèn các file nhỏ, giúp chia các chapter ra nhiều file hơn
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+
+% Config reference
+\addbibresource{ref.bib}
+
+% Setup hype link in thesis
+\hypersetup{urlcolor=blue,linkcolor=black,citecolor=black,colorlinks=true} 
+\DeclarePairedDelimiter\bra{\langle}{\rvert}
+\DeclarePairedDelimiter\ket{\lvert}{\rangle}
+\DeclarePairedDelimiterX\braket[2]{\langle}{\rangle}{#1 \delimsize\vert #2}
+
+
+% Config information thesis
+\upperuniname{ĐẠI HỌC QUỐC GIA THÀNH PHỐ HỒ CHÍ MINH}
+\uniname{TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN}
+\deptname{KHOA CÔNG NGHỆ PHẦN MỀM}
+\stumajor{KỸ SƯ NGÀNH AN TOÀN THÔNG TIN}
+\title{Hệ thống Phát hiện và Phân loại Sự kiện Thời gian Thực: Tích hợp Luồng Mạng Xã hội và Tin tức Chính thống với Trí tuệ LLM}
+\titleen{Real-time Event Detection and Classification System: Integrating Social Media Streams and Official News with LLM}
+\supervisor{GIẢNG VIÊN HƯỚNG DẪN}
+\supervisorname{TIẾN SĨ ĐỖ TRỌNG HỢP \\ NGUYỄN NGỌC QUÝ}
+\stunamewithid{TĂNG NHẤT- MSSV 22521027\\LÊ MINH NHỰT - MSSV 22521060}
+\reporttime{NĂM 2026}
+
+% Begin thesis
+\begin{document}
+
+\coverpage
+
+% % Begin above main thesis
+\frontmatter
+\subfile{chapters/front/thanks}
+\clearpage
+\tableofcontents
+\clearpage
+\listoffigures
+\clearpage
+\listoftables
+\clearpage
+\subfile{chapters/front/glossaries}
+
+
+% Begin main thesis, start page numbering
+\counterwithin{equation}{section}
+\counterwithin{table}{section}
+\counterwithin{figure}{section}
+\setcounter{secnumdepth}{3}
+\mainmatter
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\subfile{chapters/main/summary}
+
+% Config page header
+\if @twoside
+  \fancyhead[EL,OR]{\bfseries\nouppercase\rightmark}
+\else
+  \fancyhead[R]{\bfseries\nouppercase\rightmark}
+\fi
+
+\subfile{chapters/main/01_introduction}
+\subfile{chapters/main/02_related_work}
+\subfile{chapters/main/03_preliminaries}
+\subfile{chapters/main/04_architecture}
+\subfile{chapters/main/05_methodology}
+\subfile{chapters/main/06_experiments}
+\subfile{chapters/main/07_results}
+\subfile{chapters/main/08_discussion}
+\subfile{chapters/main/09_conclusion}
+\subfile{chapters/main/10_ethics}
+\appendix
+\subfile{chapters/main/11_appendix}
+\printbibliography[heading=bibintoc, title = {Tài liệu tham khảo}]
+\end{document}
