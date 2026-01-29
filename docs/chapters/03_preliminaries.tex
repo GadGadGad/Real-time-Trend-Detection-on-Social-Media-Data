@@ -1,0 +1,54 @@
+\section{Preliminaries}
+
+\subsection{Large Language Models and Retrieval Augmented Generation}
+Large Language Models (LLMs) such as GPT-4 and Gemini have revolutionized Natural Language Processing (NLP) by demonstrating emergent reasoning capabilities. Built upon the Transformer architecture \cite{ref_bert}, these models utilize self-attention mechanisms to capture long-range dependencies in textual data.
+\begin{equation}
+    Attention(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\end{equation}
+Despite their prowess, LLMs suffer from "hallucinations"—generating plausible but factually incorrect assertions. To mitigate this in domain-specific applications, Retrieval-Augmented Generation (RAG) is employed. RAG enhances the generative process by conditioning the LLM on retrieved relevant documents $D = \{d_1, ..., d_k\}$ before generating a response $y$:
+\begin{equation}
+    P(y|x) = \sum_{z \in D} P(z|x)P(y|x,z)
+\end{equation}
+In our system, we adapt this paradigm by treating "Clusters" as the retrieved context $z$, grounding the LLM's summarization in verified social data points.
+
+\subsection{Real-time Streaming Architectures}
+Modern event detection and classification requires handling data with high velocity and volume. The \textbf{Kappa Architecture} simplifies the traditional Lambda Architecture by treating everything as a stream, utilizing a robust log-based message broker like Apache Kafka.
+Kafka partitions data across distributed brokers, ensuring fault tolerance and high throughput. Consumers read data from these partitions using offsets $O$, maintaining exactly-once processing guarantees:
+\begin{equation}
+    \text{Lag}(t) = \text{Offset}_{produce}(t) - \text{Offset}_{consume}(t)
+\end{equation}
+For processing, \textbf{Spark Structured Streaming} treats live data streams as an unbounded input table. It processes textual data in micro-batches (e.g., 200ms intervals), enabling the application of batch-like operations (such as aggregations and joins) on streaming data with minimal latency overhead.
+
+\subsection{Density-Based Clustering (HDBSCAN)}
+Unlike centroid-based methods (K-Means) which assume spherical clusters, Hierarchical Density-Based Spatial Clustering of Applications with Noise (HDBSCAN) \cite{ref_hdbscan} identifies clusters of varying densities and shapes.
+HDBSCAN relies on a transformed distance metric to separate sparse noise from dense clusters. The \textbf{Core Distance} of a point $p$, denoted as $d_{core}(p)$, is defined as the distance to its $k$-th nearest neighbor. To ensure potential clusters are robust, the \textbf{Mutual Reachability Distance} between points $p$ and $q$ is formalized as:
+\begin{equation}
+    d_{mreach}(p, q) = \max \{ d_{core}(p), d_{core}(q), d(p, q) \}
+\end{equation}
+This metric effectively "pushes" sparse points away from each other. A Minimum Spanning Tree (MST) is then constructed using $d_{mreach}$ as edge weights. By iteratively removing edges with the highest weight, HDBSCAN builds a hierarchy of connected components, extracting stable clusters that persist over a wide range of density thresholds. This property is crucial for social media data, where event clusters ("Viral Trends") typically exhibit much higher density than background noise ("Daily Chatter").
+
+\subsection{Event Taxonomy and Categorization}
+To ensure actionable insights, we move beyond binary sentiment to a usage-based taxonomy (T1-T7), categorizing events by their value to specific stakeholders:
+
+\begin{itemize}
+    \item \textbf{T1. Crisis \& Public Risk} (Target: Emergency Services)\\
+          \emph{Core Question: Is immediate intervention required?} Covers accidents, disasters, and riots.
+
+    \item \textbf{T2. Policy Signal} (Target: Government)\\
+          \emph{Core Question: How is the public reacting to new policies?} Covers new laws and official statements.
+
+    \item \textbf{T3. Reputation Risk} (Target: PR Agencies)\\
+          \emph{Core Question: Is public trust being damaged?} Covers scandals, boycotts, and controversies.
+
+    \item \textbf{T4. Market Opportunity} (Target: Marketing Teams)\\
+          \emph{Core Question: Is there monetizable demand?} Covers viral products and emerging lifestyle trends.
+
+    \item \textbf{T5. Cultural Trend} (Target: Content Creators)\\
+          \emph{Core Question: Is this trend worth riding for attention?} Covers memes and entertainment events.
+
+    \item \textbf{T6. Operational Pain Point} (Target: Service Operators)\\
+          \emph{Core Question: What are people complaining about?} Covers traffic, outages, and service failures.
+
+    \item \textbf{T7. Routine/Noise} (Target: System Filter)\\
+          \emph{Core Question: Should this be filtered?} Covers daily weather, routine sports, and lottery results.
+\end{itemize}
