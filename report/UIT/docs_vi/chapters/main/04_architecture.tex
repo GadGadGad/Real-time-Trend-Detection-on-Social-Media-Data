@@ -7,7 +7,7 @@ Hệ thống tuân theo \textbf{kiến trúc luồng kiểu Kappa} và được 
     \caption{Kiến trúc Hệ thống Đề xuất: Xử lý Hai Đường (Fast Path vs. Slow Path).} \label{fig:pipeline}
 \end{figure}
 
-Hình \autoref{fig:pipeline} minh họa luồng dữ liệu toàn trình. Dữ liệu thô được thu nhập qua \textbf{Kafka}, xử lý theo micro-batch bởi \textbf{Spark} (Fast Path), và các cụm quan trọng được làm giàu bất đồng bộ bởi \textbf{Gemini Pro} (Slow Path) trước khi phục vụ đến UI. Việc tách hai đường xử lý đảm bảo các bước suy luận nặng của LLM không chặn pipeline thu nhập thông lượng cao.
+\autoref{fig:pipeline} minh họa luồng dữ liệu toàn trình. Dữ liệu thô được thu nhập qua \textbf{Kafka}, xử lý theo micro-batch bởi \textbf{Spark} (Fast Path), và các cụm quan trọng được làm giàu bất đồng bộ bởi \textbf{Gemini Pro} (Slow Path) trước khi phục vụ đến UI. Việc tách hai đường xử lý đảm bảo các bước suy luận nặng của LLM không chặn pipeline thu nhập thông lượng cao.
 
 \subsection{Quy trình Hệ thống}
 Vòng đời của một bài đăng mạng xã hội trong hệ thống tuân theo năm giai đoạn:
@@ -15,7 +15,7 @@ Vòng đời của một bài đăng mạng xã hội trong hệ thống tuân t
     \item \textbf{Thu nhập:} Python crawlers được điều phối bởi \textbf{Airflow} thu thập văn bản thô từ hơn 40 fanpages. Dữ liệu được chuẩn hóa sang JSON và đẩy đến topic Kafka \texttt{posts\_stream\_v1}.
     \item \textbf{Lọc (Spark Streaming):} Spark tiêu thụ luồng Kafka theo micro-batches. \textbf{Heuristic Guard} loại bỏ nhiễu thường ngày; \textbf{Smart Query Constructor} mở rộng từ khóa xu hướng tiềm năng để tăng recall (ví dụ: ``Sea Games'' $\to$ ``Lịch Sea Games 33'').
     \item \textbf{Phân cụm (Fast Path):} Bài đăng hợp lệ được vector hóa bằng mô hình ONNX và \textbf{khớp với các vector Neo} (Tin tức/Xu hướng) bằng \textbf{điểm lai tối ưu độ trễ} (cosine similarity kết hợp tăng cường từ khóa heuristic). Hệ thống có hỗ trợ reranking Cross-Encoder, nhưng triển khai online dùng \textbf{chiến lược xác minh nhẹ} (chỉ tính lại ứng viên Top-1 như một cổng xác minh). Các bài đăng không đạt ngưỡng hoặc bị từ chối được đưa vào tập \textit{dư} cho bước \textbf{Khám phá} (HDBSCAN).
-    \item \textbf{Trí tuệ (Slow Path):} Python workers bất đồng bộ đọc các cụm đã xác nhận từ \textbf{PostgreSQL}. Một cụm được coi là \emph{quan trọng} để làm giàu LLM khi đạt ngưỡng tác động theo \textbf{người dùng riêng biệt} ($U(C)\ge \delta_{significant}$). Workers truy vấn \textbf{Gemini Pro} để trích xuất tóm tắt 5W1H có cấu trúc và khử trùng lặp chủ đề chồng chéo (xem Bảng \autoref{tab:prompt_refinement}).
+    \item \textbf{Trí tuệ (Slow Path):} Python workers bất đồng bộ đọc các cụm đã xác nhận từ \textbf{PostgreSQL}. Một cụm được coi là \emph{quan trọng} để làm giàu LLM khi đạt ngưỡng tác động theo \textbf{người dùng riêng biệt} ($U(C)\ge \delta_{significant}$). Workers truy vấn \textbf{Gemini Pro} để trích xuất tóm tắt 5W1H có cấu trúc và khử trùng lặp chủ đề chồng chéo (xem \autoref{tab:prompt_refinement}).
     \item \textbf{Trực quan hóa:} Dashboard đọc PostgreSQL và hiển thị các sự kiện đã xác minh/làm giàu theo thời gian thực.
 \end{enumerate}
 

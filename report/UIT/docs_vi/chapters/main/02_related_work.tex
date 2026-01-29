@@ -1,7 +1,6 @@
 \section{Công trình Liên quan}
 Phát hiện sự kiện từ mạng xã hội đã tiến triển từ các phương pháp dựa trên thống kê/từ khóa sang các phương pháp dựa trên biểu diễn ngữ nghĩa (embedding) và gần đây là các hệ thống tăng cường bằng Mô hình Ngôn ngữ Lớn (LLM).
-Trong báo cáo này, chúng tôi phân loại các công trình liên quan thành bốn hướng: (1) thống kê truyền thống, (2) neural/embedding kết hợp phân cụm, (3) LLM và Tạo sinh Tăng cường Truy xuất (RAG), và (4) kiến trúc luồng thời gian thực.
-Bảng \autoref{tab:related_work} tổng hợp so sánh các đại diện tiêu biểu theo các tiêu chí: mức độ hiểu ngữ nghĩa, khả năng thời gian thực, xử lý nhiễu, tính diễn giải và khả năng mở rộng.
+Trong báo cáo này, chúng tôi phân loại các công trình liên quan thành bốn hướng: (1) thống kê truyền thống, (2) neural/embedding kết hợp phân cụm, (3) LLM và Tạo sinh Tăng cường Truy xuất (RAG), và (4) kiến trúc luồng thời gian thực. \autoref{tab:related_work} tổng hợp so sánh các đại diện tiêu biểu theo các tiêu chí: mức độ hiểu ngữ nghĩa, khả năng thời gian thực, xử lý nhiễu, tính diễn giải và khả năng mở rộng.
 
 \subsection{Thống kê truyền thống}
 Các phương pháp ban đầu dựa trên tần suất và mô hình hóa chủ đề, điển hình như \textbf{TF-IDF/BM25} \cite{ref_bm25}, \textbf{LDA} \cite{ref_lda} và \textbf{EDCoW} \cite{ref_edcow}.
@@ -26,7 +25,7 @@ Về hạ tầng, các thiết kế phổ biến dựa trên \textbf{Lambda} ho�
 Điểm hạn chế thường gặp là các pipeline luồng giảm chiều sâu ngữ nghĩa để đổi lấy tốc độ, khiến kết quả ít diễn giải hoặc kém nhất quán khi dữ liệu nhiễu.
 
 \subsection{Khoảng trống nghiên cứu và hướng tiếp cận của chúng tôi}
-Tổng hợp từ Bảng \autoref{tab:related_work}, có một đánh đổi phổ biến: các phương pháp đạt \emph{độ trễ thấp} thường dựa vào đặc trưng nhẹ và thiếu nhất quán ngữ nghĩa; ngược lại, các phương pháp dùng LLM đạt \emph{diễn giải/hiểu ngữ nghĩa} tốt nhưng khó đáp ứng yêu cầu thời gian thực do chi phí suy luận.
+Tổng hợp từ \autoref{tab:related_work}, có một đánh đổi phổ biến: các phương pháp đạt \emph{độ trễ thấp} thường dựa vào đặc trưng nhẹ và thiếu nhất quán ngữ nghĩa; ngược lại, các phương pháp dùng LLM đạt \emph{diễn giải/hiểu ngữ nghĩa} tốt nhưng khó đáp ứng yêu cầu thời gian thực do chi phí suy luận.
 Công trình của chúng tôi nhắm đến khoảng trống này bằng cách tách rời phát hiện nhanh khỏi làm giàu ngữ nghĩa: \textbf{Dual-Path Architecture} kết hợp phân cụm nhanh (SAHC trên Fast Path) và làm giàu hậu kỳ bằng LLM (Slow Path) để đạt thời gian thực mà vẫn đảm bảo khả năng diễn giải.
 Ngoài ra, chúng tôi sử dụng \textbf{LLM-as-a-Judge} để hỗ trợ đánh giá trong bối cảnh thiếu nhãn ground-truth, phù hợp với kịch bản dữ liệu luồng.
 

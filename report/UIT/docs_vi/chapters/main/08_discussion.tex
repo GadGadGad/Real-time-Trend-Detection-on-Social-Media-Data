@@ -17,7 +17,7 @@ Với tư cách là một hệ thống tích hợp AI phân tích diễn ngôn c
 \end{itemize}
 
 \subsection{Hàm ý Thiết kế từ Nghiên cứu Khử}
-Kết quả nghiên cứu khử (Bảng \autoref{tab:ablation}) cho thấy hệ thống chỉ đạt hiệu quả khi các thành phần được phối hợp đầy đủ.
+Kết quả nghiên cứu khử (\autoref{tab:ablation}) cho thấy hệ thống chỉ đạt hiệu quả khi các thành phần được phối hợp đầy đủ.
 Các \textbf{News Anchors} đóng vai trò then chốt trong việc ổn định phân cụm trước dữ liệu xã hội nhiễu; \textbf{Heuristic Guard} giúp kiểm soát nhiễu đầu vào và ngăn bùng nổ cụm không có ý nghĩa; trong khi \textbf{LLM Refinement} là yếu tố quyết định khả năng diễn giải của sự kiện.
 Những quan sát này củng cố lựa chọn thiết kế pipeline nhiều tầng, trong đó các bộ lọc nhẹ và phân cụm nhanh được ưu tiên ở giai đoạn phát hiện, còn LLM được sử dụng có chọn lọc cho làm giàu ngữ nghĩa hậu kỳ.
 

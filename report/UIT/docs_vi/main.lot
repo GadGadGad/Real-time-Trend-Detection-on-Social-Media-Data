@@ -7,7 +7,7 @@
 \contentsline {table}{\numberline {7.1}{\ignorespaces So sánh Phương pháp Phân cụm}}{16}{table.caption.15}%
 \contentsline {table}{\numberline {7.2}{\ignorespaces Hiệu suất trên Mini-Ground Truth (N=300) -- Cài đặt SAHC Cơ sở}}{18}{table.caption.16}%
 \contentsline {table}{\numberline {7.3}{\ignorespaces Nghiên cứu Ablation trên Mini-Ground Truth (N=300)}}{18}{table.caption.17}%
-\contentsline {table}{\numberline {A.1}{\ignorespaces Prompt Tinh chỉnh LLM (Giai đoạn 6)}}{24}{table.caption.18}%
-\contentsline {table}{\numberline {A.2}{\ignorespaces Prompt LLM-làm-Giám-khảo (Đánh giá)}}{24}{table.caption.19}%
-\contentsline {table}{\numberline {A.3}{\ignorespaces Prompt Loại bỏ Trùng lặp Ngữ nghĩa (Giai đoạn 4)}}{24}{table.caption.20}%
-\contentsline {table}{\numberline {A.4}{\ignorespaces Prompt Lọc Google Trends (Giai đoạn 6)}}{25}{table.caption.21}%
+\contentsline {table}{\numberline {A.1}{\ignorespaces Prompt Tinh chỉnh LLM (Giai đoạn 6)}}{23}{table.caption.18}%
+\contentsline {table}{\numberline {A.2}{\ignorespaces Prompt LLM-làm-Giám-khảo (Đánh giá)}}{23}{table.caption.19}%
+\contentsline {table}{\numberline {A.3}{\ignorespaces Prompt Loại bỏ Trùng lặp Ngữ nghĩa (Giai đoạn 4)}}{23}{table.caption.20}%
+\contentsline {table}{\numberline {A.4}{\ignorespaces Prompt Lọc Google Trends (Giai đoạn 6)}}{24}{table.caption.21}%

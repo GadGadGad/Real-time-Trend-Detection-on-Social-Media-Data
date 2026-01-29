@@ -79,7 +79,7 @@ Bảng \autoref{tab:ablation} cho thấy việc thêm dần anchoring và tinh c
 Các metric truyền thống như Silhouette Score thường không nắm bắt được tính mạch lạc ngữ nghĩa. Để giải quyết điều này, nhóm triển khai giao thức \textbf{LLM-làm-Giám-khảo}, nơi một mô hình instruction-tuned mạnh (Gemini Pro) hoạt động như proxy cho đánh giá của con người.
 \begin{itemize}
     \item \textbf{Giao thức:} LLM được cung cấp nội dung của một cụm và được hỏi hai câu hỏi: (1) ``Cụm này có mô tả một sự kiện duy nhất, riêng biệt không?'' (Tính Nhất quán Chủ đề, đánh giá 0-1), và (2) Cho hai cụm xung đột, ``Cụm nào mạch lạc hơn?'' (Tỷ lệ Thắng Theo cặp).
-    \item \textbf{Prompting:} Chúng tôi sử dụng chiến lược ``Role-Play'' nơi LLM đóng vai như một biên tập viên tin tức chuyên gia. Đặc tả prompt đầy đủ được cung cấp trong Phụ lục Bảng \autoref{tab:prompt_eval}.
+    \item \textbf{Prompting:} Chúng tôi sử dụng chiến lược ``Role-Play'' nơi LLM đóng vai như một biên tập viên tin tức chuyên gia. Đặc tả prompt đầy đủ được cung cấp trong Phụ lục \autoref{tab:prompt_eval}.
 \end{itemize}
 Sử dụng framework này, chúng tôi đánh giá 100 cụm ngẫu nhiên:
 \begin{itemize}
