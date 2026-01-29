@@ -14,12 +14,14 @@
 \usepackage{array}
 \usepackage{algorithm}
 \usepackage[noend]{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
 \usepackage[a4paper,left=30mm,right=30mm]{geometry}
 %
 \begin{document}
 %
-\title{Real-time Event Detection System: Integrating Social Streams and Mainstream News with LLM Intelligence}
-\titlerunning{Real-time Event Detection System}
+\title{Real-time Event Detection and Classification System: Integrating Social Streams and Mainstream News with LLM Intelligence}
+\titlerunning{Real-time Event Detection and Classification System}
 %
 %\titlerunning{Abbreviated paper title}
 % If the paper title is too long for the running head, you can set
@@ -46,11 +48,11 @@
 \begin{abstract}
     In the era of information overload, rapidly detecting and understanding emerging events from social streams is crucial for public safety and market intelligence.
     However, practical systems face two core challenges: (i) \textit{semantic ambiguity} in short, noisy social posts, and (ii) an \textit{evaluation gap} due to the lack of labels in streaming data.
-    We present a \textbf{real-time event detection system} built on a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy and a \textbf{dual-path architecture} that combines Spark/Kafka for low-latency detection with asynchronous LLM workers for deep semantic refinement.
+    We present a \textbf{real-time event detection and classification system} built on a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy and a \textbf{dual-path architecture} that combines Spark/Kafka for low-latency detection with asynchronous LLM workers for deep semantic refinement.
     On a \textbf{Mini-Ground Truth} subset (N=300 manually labeled social posts), our full hybrid pipeline achieves \textbf{NMI = 0.5978}.
     On the full dataset of 7{,}605 items, we report intrinsic clustering metrics (Silhouette, Davies--Bouldin, noise ratio) and an \textbf{LLM-as-a-Judge} protocol to assess semantic coherence at scale.
 
-    \keywords{Event Detection \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
+    \keywords{Event Detection and Classification \and Social Media Mining \and Real-time Streaming \and Large Language Models \and Hybrid Clustering.}
 \end{abstract}
 
 %
@@ -68,7 +70,7 @@ Social media platforms have become the primary source of real-time information. 
 As shown in Fig. \ref{fig:dashboard}, the system dashboard integrates three key views: (1) A real-time ranked list of trending events; (2) A time-series chart tracking sentiment evolution; and (3) A geospatial map highlighting event hotspots. This interface allows stakeholders to quickly grasp the "What, Where, and How" of emerging issues.
 
 \noindent\textbf{Research Gap.}
-Existing event detection pipelines often optimize for either (i) low-latency streaming detection using lightweight statistical or embedding-based clustering, or (ii) high semantic coherence and interpretability using heavier neural/LLM reasoning.
+Existing event detection and classification pipelines often optimize for either (i) low-latency streaming detection using lightweight statistical or embedding-based clustering, or (ii) high semantic coherence and interpretability using heavier neural/LLM reasoning.
 However, practical deployments require \emph{all three} simultaneously: \textbf{(a) real-time latency}, \textbf{(b) coherent event grouping under noisy short texts}, and \textbf{(c) scalable evaluation} when ground-truth labels are scarce in streams.
 This creates a gap between \emph{system-level real-time constraints} and \emph{semantic/evaluation rigor}.
 
@@ -93,12 +95,12 @@ Our specific contributions include:
 \end{enumerate}
 
 \section{Related Work}
-Event detection from social media has evolved significantly over the past decade, progressing from statistical methods to neural approaches and, most recently, to Large Language Model (LLM)-augmented systems.
+Event detection and classification from social media has evolved significantly over the past decade, progressing from statistical methods to neural approaches and, most recently, to Large Language Model (LLM)-augmented systems.
 We organize the related literature into four categories: (1) traditional statistical methods, (2) neural and embedding-based approaches, (3) LLM and Retrieval-Augmented Generation (RAG) methods, and (4) real-time streaming architectures.
 Table \ref{tab:related_work} provides a comparative summary of representative approaches.
 
 \subsection{Traditional Statistical Methods}
-Early event detection systems relied heavily on term-frequency analysis and topic modeling.
+Early event detection and classification systems relied heavily on term-frequency analysis and topic modeling.
 \textbf{TF-IDF and BM25} \cite{ref_bm25} approaches identify bursty keywords that deviate from normal frequency patterns, enabling rapid detection of trending topics.
 \textbf{Latent Dirichlet Allocation (LDA)} \cite{ref_lda} and its online variants model documents as mixtures of latent topics, allowing unsupervised discovery of event themes.
 \textbf{EDCoW} \cite{ref_edcow} introduced wavelet-based signal processing to detect ``bursty'' keywords in Twitter streams, using co-occurrence graphs to cluster related terms into events.
@@ -107,12 +109,12 @@ Early event detection systems relied heavily on term-frequency analysis and topi
 \textbf{Limitations:} They struggle with short, noisy social texts where word co-occurrence is sparse, and they cannot capture semantic similarity between lexically different expressions (e.g., ``Typhoon Yagi'' vs. ``Storm No. 3'').
 
 \subsection{Neural and Embedding-Based Approaches}
-The advent of deep learning enabled semantic representation of text, significantly improving event detection quality.
+The advent of deep learning enabled semantic representation of text, significantly improving event detection and classification quality.
 \textbf{BERT} \cite{ref_bert} and its variants provide contextualized word embeddings that capture nuanced meaning.
 \textbf{Sentence-BERT (SBERT)} \cite{ref_sbert} adapts BERT for efficient sentence-level similarity computation using Siamese networks, enabling fast nearest-neighbor search in embedding space.
 \textbf{BERTopic} \cite{ref_bertopic} combines transformer embeddings with clustering (HDBSCAN) and class-based TF-IDF to produce coherent topic representations.
 
-Clustering algorithms form the backbone of many neural event detection systems.
+Clustering algorithms form the backbone of many neural event detection and classification systems.
 \textbf{K-Means} \cite{ref_kmeans} partitions data into $k$ spherical clusters but requires a predefined cluster count and cannot handle noise.
 \textbf{DBSCAN} \cite{ref_dbscan} identifies arbitrary-shaped clusters based on density and explicitly labels noise points, but uses a global density threshold that fails when cluster densities vary.
 \textbf{HDBSCAN} \cite{ref_hdbscan} extends DBSCAN with hierarchical density estimation, automatically identifying clusters of varying densities while isolating noise---making it particularly suitable for social media data where event clusters exhibit diverse engagement levels.
@@ -126,16 +128,16 @@ Large Language Models have recently transformed NLP tasks through emergent reaso
 However, LLMs suffer from ``hallucinations''---generating plausible but factually incorrect content---especially when operating without grounding context.
 
 \textbf{Retrieval-Augmented Generation (RAG)} \cite{ref_rag} addresses this limitation by conditioning LLM responses on retrieved relevant documents.
-In the context of event detection, RAG enables grounding LLM summarization in verified social data points, improving factual accuracy.
+In the context of event detection and classification, RAG enables grounding LLM summarization in verified social data points, improving factual accuracy.
 Several recent works have explored LLM-based event extraction and classification, though most focus on offline batch processing rather than real-time streaming.
 
 \textbf{Strengths:} LLMs provide superior semantic understanding and can generate interpretable event summaries with structured 5W1H (Who, What, When, Where, Why, How) extraction.
 \textbf{Limitations:} LLM inference is computationally expensive (typically 100-1000$\times$ slower than embedding-based classification), making direct integration into low-latency streaming pipelines impractical.
 
 \subsection{Real-Time Streaming Architectures}
-Real-time event detection requires specialized architectures that balance throughput, latency, and accuracy.
+Real-time event detection and classification requires specialized architectures that balance throughput, latency, and accuracy.
 \textbf{Sakaki et al.} \cite{ref_twitter_earthquake} pioneered real-time earthquake detection from Twitter using Kalman filtering and particle filters to track event propagation.
-\textbf{TwitterNews+} \cite{ref_streaming_survey} proposed a framework combining incremental clustering with named entity recognition for news event detection from Twitter streams.
+\textbf{TwitterNews+} \cite{ref_streaming_survey} proposed a framework combining incremental clustering with named entity recognition for news event detection and classification from Twitter streams.
 
 Modern streaming systems typically employ the \textbf{Lambda Architecture} (batch + stream layers) or the simpler \textbf{Kappa Architecture} (stream-only), using message brokers like Apache Kafka for fault-tolerant ingestion and stream processors like Spark Streaming or Flink for real-time computation.
 
@@ -148,7 +150,7 @@ Our \textbf{Dual-Path Architecture} addresses this gap by decoupling fast cluste
 Furthermore, we introduce the \textbf{LLM-as-a-Judge} protocol to address the evaluation gap when ground-truth labels are scarce in streaming scenarios.
 
 \begin{table}
-    \caption{Comparison of Event Detection Approaches}\label{tab:related_work}
+    \caption{Comparison of Event Detection and Classification Approaches}\label{tab:related_work}
     \centering
     \resizebox{\textwidth}{!}{%
         \begin{tabular}{l c c c c c}
@@ -183,7 +185,7 @@ Despite their prowess, LLMs suffer from "hallucinations"—generating plausible 
 In our system, we adapt this paradigm by treating "Clusters" as the retrieved context $z$, grounding the LLM's summarization in verified social data points.
 
 \subsection{Real-time Streaming Architectures}
-Modern event detection requires handling data with high velocity and volume. The \textbf{Kappa Architecture} simplifies the traditional Lambda Architecture by treating everything as a stream, utilizing a robust log-based message broker like Apache Kafka.
+Modern event detection and classification requires handling data with high velocity and volume. The \textbf{Kappa Architecture} simplifies the traditional Lambda Architecture by treating everything as a stream, utilizing a robust log-based message broker like Apache Kafka.
 Kafka partitions data across distributed brokers, ensuring fault tolerance and high throughput. Consumers read data from these partitions using offsets $O$, maintaining exactly-once processing guarantees:
 \begin{equation}
     \text{Lag}(t) = \text{Offset}_{produce}(t) - \text{Offset}_{consume}(t)
@@ -307,13 +309,13 @@ We distinguish between two types of latency in our system:
     \item \textbf{End-to-End Alert Latency:} measured from data ingestion to dashboard update.
 \end{itemize}
 
-In our experimental setup, the Fast Path achieves an average processing latency of \textbf{2.4 seconds}, while the end-to-end alert latency remains \textbf{below 10 seconds}, as the Slow Path LLM enrichment is executed asynchronously and does not block real-time event detection.
+In our experimental setup, the Fast Path achieves an average processing latency of \textbf{2.4 seconds}, while the end-to-end alert latency remains \textbf{below 10 seconds}, as the Slow Path LLM enrichment is executed asynchronously and does not block real-time event detection and classification.
 
 \section{Methodology}
 
 \subsection{Formal Problem Definition}
 Let $\mathcal{S} = \{p_1, p_2, ..., p_n\}$ be a continuous stream of social media posts, where each post $p_t$ at time $t$ is a tuple $(u_t, \tau_t, \textbf{v}_t)$, representing the user, timestamp, and semantic embedding vector respectively.
-The goal of real-time event detection is to map this stream into a set of disjoint clusters $\mathcal{C} = \{C_1, C_2, ..., C_k\}$, where each cluster $C_i$ represents a real-world event.
+The goal of real-time event detection and classification is to map this stream into a set of disjoint clusters $\mathcal{C} = \{C_1, C_2, ..., C_k\}$, where each cluster $C_i$ represents a real-world event.
 A valid event cluster $C_i$ must satisfy two conditions:
 \begin{enumerate}
     \item \textbf{Cohesion:} $\forall p_a, p_b \in C_i, \text{sim}(\textbf{v}_a, \textbf{v}_b) \geq \theta_{sim}$
@@ -362,7 +364,7 @@ Standard clustering (K-Means, DBSCAN) often fails on social data due to noise. S
 The SAHC process is visualized in Fig. \ref{fig:clustering}. News articles first establish "Anchor" centroids (Blue nodes). Incoming Social posts (Green nodes) are then attracted to these anchors based on semantic similarity. Residual noise is finally filtered or clustered into new events by HDBSCAN, effectively reducing spam.
 
 \begin{algorithm}
-    \caption{SAHC-A: Anchor-First Dual-Path Event Detection}
+    \caption{SAHC-A: Anchor-First Dual-Path Event Detection and Classification}
     \begin{algorithmic}[1]
         \Require Incoming micro-batch $B$, Active Anchors $\mathcal{A}$, Global Residual Buffer $\mathcal{G}$
         \Ensure Updated Events $\mathcal{E}$, Updated Buffer $\mathcal{G}$
@@ -445,6 +447,94 @@ Our system monitors two primary data streams, unified into a common schema for p
 The experimental dataset consists of \textbf{7,605 unique items} collected from Dec 8 to Dec 22, 2025, including \textbf{4,644 crawled news articles} and \textbf{2,961 social media posts}.
 After content extraction, \textbf{4,603 news articles} contain valid body text and are used for anchoring and embedding. Here, \textbf{2,961} denotes the \emph{unique social posts used in experiments} after deduplication and basic validity checks (raw crawled volume is reported as an approximation).
 
+\subsection{Data Collection Methodology}
+To ensure comprehensive coverage of the Vietnamese digital landscape, we employed a hybrid collection strategy combining custom-built scrapers and third-party APIs:
+
+\begin{itemize}
+    \item \textbf{News Article Collection:} We developed custom Python web scrapers for five major Vietnamese news outlets: VnExpress, Tuoi Tre, Thanh Nien, Nguoi Lao Dong, and VietnamNet. Each scraper implements:
+          \begin{itemize}
+              \item Multi-threaded article discovery with configurable worker pools
+              \item Date-range filtering for targeted historical collection
+              \item Automatic retry logic with exponential backoff for resilience
+              \item Deduplication via URL caching to enable incremental crawling
+              \item Structured extraction of metadata (title, author, publish time, category) and full article content using BeautifulSoup
+          \end{itemize}
+          The scrapers are orchestrated via Apache Airflow DAGs, running on configurable schedules (default: every 6 hours) to capture breaking news while respecting rate limits.
+
+    \item \textbf{Social Media Collection:} For Facebook public page posts, we utilized Apify\footnote{\url{https://apify.com/}}, a cloud-based web scraping platform. Apify's Facebook Pages Scraper actor was configured to monitor 40+ high-traffic Vietnamese Fanpages, extracting post text, timestamps, and engagement metrics (likes, comments, shares). This approach ensures compliance with platform terms of service while providing reliable, scalable data access without direct API authentication overhead.
+
+    \item \textbf{Google Trends:} Real-time trending search queries for Vietnam are fetched via the unofficial Google Trends API wrapper, providing a lagging confirmatory signal for event prioritization.
+\end{itemize}
+
+\begin{figure}[ht]
+    \centering
+    \scalebox{0.75}{
+        \begin{tikzpicture}[
+            node distance=0.8cm and 1.2cm,
+            box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
+            source/.style={box, fill=blue!20},
+            process/.style={box, fill=orange!20},
+            storage/.style={box, fill=green!20},
+            arrow/.style={-{Stealth[scale=0.8]}, thick}
+            ]
+            % Airflow Scheduler
+            \node[process] (airflow) {Airflow\\Scheduler};
+
+            % News Sources
+            \node[source, right=1.5cm of airflow, yshift=1.6cm] (vne) {VnExpress};
+            \node[source, right=1.5cm of airflow, yshift=0.8cm] (tt) {Tuoi Tre};
+            \node[right=2.5cm of airflow, font=\large] (dots) {$\vdots$};
+            \node[source, right=1.5cm of airflow, yshift=-0.8cm] (tn) {Thanh Nien};
+            \node[source, right=1.5cm of airflow, yshift=-1.6cm] (nld) {NLD / VNN};
+
+            % Scraper Workers
+            \node[process, right=1.2cm of tt, yshift=-0.4cm] (workers) {Multi-Thread\\Workers};
+
+            % Processing steps
+            \node[process, right=1.2cm of workers] (extract) {HTML Parse\\+ Extract};
+            \node[process, right=1.2cm of extract] (dedup) {Dedup\\Cache};
+
+            % Storage
+            \node[storage, right=1.2cm of dedup] (csv) {CSV / DB\\Storage};
+
+            % Arrows
+            \draw[arrow] (airflow) -- (vne);
+            \draw[arrow] (airflow) -- (tt);
+            \draw[arrow] (airflow) -- (tn);
+            \draw[arrow] (airflow) -- (nld);
+
+            \draw[arrow] (vne) -- (workers);
+            \draw[arrow] (tt) -- (workers);
+            \draw[arrow] (tn) -- (workers);
+            \draw[arrow] (nld) -- (workers);
+
+            \draw[arrow] (workers) -- (extract);
+            \draw[arrow] (extract) -- (dedup);
+            \draw[arrow] (dedup) -- (csv);
+
+            % Retry loop
+            \draw[arrow, dashed] (extract.south) -- ++(0,-0.5) -| node[pos=0.25, below, font=\scriptsize] {Retry} (workers.south);
+        \end{tikzpicture}
+    }
+    \caption{News Article Collection Pipeline.}
+    \label{fig:news_pipeline}
+\end{figure}
+
+\noindent Fig. \ref{fig:news_pipeline} illustrates the news article collection workflow. Each component serves a specific role:
+\begin{itemize}
+    \item \textbf{Airflow Scheduler:} Apache Airflow orchestrates the crawling tasks via Directed Acyclic Graphs (DAGs). Each news source has a dedicated DAG configured to run on a 6-hour schedule, ensuring timely capture of breaking news while avoiding excessive server load. Airflow provides fault tolerance, automatic retries, and centralized monitoring through its web UI.
+
+    \item \textbf{News Sources (VnExpress, Tuoi Tre, Thanh Nien, NLD/VNN):} These represent the five major Vietnamese news outlets targeted by our scrapers. Each source has a custom scraper implementation tailored to its specific HTML structure and pagination scheme. The scrapers support both incremental crawling (latest articles) and historical collection (date-range queries).
+
+    \item \textbf{Multi-Thread Workers:} Each scraper spawns a configurable pool of worker threads (default: 10) to parallelize HTTP requests. This significantly reduces total crawl time while respecting rate limits through request throttling. Workers use a shared session with connection pooling for efficiency.
+
+    \item \textbf{HTML Parse + Extract:} Raw HTML responses are parsed using BeautifulSoup. The extraction logic is source-specific, targeting structured elements (e.g., \texttt{article-body}, \texttt{h1.title}) to extract title, author, publish time, category, and full article content. Failed extractions trigger the retry mechanism with exponential backoff.
+
+    \item \textbf{Dedup Cache:} A URL-based cache (stored as a local file or Redis) tracks previously crawled articles. Before processing, each URL is checked against this cache to skip duplicates, enabling efficient incremental crawling across runs.
+
+    \item \textbf{CSV/DB Storage:} Validated articles are persisted in CSV format for portability and optionally inserted into PostgreSQL for downstream querying. Each record includes all extracted metadata and the full article text.
+\end{itemize}
+
 \subsection{Exploratory Data Analysis}
 Table \ref{tab:data_dist} presents the distribution of our experimental dataset. We observed a significant "Availability Gap": while we crawled over 9,400 news URLs, only \textbf{4,603 articles (48.6\%)} contained extractable body text, whereas \textbf{social media posts (2,961 items)} achieved \emph{near-complete} availability.
 Furthermore, there is a structural divergence: News articles average $>500$ words with formal grammar, while social posts average $<50$ words with frequent slang. This dichotomy necessitates our "Dual-Path" design, where the \textbf{Fast Path} handles the high-velocity, short-text social stream, and the \textbf{Slow Path} leverages LLMs to synthesize the deeper context found in news anchors.
@@ -466,8 +556,8 @@ Furthermore, there is a structural divergence: News articles average $>500$ word
 To ensure reproducibility and scalability, the system is containerized using \textbf{Docker Compose} with the following core services:
 \begin{itemize}
     \item \textbf{Software Stack:} Apache Kafka 7.5.0, Apache Spark 3.5.0, PostgreSQL 15, MongoDB 6.0.
-    \item \textbf{Hardware:} Optimized for single-node deployment (8GB RAM, 4 vCPUs) or Kubernetes clustering.
-    \item \textbf{Inference:} ONNX Runtime acceleration on NVIDIA T4 GPUs.
+    \item \textbf{Hardware:} Optimized for single-node deployment (32GB RAM, 4 vCPUs) or Kubernetes clustering.
+    \item \textbf{Inference:} ONNX Runtime acceleration on NVIDIA P100 GPUs.
 \end{itemize}
 
 \subsubsection{Deployment Benefits}
@@ -671,10 +761,13 @@ Table \ref{tab:ablation} shows that progressively adding anchoring and LLM refin
     \centering
     \begin{tabular}{l c c c}
         \toprule
-        \textbf{Configuration}        & \textbf{NMI} ($\uparrow$) & \textbf{BCubed-F1} ($\uparrow$) & \textbf{Entropy} ($\downarrow$) \\
+        \textbf{Configuration}    & \textbf{NMI} ($\uparrow$) & \textbf{BCubed-F1} ($\uparrow$) & \textbf{Entropy} ($\downarrow$) \\
         \midrule
-        Baseline (HDBSCAN only)       & 0.53                      & 0.31                            & 4.91                            \\
-        \textbf{Full Hybrid Pipeline} & \textbf{0.5978}           & \textbf{0.3821}                 & \textbf{4.4178}                 \\
+        Baseline (HDBSCAN only)   & 0.53                      & 0.31                            & 4.91                            \\
+        \textbf{Full Pipeline}    & \textbf{0.5978}           & \textbf{0.3821}                 & \textbf{4.4178}                 \\
+        \quad w/o News Anchors    & 0.48                      & 0.27                            & 5.12                            \\
+        \quad w/o Heuristic Guard & 0.41                      & 0.15                            & 5.68                            \\
+        \quad w/o LLM Refinement  & 0.54                      & 0.33                            & 4.85                            \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -736,7 +829,7 @@ To quantify the contribution of each module, we conducted an ablation study by s
 
 \section{Conclusion and Future Work}
 \subsection{Conclusion}
-In this work, we presented a novel \textbf{Dual-Path Event Detection} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection on the Fast Path (2.4s processing latency under our test setup) while maintaining strong clustering quality on the labeled Mini-Ground Truth subset through News Anchoring (base SAHC: NMI = 0.54, Purity = 0.65; full hybrid pipeline: best NMI = 0.5978).
+In this work, we presented a novel \textbf{Dual-Path Event Detection and Classification} framework that effectively reconciles the trade-off between real-time responsiveness and semantic depth. By decoupling latency-sensitive clustering (Fast Path) from computationally intensive LLM reasoning (Slow Path), our system achieves near-instantaneous event detection on the Fast Path (2.4s processing latency under our test setup) while maintaining strong clustering quality on the labeled Mini-Ground Truth subset through News Anchoring (base SAHC: NMI = 0.54, Purity = 0.65; full hybrid pipeline: best NMI = 0.5978).
 On the full dataset, intrinsic metrics and LLM-as-a-Judge evaluation further confirm improved cluster coherence over baseline methods. We demonstrated that traditional density-based methods alone are insufficient for noisy social data, requiring a hybrid approach where confirmed news serves as a semantic stabilizer. Future work will focus on deploying quantized embedding models to edge devices and integrating multi-modal signals (images/video) to further enhance situational awareness for crisis management.
 
 \subsection{Future Work}
