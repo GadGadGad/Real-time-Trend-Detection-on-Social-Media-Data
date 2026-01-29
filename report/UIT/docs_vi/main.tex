@@ -21,6 +21,7 @@
 \usepackage{lipsum}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
+\usepackage{fancyvrb} % preamble
 \usepackage{makecell}
 \usepackage{blindtext}
 \usepackage{subfiles} % Chèn các file nhỏ, giúp chia các chapter ra nhiều file hơn
@@ -28,6 +29,10 @@
 \usepackage[noend]{algpseudocode}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+
+% ======= SECTION NUMBERING (KHÔNG PHỤ THUỘC CHAPTER) =======
+\renewcommand{\thesection}{\arabic{section}}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
 
 % Code highlighting
 \usepackage{listings}
@@ -39,21 +44,21 @@
 \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
 
 \lstdefinestyle{mystyle}{
-    backgroundcolor=\color{backcolour},   
+    backgroundcolor=\color{backcolour},
     commentstyle=\color{codegreen},
     keywordstyle=\color{magenta},
     numberstyle=\tiny\color{codegray},
     stringstyle=\color{codepurple},
     basicstyle=\ttfamily\footnotesize,
-    breakatwhitespace=false,         
-    breaklines=true,                 
-    captionpos=b,                    
-    keepspaces=true,                 
-    numbers=left,                    
-    numbersep=5pt,                  
-    showspaces=false,                
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
     showstringspaces=false,
-    showtabs=false,                  
+    showtabs=false,
     tabsize=2,
     frame=single
 }
@@ -64,11 +69,10 @@
 \addbibresource{ref.bib}
 
 % Setup hype link in thesis
-\hypersetup{urlcolor=blue,linkcolor=black,citecolor=black,colorlinks=true} 
+\hypersetup{urlcolor=blue,linkcolor=black,citecolor=black,colorlinks=true}
 \DeclarePairedDelimiter\bra{\langle}{\rvert}
 \DeclarePairedDelimiter\ket{\lvert}{\rangle}
 \DeclarePairedDelimiterX\braket[2]{\langle}{\rangle}{#1 \delimsize\vert #2}
-
 
 % Config information thesis
 \upperuniname{ĐẠI HỌC QUỐC GIA THÀNH PHỐ HỒ CHÍ MINH}
@@ -87,27 +91,41 @@
 
 \coverpage
 
-% % Begin above main thesis
+% ======= FRONTMATTER =======
 \frontmatter
 \subfile{chapters/front/thanks}
 \clearpage
-\tableofcontents
+
+\tableofcontents*
+\addcontentsline{toc}{section}{Mục lục}
 \clearpage
-\listoffigures
+
+% --- FRONTMATTER: LOF/LOT KHÔNG ĐƯỢC DÍNH SECTION (tránh 0.x) ---
+\counterwithout{figure}{section}
+\counterwithout{table}{section}
+
+\listoffigures*
+\addcontentsline{toc}{section}{Danh sách hình vẽ}
 \clearpage
-\listoftables
+
+\listoftables*
+\addcontentsline{toc}{section}{Danh sách bảng}
 \clearpage
+
 \subfile{chapters/front/glossaries}
 
+% ======= MAINMATTER =======
+\setcounter{secnumdepth}{3}
+\mainmatter
 
-% Begin main thesis, start page numbering
+% --- MAINMATTER: bật lại đánh số theo section (1.1, 1.2, ...) ---
 \counterwithin{equation}{section}
 \counterwithin{table}{section}
 \counterwithin{figure}{section}
-\setcounter{secnumdepth}{3}
-\mainmatter
+
 \fancyhf{}
 \fancyfoot[C]{\thepage}
+
 \subfile{chapters/main/summary}
 
 % Config page header
@@ -126,8 +144,39 @@
 \subfile{chapters/main/07_results}
 \subfile{chapters/main/08_discussion}
 \subfile{chapters/main/09_conclusion}
-\subfile{chapters/main/10_ethics}
+% \subfile{chapters/main/10_ethics}
+
+% ======= REFERENCES =======
+\clearpage
+\section*{Tài liệu tham khảo}
+\addcontentsline{toc}{section}{Tài liệu tham khảo}
+\markright{Tài liệu tham khảo}
+
+\printbibliography[heading=none]
+
+% ======= APPENDIX =======
+\clearpage
 \appendix
+
+\setcounter{section}{0}
+\renewcommand{\thesection}{\Alph{section}}
+\renewcommand{\thesubsection}{\Alph{section}.\arabic{subsection}}
+
+\setcounter{table}{0}
+\setcounter{figure}{0}
+\setcounter{equation}{0}
+
+\counterwithin{table}{section}
+\counterwithin{figure}{section}
+\counterwithin{equation}{section}
+
+\renewcommand{\thetable}{\Alph{section}.\arabic{table}}
+\renewcommand{\thefigure}{\Alph{section}.\arabic{figure}}
+\renewcommand{\theequation}{\Alph{section}.\arabic{equation}}
+
 \subfile{chapters/main/11_appendix}
-\printbibliography[heading=bibintoc, title = {Tài liệu tham khảo}]
+\clearpage
+\subfile{chapters/main/12_appendix}
+
+
 \end{document}

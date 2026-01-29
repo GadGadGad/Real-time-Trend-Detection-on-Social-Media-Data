@@ -1,5 +1,5 @@
-\chapter{Kiến trúc Hệ thống Đề xuất}
-Hệ thống tuân theo \textbf{kiến trúc luồng kiểu Kappa} được tách thành hai đường xử lý để giải quyết sự đánh đổi "Độ trễ vs. Độ chính xác".
+\section{Kiến trúc Hệ thống Đề xuất}
+Hệ thống tuân theo \textbf{kiến trúc luồng kiểu Kappa} và được tách thành hai đường xử lý (\textbf{Fast Path} vs. \textbf{Slow Path}) để giải quyết sự đánh đổi \textit{``Độ trễ vs. Độ chính xác''}.
 
 \begin{figure}[h]
     \centering
@@ -7,78 +7,32 @@ Hệ thống tuân theo \textbf{kiến trúc luồng kiểu Kappa} được tác
     \caption{Kiến trúc Hệ thống Đề xuất: Xử lý Hai Đường (Fast Path vs. Slow Path).} \label{fig:pipeline}
 \end{figure}
 
-Hình \ref{fig:pipeline} minh họa luồng dữ liệu toàn trình. Dữ liệu thô được thu nhập qua Kafka, xử lý theo micro-batch bởi Spark (Fast Path), và làm giàu bất đồng bộ bởi Gemini Pro (Slow Path) trước khi được phục vụ đến UI. Sự tách biệt này đảm bảo rằng thời gian suy luận nặng của LLMs không chặn pipeline thu nhập thông lượng cao.
+Hình \ref{fig:pipeline} minh họa luồng dữ liệu toàn trình. Dữ liệu thô được thu nhập qua \textbf{Kafka}, xử lý theo micro-batch bởi \textbf{Spark} (Fast Path), và các cụm quan trọng được làm giàu bất đồng bộ bởi \textbf{Gemini Pro} (Slow Path) trước khi phục vụ đến UI. Việc tách hai đường xử lý đảm bảo các bước suy luận nặng của LLM không chặn pipeline thu nhập thông lượng cao.
 
-\section{Quy trình Hệ thống}
-Vòng đời của một bài đăng mạng xã hội trong hệ thống của chúng tôi tuân theo năm giai đoạn:
+\subsection{Quy trình Hệ thống}
+Vòng đời của một bài đăng mạng xã hội trong hệ thống tuân theo năm giai đoạn:
 \begin{enumerate}
-    \item \textbf{Lớp Thu nhập:} Python crawlers, được điều phối bởi \textbf{Airflow}, liên tục thu thập văn bản thô từ hơn 40 Fanpages có lưu lượng cao. Dữ liệu được chuẩn hóa sang định dạng JSON và đẩy đến topic \textbf{Apache Kafka} \texttt{posts\_stream\_v1}, với \textbf{Zookeeper} xử lý điều phối cụm.
-    \item \textbf{Lọc (Spark Streaming):} Engine \textbf{Spark} tiêu thụ luồng Kafka theo micro-batches. Heuristic Guard loại bỏ nhiễu thường ngày, trong khi \textbf{Smart Query Constructor} mở rộng các từ khóa xu hướng tiềm năng (ví dụ: ``Sea Games'' $\to$ ``Lịch Sea Games 33'') để tăng recall.
-    \item \textbf{Phân cụm (Fast Path):} Các bài đăng xã hội hợp lệ được vector hóa sử dụng mô hình ONNX và \textbf{được khớp với các vector Neo} (Tin tức/Xu hướng) sử dụng \textbf{điểm lai tối ưu độ trễ} (cosine similarity với tăng cường từ khóa heuristic).
-          Chúng tôi hỗ trợ module reranking Cross-Encoder ở giai đoạn khớp; tuy nhiên, để thỏa mãn các ràng buộc thời gian thực, \textbf{triển khai online sử dụng chiến lược xác minh nhẹ} chỉ tính lại điểm ứng viên chiến thắng (Top-1) như một \textbf{cổng xác minh}.
-          Trong phân tích offline hoặc các chế độ có thể cấu hình, hệ thống có thể được mở rộng để rerank Top-$K$ ứng viên cho độ chính xác cao hơn.
-          Các bài đăng bị cổng xác minh từ chối hoặc không đạt ngưỡng được đệm là \textit{dư} cho bước \textbf{Khám phá} (HDBSCAN).
-
-    \item \textbf{Trí tuệ (Slow Path):} \textbf{Python Workers} bất đồng bộ poll các cụm đã xác nhận từ kho lưu trữ thống nhất \textbf{PostgreSQL}. Một cụm được coi là \emph{quan trọng} và đủ điều kiện cho làm giàu LLM chỉ khi đạt ngưỡng tác động về \textbf{người dùng riêng biệt} ($U(C)\ge \delta_{significant}$). Workers sau đó truy vấn \textbf{Gemini Pro} để trích xuất tóm tắt 5W1H có cấu trúc và khử trùng lặp các chủ đề chồng chéo (xem Phụ lục Bảng \ref{tab:prompt_refinement}).
-    \item \textbf{Trực quan hóa:} Dashboard poll cơ sở dữ liệu PostgreSQL để hiển thị các sự kiện đã xác minh, đã làm giàu theo thời gian thực.
+    \item \textbf{Thu nhập:} Python crawlers được điều phối bởi \textbf{Airflow} thu thập văn bản thô từ hơn 40 fanpages. Dữ liệu được chuẩn hóa sang JSON và đẩy đến topic Kafka \texttt{posts\_stream\_v1}.
+    \item \textbf{Lọc (Spark Streaming):} Spark tiêu thụ luồng Kafka theo micro-batches. \textbf{Heuristic Guard} loại bỏ nhiễu thường ngày; \textbf{Smart Query Constructor} mở rộng từ khóa xu hướng tiềm năng để tăng recall (ví dụ: ``Sea Games'' $\to$ ``Lịch Sea Games 33'').
+    \item \textbf{Phân cụm (Fast Path):} Bài đăng hợp lệ được vector hóa bằng mô hình ONNX và \textbf{khớp với các vector Neo} (Tin tức/Xu hướng) bằng \textbf{điểm lai tối ưu độ trễ} (cosine similarity kết hợp tăng cường từ khóa heuristic). Hệ thống có hỗ trợ reranking Cross-Encoder, nhưng triển khai online dùng \textbf{chiến lược xác minh nhẹ} (chỉ tính lại ứng viên Top-1 như một cổng xác minh). Các bài đăng không đạt ngưỡng hoặc bị từ chối được đưa vào tập \textit{dư} cho bước \textbf{Khám phá} (HDBSCAN).
+    \item \textbf{Trí tuệ (Slow Path):} Python workers bất đồng bộ đọc các cụm đã xác nhận từ \textbf{PostgreSQL}. Một cụm được coi là \emph{quan trọng} để làm giàu LLM khi đạt ngưỡng tác động theo \textbf{người dùng riêng biệt} ($U(C)\ge \delta_{significant}$). Workers truy vấn \textbf{Gemini Pro} để trích xuất tóm tắt 5W1H có cấu trúc và khử trùng lặp chủ đề chồng chéo (xem Bảng \ref{tab:prompt_refinement}).
+    \item \textbf{Trực quan hóa:} Dashboard đọc PostgreSQL và hiển thị các sự kiện đã xác minh/làm giàu theo thời gian thực.
 \end{enumerate}
 
-\noindent
-\begin{center}
-    \setlength{\fboxsep}{10pt}
-    \fcolorbox{black}{gray!10}{%
-        \begin{minipage}{0.95\textwidth}
-            \textbf{\large Theo dõi Xử lý Đầu-Cuối: ``Cảnh báo Bão Yagi''}
-            \vspace{0.2cm}
-            \par
-            Để minh họa pipeline, xem xét vòng đời của một bài đăng xã hội:
-            \begin{enumerate}
-                \item \textbf{Đầu vào:} Crawler lấy văn bản thô ``Bão số 3 giật cấp 12...'' từ fanpage \textit{ThongTinChinhPhu}.
-                \item \textbf{Thu nhập:} Kafka producer serialize thành JSON và đẩy đến topic \texttt{posts\_stream\_v1} (Partition 0).
-                \item \textbf{Lọc:} Spark Streaming tiêu thụ tin nhắn. Heuristic Guard cho phép, và Smart Query mở rộng ngữ cảnh thành ``Theo dõi Bão Yagi''.
-                \item \textbf{Phân cụm:} ONNX Worker ánh xạ thành vector $\mathbf{v}$. SAHC xác định News Anchor khớp tốt nhất ``Bão Yagi'' (Hybrid Score $> \lambda_{match}$) và gắn bài đăng.
-                \item \textbf{Trí tuệ:} Cụm phát triển vượt ngưỡng quan trọng. Async worker kích hoạt Gemini Pro, trả về tóm tắt có cấu trúc: ``Bão Yagi tiến gần Quảng Ninh.''
-                \item \textbf{Đầu ra:} Dashboard nhận cập nhật cụ thể và hiển thị cảnh báo ``Rủi ro Công cộng'' trên bản đồ trực tiếp.
-            \end{enumerate}
-        \end{minipage}%
-    }
-\end{center}
+\noindent\textbf{Ví dụ minh hoạ.}
+Một bài đăng về ``Bão Yagi...'' được thu thập và đưa vào Kafka; Spark lọc nhiễu và mở rộng truy vấn; Fast Path gán vào cụm/neo tin tức phù hợp; khi cụm vượt ngưỡng $U(C)\ge \delta_{significant}$ thì Slow Path kích hoạt Gemini Pro để tạo tóm tắt 5W1H; cuối cùng dashboard cập nhật cảnh báo theo thời gian thực.
 
-\section{Triển khai Fast Path vs. Slow Path}
+\subsection{Triển khai Fast Path vs. Slow Path}
 \begin{itemize}
-    \item \textbf{Thu nhập (Kafka \& Zookeeper):}
-          \begin{itemize}
-              \item \textbf{Producer:} Serialize các bài đăng thô thành JSON và xuất bản đến topic \texttt{posts\_stream\_v1}, xử lý retries và exponential backoff để đảm bảo giao hàng at-least-once.
-              \item \textbf{Broker:} Kafka hoạt động như lưu trữ log phân tán, chịu lỗi, trong khi \textbf{ZooKeeper} quản lý metadata broker, bầu cử leader, và phân công partition.
-          \end{itemize}
-
-    \item \textbf{Xử lý (Spark Structured Streaming):}
-          \begin{itemize}
-              \item Tiêu thụ các sự kiện từ Kafka với \textbf{ngữ nghĩa exactly-once} sử dụng checkpointing.
-              \item Phân tích cú pháp JSON thô thành Spark DataFrames cho xử lý cột hiệu quả.
-          \end{itemize}
-
-    \item \textbf{Suy luận (Pandas UDF \& ONNX):}
-          \begin{itemize}
-              \item Sử dụng giao diện \textbf{Pandas UDF} của PySpark để vector hóa văn bản theo batches, tránh overhead serialization Python theo từng dòng.
-              \item Kích hoạt engine \textbf{ONNX Runtime} trên các Worker nodes để tính toán embeddings (SBERT) cho mỗi micro-batch; \textbf{HDBSCAN} chỉ được kích hoạt trên tập \textit{không khớp/dư} để khám phá các sự kiện \textbf{Chỉ-Xã-hội} mới nổi.
-          \end{itemize}
-
-    \item \textbf{Trí tuệ Slow Path (Async Workers):}
-          \begin{itemize}
-              \item Được thiết kế để tách rời các thao tác nặng khỏi luồng thu nhập. Workers poll các cụm đã xác nhận và:
-                    \begin{enumerate}
-                        \item Truy vấn \textbf{Google Trends API} để lấy khối lượng tìm kiếm (G-score), sử dụng prompt lọc trong Phụ lục Bảng \ref{tab:prompt_trends}. Tín hiệu này được coi là \textbf{xác nhận/trễ}: nó thường tích lũy sau khi một sự kiện đã hiển thị trên các luồng xã hội, và do đó được sử dụng để xác thực và ưu tiên các cụm thay vì kích hoạt phát hiện ban đầu.
-                        \item Sử dụng chiến lược \textbf{Prompting Nhận thức Ngữ cảnh} với Gemini Pro để tổng hợp các tóm tắt mạch lạc.
-                    \end{enumerate}
-          \end{itemize}
+    \item \textbf{Fast Path:} Kafka $\rightarrow$ Spark micro-batch $\rightarrow$ lọc $\rightarrow$ vector hoá (ONNX) $\rightarrow$ khớp Neo + xác minh nhẹ (Top-1) $\rightarrow$ lưu kết quả.
+    \item \textbf{Slow Path:} Workers bất đồng bộ đọc các cụm đủ điều kiện từ PostgreSQL $\rightarrow$ gọi Gemini Pro để tóm tắt 5W1H và xử lý trùng lặp $\rightarrow$ ghi trả lại cơ sở dữ liệu để phục vụ dashboard.
 \end{itemize}
 
-\section{Định nghĩa Độ trễ}
-Chúng tôi phân biệt giữa hai loại độ trễ trong hệ thống của chúng tôi:
+\subsection{Định nghĩa Độ trễ}
+Chúng tôi phân biệt:
 \begin{itemize}
-    \item \textbf{Độ trễ Xử lý Fast-Path:} đo từ thu nhập Kafka đến gán cụm trong một Spark micro-batch.
-    \item \textbf{Độ trễ Cảnh báo Đầu-Cuối:} đo từ thu nhập dữ liệu đến cập nhật dashboard.
+    \item \textbf{Độ trễ xử lý Fast-Path:} từ thu nhập Kafka đến gán cụm trong một micro-batch Spark.
+    \item \textbf{Độ trễ cảnh báo đầu-cuối:} từ thu nhập dữ liệu đến khi dashboard được cập nhật.
 \end{itemize}
 
-Trong thiết lập thử nghiệm của chúng tôi, Fast Path đạt độ trễ xử lý trung bình \textbf{2.4 giây}, trong khi độ trễ cảnh báo đầu-cuối vẫn \textbf{dưới 10 giây}, vì làm giàu LLM Slow Path được thực thi bất đồng bộ và không chặn phát hiện sự kiện thời gian thực.
+Trong thiết lập thử nghiệm, Fast Path đạt độ trễ xử lý trung bình \textbf{2.4 giây}, và độ trễ cảnh báo đầu-cuối \textbf{dưới 10 giây}, do Slow Path được thực thi bất đồng bộ và không chặn phát hiện thời gian thực.

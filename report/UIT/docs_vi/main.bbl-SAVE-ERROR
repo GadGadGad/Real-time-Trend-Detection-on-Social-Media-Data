@@ -1,5 +1,5 @@
 % $ biblatex auxiliary file $
-% $ biblatex bbl format version 3.3 $
+% $ biblatex bbl format version 3.2 $
 % Do not modify the above lines!
 %
 % This is an auxiliary file used by the 'biblatex' package.
@@ -18,8 +18,8 @@
 
 
 \refsection{0}
-  \datalist[entry]{nyt/global//global/global/global}
-    \entry{ref_lda}{article}{}{}
+  \datalist[entry]{nyt/global//global/global}
+    \entry{ref_lda}{article}{}
       \name{author}{3}{}{%
         {{hash=108998f0d44d4dce8ccb93e4d78cd5c6}{%
            family={Blei},
@@ -39,12 +39,10 @@
       }
       \strng{namehash}{ee51b7141ddf1c81ca1f40c31a7ae6be}
       \strng{fullhash}{ee51b7141ddf1c81ca1f40c31a7ae6be}
-      \strng{fullhashraw}{ee51b7141ddf1c81ca1f40c31a7ae6be}
       \strng{bibnamehash}{ee51b7141ddf1c81ca1f40c31a7ae6be}
       \strng{authorbibnamehash}{ee51b7141ddf1c81ca1f40c31a7ae6be}
       \strng{authornamehash}{ee51b7141ddf1c81ca1f40c31a7ae6be}
       \strng{authorfullhash}{ee51b7141ddf1c81ca1f40c31a7ae6be}
-      \strng{authorfullhashraw}{ee51b7141ddf1c81ca1f40c31a7ae6be}
       \field{sortinit}{B}
       \field{sortinithash}{d7095fff47cda75ca2589920aae98399}
       \field{labelnamesource}{author}
@@ -56,7 +54,7 @@
       \field{pages}{993\bibrangedash 1022}
       \range{pages}{30}
     \endentry
-    \entry{ref_hdbscan}{inproceedings}{}{}
+    \entry{ref_hdbscan}{inproceedings}{}
       \name{author}{3}{}{%
         {{hash=382d8e986b9afdbfedb661be5cf9ce33}{%
            family={Campello},
@@ -79,12 +77,10 @@
       }
       \strng{namehash}{84276f8f7e0bd597fd1ee130e754f627}
       \strng{fullhash}{84276f8f7e0bd597fd1ee130e754f627}
-      \strng{fullhashraw}{84276f8f7e0bd597fd1ee130e754f627}
       \strng{bibnamehash}{84276f8f7e0bd597fd1ee130e754f627}
       \strng{authorbibnamehash}{84276f8f7e0bd597fd1ee130e754f627}
       \strng{authornamehash}{84276f8f7e0bd597fd1ee130e754f627}
       \strng{authorfullhash}{84276f8f7e0bd597fd1ee130e754f627}
-      \strng{authorfullhashraw}{84276f8f7e0bd597fd1ee130e754f627}
       \field{sortinit}{C}
       \field{sortinithash}{4d103a86280481745c9c897c925753c0}
       \field{labelnamesource}{author}
@@ -98,7 +94,7 @@
       \verb 10.1007/978-3-642-37456-2_14
       \endverb
     \endentry
-    \entry{ref_bert}{inproceedings}{}{}
+    \entry{ref_bert}{inproceedings}{}
       \name{author}{4}{}{%
         {{hash=13202969e372bc82318f9629cbdd199b}{%
            family={Devlin},
@@ -123,12 +119,10 @@
       }
       \strng{namehash}{ad8e2e2a80d28ade21e86852b804fc9b}
       \strng{fullhash}{e8bccd48302a14eeba57d9dce2f49ef4}
-      \strng{fullhashraw}{e8bccd48302a14eeba57d9dce2f49ef4}
       \strng{bibnamehash}{ad8e2e2a80d28ade21e86852b804fc9b}
       \strng{authorbibnamehash}{ad8e2e2a80d28ade21e86852b804fc9b}
       \strng{authornamehash}{ad8e2e2a80d28ade21e86852b804fc9b}
       \strng{authorfullhash}{e8bccd48302a14eeba57d9dce2f49ef4}
-      \strng{authorfullhashraw}{e8bccd48302a14eeba57d9dce2f49ef4}
       \field{sortinit}{D}
       \field{sortinithash}{6f385f66841fb5e82009dc833c761848}
       \field{labelnamesource}{author}
@@ -142,7 +136,7 @@
       \verb 10.18653/v1/N19-1423
       \endverb
     \endentry
-    \entry{ref_dbscan}{article}{}{}
+    \entry{ref_dbscan}{article}{}
       \name{author}{4}{}{%
         {{hash=2c062e64ed26aacc08a62155e7944f04}{%
            family={Ester},
@@ -167,12 +161,10 @@
       }
       \strng{namehash}{9158a41d23cb4e154e78366d59c05728}
       \strng{fullhash}{3270dfaa31e8210b3bd04b1bcf4a29a3}
-      \strng{fullhashraw}{3270dfaa31e8210b3bd04b1bcf4a29a3}
       \strng{bibnamehash}{9158a41d23cb4e154e78366d59c05728}
       \strng{authorbibnamehash}{9158a41d23cb4e154e78366d59c05728}
       \strng{authornamehash}{9158a41d23cb4e154e78366d59c05728}
       \strng{authorfullhash}{3270dfaa31e8210b3bd04b1bcf4a29a3}
-      \strng{authorfullhashraw}{3270dfaa31e8210b3bd04b1bcf4a29a3}
       \field{sortinit}{E}
       \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
       \field{labelnamesource}{author}
@@ -185,7 +177,7 @@
       \field{pages}{226\bibrangedash 231}
       \range{pages}{6}
     \endentry
-    \entry{ref_streaming_survey}{article}{}{}
+    \entry{ref_streaming_survey}{article}{}
       \name{author}{4}{}{%
         {{hash=e463dbb39f3909db62e8d8b1bd081eb5}{%
            family={Fedoryszak},
@@ -210,12 +202,10 @@
       }
       \strng{namehash}{91330080e6371c061b8a4811485880e8}
       \strng{fullhash}{741165aeadd6fece288303dde391d41c}
-      \strng{fullhashraw}{741165aeadd6fece288303dde391d41c}
       \strng{bibnamehash}{91330080e6371c061b8a4811485880e8}
       \strng{authorbibnamehash}{91330080e6371c061b8a4811485880e8}
       \strng{authornamehash}{91330080e6371c061b8a4811485880e8}
       \strng{authorfullhash}{741165aeadd6fece288303dde391d41c}
-      \strng{authorfullhashraw}{741165aeadd6fece288303dde391d41c}
       \field{sortinit}{F}
       \field{sortinithash}{2638baaa20439f1b5a8f80c6c08a13b4}
       \field{labelnamesource}{author}
@@ -231,7 +221,7 @@
       \verb 10.1016/j.ipm.2019.03.002
       \endverb
     \endentry
-    \entry{ref_bertopic}{inproceedings}{}{}
+    \entry{ref_bertopic}{inproceedings}{}
       \name{author}{1}{}{%
         {{hash=a07dee61406b9c48310bff46188c983b}{%
            family={Grootendorst},
@@ -241,12 +231,10 @@
       }
       \strng{namehash}{a07dee61406b9c48310bff46188c983b}
       \strng{fullhash}{a07dee61406b9c48310bff46188c983b}
-      \strng{fullhashraw}{a07dee61406b9c48310bff46188c983b}
       \strng{bibnamehash}{a07dee61406b9c48310bff46188c983b}
       \strng{authorbibnamehash}{a07dee61406b9c48310bff46188c983b}
       \strng{authornamehash}{a07dee61406b9c48310bff46188c983b}
       \strng{authorfullhash}{a07dee61406b9c48310bff46188c983b}
-      \strng{authorfullhashraw}{a07dee61406b9c48310bff46188c983b}
       \field{sortinit}{G}
       \field{sortinithash}{32d67eca0634bf53703493fb1090a2e8}
       \field{labelnamesource}{author}
@@ -255,7 +243,7 @@
       \field{title}{{BERTopic}: Neural topic modeling with a class-based {TF-IDF} procedure}
       \field{year}{2022}
     \endentry
-    \entry{ref_llm_reasoning}{article}{}{}
+    \entry{ref_llm_reasoning}{article}{}
       \name{author}{5}{}{%
         {{hash=49c7c37ce8cebba2edfd7bcb7e704da3}{%
            family={Kojima},
@@ -285,12 +273,10 @@
       }
       \strng{namehash}{e83dd2159a1c1b9083bc541d859661c6}
       \strng{fullhash}{860c6481ce1836e182e5a6739b9d90cc}
-      \strng{fullhashraw}{860c6481ce1836e182e5a6739b9d90cc}
       \strng{bibnamehash}{e83dd2159a1c1b9083bc541d859661c6}
       \strng{authorbibnamehash}{e83dd2159a1c1b9083bc541d859661c6}
       \strng{authornamehash}{e83dd2159a1c1b9083bc541d859661c6}
       \strng{authorfullhash}{860c6481ce1836e182e5a6739b9d90cc}
-      \strng{authorfullhashraw}{860c6481ce1836e182e5a6739b9d90cc}
       \field{sortinit}{K}
       \field{sortinithash}{c02bf6bff1c488450c352b40f5d853ab}
       \field{labelnamesource}{author}
@@ -302,7 +288,7 @@
       \field{pages}{22199\bibrangedash 22213}
       \range{pages}{15}
     \endentry
-    \entry{ref_rag}{article}{}{}
+    \entry{ref_rag}{article}{}
       \true{moreauthor}
       \true{morelabelname}
       \name{author}{10}{}{%
@@ -359,12 +345,10 @@
       }
       \strng{namehash}{f238c3bfc4b30650dd17e65c4aadfc66}
       \strng{fullhash}{97db8540ab61ae50151af631b9f14faa}
-      \strng{fullhashraw}{97db8540ab61ae50151af631b9f14faa}
       \strng{bibnamehash}{f238c3bfc4b30650dd17e65c4aadfc66}
       \strng{authorbibnamehash}{f238c3bfc4b30650dd17e65c4aadfc66}
       \strng{authornamehash}{f238c3bfc4b30650dd17e65c4aadfc66}
       \strng{authorfullhash}{97db8540ab61ae50151af631b9f14faa}
-      \strng{authorfullhashraw}{97db8540ab61ae50151af631b9f14faa}
       \field{sortinit}{L}
       \field{sortinithash}{7c47d417cecb1f4bd38d1825c427a61a}
       \field{labelnamesource}{author}
@@ -376,7 +360,7 @@
       \field{pages}{9459\bibrangedash 9474}
       \range{pages}{16}
     \endentry
-    \entry{ref_kmeans}{inproceedings}{}{}
+    \entry{ref_kmeans}{inproceedings}{}
       \name{author}{1}{}{%
         {{hash=1c80931c8f086c94a4655483e35042d3}{%
            family={MacQueen},
@@ -386,12 +370,10 @@
       }
       \strng{namehash}{1c80931c8f086c94a4655483e35042d3}
       \strng{fullhash}{1c80931c8f086c94a4655483e35042d3}
-      \strng{fullhashraw}{1c80931c8f086c94a4655483e35042d3}
       \strng{bibnamehash}{1c80931c8f086c94a4655483e35042d3}
       \strng{authorbibnamehash}{1c80931c8f086c94a4655483e35042d3}
       \strng{authornamehash}{1c80931c8f086c94a4655483e35042d3}
       \strng{authorfullhash}{1c80931c8f086c94a4655483e35042d3}
-      \strng{authorfullhashraw}{1c80931c8f086c94a4655483e35042d3}
       \field{sortinit}{M}
       \field{sortinithash}{4625c616857f13d17ce56f7d4f97d451}
       \field{labelnamesource}{author}
@@ -403,7 +385,7 @@
       \field{pages}{281\bibrangedash 297}
       \range{pages}{17}
     \endentry
-    \entry{ref_visobert}{inproceedings}{}{}
+    \entry{ref_visobert}{inproceedings}{}
       \name{author}{5}{}{%
         {{hash=a8b385eaf5eaa29423bf607a3b258ad6}{%
            family={Nguyen},
@@ -433,12 +415,10 @@
       }
       \strng{namehash}{f2fea0409b04ffcf00c737d4fb5276f5}
       \strng{fullhash}{c521edc00d46fc3f9325bcb37e314094}
-      \strng{fullhashraw}{c521edc00d46fc3f9325bcb37e314094}
       \strng{bibnamehash}{f2fea0409b04ffcf00c737d4fb5276f5}
       \strng{authorbibnamehash}{f2fea0409b04ffcf00c737d4fb5276f5}
       \strng{authornamehash}{f2fea0409b04ffcf00c737d4fb5276f5}
       \strng{authorfullhash}{c521edc00d46fc3f9325bcb37e314094}
-      \strng{authorfullhashraw}{c521edc00d46fc3f9325bcb37e314094}
       \field{sortinit}{N}
       \field{sortinithash}{22369a73d5f88983a108b63f07f37084}
       \field{labelnamesource}{author}
@@ -452,7 +432,7 @@
       \verb 10.18653/v1/2023.emnlp-main.402
       \endverb
     \endentry
-    \entry{ref_sbert}{inproceedings}{}{}
+    \entry{ref_sbert}{inproceedings}{}
       \name{author}{2}{}{%
         {{hash=da9947b27b0d1c4c912e2b391426d443}{%
            family={Reimers},
@@ -467,12 +447,10 @@
       }
       \strng{namehash}{2466af6376c9c5e3658dcc6692351f3e}
       \strng{fullhash}{2466af6376c9c5e3658dcc6692351f3e}
-      \strng{fullhashraw}{2466af6376c9c5e3658dcc6692351f3e}
       \strng{bibnamehash}{2466af6376c9c5e3658dcc6692351f3e}
       \strng{authorbibnamehash}{2466af6376c9c5e3658dcc6692351f3e}
       \strng{authornamehash}{2466af6376c9c5e3658dcc6692351f3e}
       \strng{authorfullhash}{2466af6376c9c5e3658dcc6692351f3e}
-      \strng{authorfullhashraw}{2466af6376c9c5e3658dcc6692351f3e}
       \field{sortinit}{R}
       \field{sortinithash}{5e1c39a9d46ffb6bebd8f801023a9486}
       \field{labelnamesource}{author}
@@ -486,7 +464,7 @@
       \verb 10.18653/v1/D19-1410
       \endverb
     \endentry
-    \entry{ref_bm25}{article}{}{}
+    \entry{ref_bm25}{article}{}
       \name{author}{5}{}{%
         {{hash=c35334bf2da757f89a8ca82025f62cb9}{%
            family={Robertson},
@@ -516,12 +494,10 @@
       }
       \strng{namehash}{e3deba50a6bc3f5f595fc832498c303f}
       \strng{fullhash}{dd47525d03eecc548347c0c181d795ca}
-      \strng{fullhashraw}{dd47525d03eecc548347c0c181d795ca}
       \strng{bibnamehash}{e3deba50a6bc3f5f595fc832498c303f}
       \strng{authorbibnamehash}{e3deba50a6bc3f5f595fc832498c303f}
       \strng{authornamehash}{e3deba50a6bc3f5f595fc832498c303f}
       \strng{authorfullhash}{dd47525d03eecc548347c0c181d795ca}
-      \strng{authorfullhashraw}{dd47525d03eecc548347c0c181d795ca}
       \field{sortinit}{R}
       \field{sortinithash}{5e1c39a9d46ffb6bebd8f801023a9486}
       \field{labelnamesource}{author}
@@ -536,7 +512,7 @@
       \verb https://trec.nist.gov/pubs/trec3/papers/city.pstxt
       \endverb
     \endentry
-    \entry{ref_twitter_earthquake}{inproceedings}{}{}
+    \entry{ref_twitter_earthquake}{inproceedings}{}
       \name{author}{3}{}{%
         {{hash=7575bc9ea82db470b2ae82b2e7dcc0f1}{%
            family={Sakaki},
@@ -556,12 +532,10 @@
       }
       \strng{namehash}{c49f2f1f653c72aad683f62703cc7989}
       \strng{fullhash}{c49f2f1f653c72aad683f62703cc7989}
-      \strng{fullhashraw}{c49f2f1f653c72aad683f62703cc7989}
       \strng{bibnamehash}{c49f2f1f653c72aad683f62703cc7989}
       \strng{authorbibnamehash}{c49f2f1f653c72aad683f62703cc7989}
       \strng{authornamehash}{c49f2f1f653c72aad683f62703cc7989}
       \strng{authorfullhash}{c49f2f1f653c72aad683f62703cc7989}
-      \strng{authorfullhashraw}{c49f2f1f653c72aad683f62703cc7989}
       \field{sortinit}{S}
       \field{sortinithash}{b164b07b29984b41daf1e85279fbc5ab}
       \field{labelnamesource}{author}
@@ -575,7 +549,7 @@
       \verb 10.1145/1772690.1772777
       \endverb
     \endentry
-    \entry{ref_vndoc}{misc}{}{}
+    \entry{ref_vndoc}{misc}{}
       \name{author}{1}{}{%
         {{hash=b8c0ff433a735aff63b9d0c891d8e5f9}{%
            family={Tuan},
@@ -585,12 +559,10 @@
       }
       \strng{namehash}{b8c0ff433a735aff63b9d0c891d8e5f9}
       \strng{fullhash}{b8c0ff433a735aff63b9d0c891d8e5f9}
-      \strng{fullhashraw}{b8c0ff433a735aff63b9d0c891d8e5f9}
       \strng{bibnamehash}{b8c0ff433a735aff63b9d0c891d8e5f9}
       \strng{authorbibnamehash}{b8c0ff433a735aff63b9d0c891d8e5f9}
       \strng{authornamehash}{b8c0ff433a735aff63b9d0c891d8e5f9}
       \strng{authorfullhash}{b8c0ff433a735aff63b9d0c891d8e5f9}
-      \strng{authorfullhashraw}{b8c0ff433a735aff63b9d0c891d8e5f9}
       \field{sortinit}{T}
       \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
       \field{labelnamesource}{author}
@@ -605,7 +577,7 @@
       \verb https://huggingface.co/dangvantuan/vietnamese-document-embedding
       \endverb
     \endentry
-    \entry{ref_e5}{article}{}{}
+    \entry{ref_e5}{article}{}
       \name{author}{8}{}{%
         {{hash=cce05cab2c437e9c128f853684ee3137}{%
            family={Wang},
@@ -650,12 +622,10 @@
       }
       \strng{namehash}{e9012e3e3adcfce14161e542a312bb44}
       \strng{fullhash}{b5e540a233ffb4679ee19ed42a818ac4}
-      \strng{fullhashraw}{b5e540a233ffb4679ee19ed42a818ac4}
       \strng{bibnamehash}{e9012e3e3adcfce14161e542a312bb44}
       \strng{authorbibnamehash}{e9012e3e3adcfce14161e542a312bb44}
       \strng{authornamehash}{e9012e3e3adcfce14161e542a312bb44}
       \strng{authorfullhash}{b5e540a233ffb4679ee19ed42a818ac4}
-      \strng{authorfullhashraw}{b5e540a233ffb4679ee19ed42a818ac4}
       \field{sortinit}{W}
       \field{sortinithash}{4315d78024d0cea9b57a0c6f0e35ed0d}
       \field{labelnamesource}{author}
@@ -670,7 +640,7 @@
       \verb https://arxiv.org/abs/2212.03533
       \endverb
     \endentry
-    \entry{ref_edcow}{inproceedings}{}{}
+    \entry{ref_edcow}{inproceedings}{}
       \name{author}{2}{}{%
         {{hash=07b89ca5e01d8991c29513b66fef1167}{%
            family={Weng},
@@ -685,12 +655,10 @@
       }
       \strng{namehash}{4127aee94a8bb6309128d264249a1a01}
       \strng{fullhash}{4127aee94a8bb6309128d264249a1a01}
-      \strng{fullhashraw}{4127aee94a8bb6309128d264249a1a01}
       \strng{bibnamehash}{4127aee94a8bb6309128d264249a1a01}
       \strng{authorbibnamehash}{4127aee94a8bb6309128d264249a1a01}
       \strng{authornamehash}{4127aee94a8bb6309128d264249a1a01}
       \strng{authorfullhash}{4127aee94a8bb6309128d264249a1a01}
-      \strng{authorfullhashraw}{4127aee94a8bb6309128d264249a1a01}
       \field{sortinit}{W}
       \field{sortinithash}{4315d78024d0cea9b57a0c6f0e35ed0d}
       \field{labelnamesource}{author}
@@ -701,7 +669,7 @@
       \field{pages}{401\bibrangedash 408}
       \range{pages}{8}
     \endentry
-    \entry{ref_bge}{article}{}{}
+    \entry{ref_bge}{article}{}
       \name{author}{4}{}{%
         {{hash=d71b1119f50662a9107099735aa4912f}{%
            family={Xiao},
@@ -726,12 +694,10 @@
       }
       \strng{namehash}{e6624e348e5a85e4cd33702c24a9f2b0}
       \strng{fullhash}{59f5d1c6c004a3915fe1efb94d8d20af}
-      \strng{fullhashraw}{59f5d1c6c004a3915fe1efb94d8d20af}
       \strng{bibnamehash}{e6624e348e5a85e4cd33702c24a9f2b0}
       \strng{authorbibnamehash}{e6624e348e5a85e4cd33702c24a9f2b0}
       \strng{authornamehash}{e6624e348e5a85e4cd33702c24a9f2b0}
       \strng{authorfullhash}{59f5d1c6c004a3915fe1efb94d8d20af}
-      \strng{authorfullhashraw}{59f5d1c6c004a3915fe1efb94d8d20af}
       \field{sortinit}{X}
       \field{sortinithash}{1965c258adceecf23ce3d67b05113442}
       \field{labelnamesource}{author}

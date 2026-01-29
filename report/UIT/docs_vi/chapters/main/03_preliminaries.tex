@@ -1,81 +1,26 @@
-\chapter{Kiến thức Nền tảng}
+\section{Kiến thức Nền tảng}
 
-\section{Các Mô hình Ngôn ngữ Lớn và Tạo sinh Tăng cường Truy xuất}
-Các Mô hình Ngôn ngữ Lớn (LLM) như GPT-4 và Gemini đã cách mạng hóa Xử lý Ngôn ngữ Tự nhiên (NLP) bằng cách thể hiện khả năng suy luận phát sinh. Được xây dựng trên kiến trúc Transformer \cite{ref_bert}, các mô hình này sử dụng cơ chế self-attention để nắm bắt các phụ thuộc tầm xa trong dữ liệu văn bản.
-\begin{equation}
-  Attention(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
-\end{equation}
-Mặc dù có khả năng mạnh mẽ, LLMs mắc phải tình trạng ``ảo giác''---tạo ra các khẳng định có vẻ hợp lý nhưng thực tế không chính xác. Để giảm thiểu điều này trong các ứng dụng theo miền cụ thể, Tạo sinh Tăng cường Truy xuất (RAG) được sử dụng. RAG tăng cường quá trình tạo sinh bằng cách điều kiện hóa LLM trên các tài liệu liên quan được truy xuất $D = \{d_1, ..., d_k\}$ trước khi tạo phản hồi $y$:
-\begin{equation}
-  P(y|x) = \sum_{z \in D} P(z|x)P(y|x,z)
-\end{equation}
-Trong hệ thống của chúng tôi, chúng tôi điều chỉnh mô hình này bằng cách coi ``Các cụm'' là ngữ cảnh được truy xuất $z$, neo tóm tắt của LLM vào các điểm dữ liệu xã hội đã được xác minh.
+\subsection{LLM và Tạo sinh Tăng cường Truy xuất (RAG)}
+Mô hình ngôn ngữ lớn (LLM) là các mô hình dựa trên Transformer \cite{ref_bert} có khả năng sinh và suy luận ngôn ngữ tự nhiên, nhưng có thể tạo ra thông tin không chính xác (\emph{hallucination}).
+Tạo sinh Tăng cường Truy xuất (RAG) giảm thiểu hiện tượng này bằng cách cung cấp ngữ cảnh liên quan được truy xuất trước khi sinh phản hồi.
+Trong hệ thống của chúng tôi, các bài đăng trong \emph{cụm} đóng vai trò ngữ cảnh truy xuất để neo tóm tắt của LLM vào dữ liệu quan sát được.
 
-\section{Các Kiến trúc và Công nghệ Xử lý Luồng}
-Phát hiện sự kiện hiện đại đòi hỏi xử lý dữ liệu với tốc độ và khối lượng cao. Để giải quyết vấn đề này, hệ thống áp dụng các công nghệ tiên tiến trong xử lý dữ liệu lớn và luồng thời gian thực.
+\subsection{Công nghệ xử lý luồng trong hệ thống}
+Hệ thống xử lý dữ liệu theo mô hình \textbf{Kappa}, coi dữ liệu như một luồng liên tục và có thể xử lý lại khi thay đổi logic.
+Trong triển khai của chúng tôi: \textbf{Apache Kafka} làm tầng truyền nhận pub-sub và lưu vết sự kiện; \textbf{Spark Structured Streaming} thực hiện xử lý luồng và tích hợp các bước NLP/AI trong pipeline; \textbf{Apache Airflow} điều phối các tác vụ thu thập theo lịch và cơ chế retry để duy trì đầu vào ổn định.
 
-\subsection{Kiến trúc Kappa}
-\textbf{Kiến trúc Kappa} đơn giản hóa Kiến trúc Lambda truyền thống bằng cách coi mọi thứ như một luồng (stream), loại bỏ lớp Batch layer riêng biệt để giảm sự phức tạp trong việc bảo trì mã nguồn kép. Mô hình này dựa vào một message broker mạnh mẽ làm vùng đệm log bất biến, cho phép xử lý lại (reprocessing) dữ liệu khi logic thay đổi bằng cách tua lại (replay) luồng từ đầu mà không cần hệ thống batch riêng biệt.
+\subsection{Phân cụm dựa trên mật độ (HDBSCAN)}
+HDBSCAN \cite{ref_hdbscan} là thuật toán phân cụm phân cấp dựa trên mật độ, có khả năng tách các điểm thưa như nhiễu và trích xuất các cụm ổn định.
+Đặc tính này phù hợp với dữ liệu mạng xã hội vốn nhiễu và có mức độ tương tác không đồng đều giữa các sự kiện.
 
-\subsection{Apache Kafka}
-Apache Kafka đóng vai trò là xương sống (backbone) của kiến trúc Kappa, hoạt động như một hệ thống message pub-sub phân tán có khả năng chịu lỗi cao.
-Trong hệ thống, Kafka được sử dụng theo cơ chế:
+\subsection{Phân loại sự kiện và taxonomy}
+Để đảm bảo các insight có thể hành động, chúng tôi sử dụng taxonomy T1--T7 nhằm phân loại sự kiện theo giá trị đối với các bên liên quan:
 \begin{itemize}
-  \item \textbf{Decoupling (Tách biệt):} Tách biệt các crawler thu thập dữ liệu (Producers) khỏi engine xử lý (Consumers/Spark), giúp hệ thống ổn định ngay cả khi lưu lượng data tăng đột biến (traffic spikes).
-  \item \textbf{Lưu trữ Log:} Dữ liệu từ các crawler được serialize thành JSON và đẩy vào các \textit{Topics} (ví dụ: \texttt{posts\_stream\_v1}). Topic được chia thành các \textit{Partitions} để tăng tốc độ ghi song song. Consumers theo dõi vị trí đọc thông qua \textit{offsets}, giúp đảm bảo tính toàn vẹn dữ liệu.
-\end{itemize}
-Độ trễ tiêu thụ (Lag) là chỉ số quan trọng để giám sát sức khỏe hệ thống:
-\begin{equation}
-  \text{Lag}(t) = \text{Offset}_{produce}(t) - \text{Offset}_{consume}(t)
-\end{equation}
-
-\subsection{Apache Spark Structured Streaming}
-\textbf{Spark Structured Streaming} là engine xử lý luồng được xây dựng trên Spark SQL, coi luồng dữ liệu trực tiếp như một bảng đầu vào không giới hạn (unbounded table).
-Cách thức hoạt động trong hệ thống:
-\begin{itemize}
-  \item \textbf{Micro-batching:} Xử lý dữ liệu luồng theo các lô nhỏ (ví dụ: 200ms/batch). Điều này cho phép áp dụng các tối ưu hóa của engine Spark SQL (Catalyst Optimizer) để đạt thông lượng cao.
-  \item \textbf{Exactly-once Semantics:} Sử dụng cơ chế Checkpointing và Write-ahead Logs (WAL) để đảm bảo mỗi bản tin chỉ được xử lý đúng một lần, ngay cả khi có sự cố hệ thống.
-  \item \textbf{Pandas UDF:} Tích hợp với các thư viện AI Python (như PyTorch, Transformers) thông qua User Defined Functions (UDF) để thực hiện vector hóa văn bản ngay trên luồng dữ liệu.
-\end{itemize}
-
-\subsection{Apache Airflow}
-\textbf{Apache Airflow} là nền tảng điều phối quy trình (workflow orchestration) quản lý lớp thu thập dữ liệu (Ingestion Layer).
-Vai trò cụ thể:
-\begin{itemize}
-  \item \textbf{Quản lý DAGs:} Các tác vụ crawler được định nghĩa dưới dạng Directed Acyclic Graphs (DAGs), cho phép trực quan hóa sự phụ thuộc và luồng thực thi của các tác vụ.
-  \item \textbf{Lập lịch và Tự phục hồi:} Airflow lập lịch chạy định kỳ (ví dụ: mỗi 5 phút) cho các crawler và tự động khởi động lại (retry) các tác vụ thất bại do lỗi mạng hoặc timeout, đảm bảo tính liên tục của dữ liệu đầu vào.
-\end{itemize}
-
-\section{Phân cụm Dựa trên Mật độ (HDBSCAN)}
-Khác với các phương pháp dựa trên centroid (K-Means) giả định các cụm hình cầu, Phân cụm Phân cấp Dựa trên Mật độ với Nhiễu (HDBSCAN) \cite{ref_hdbscan} xác định các cụm có mật độ và hình dạng khác nhau.
-HDBSCAN dựa vào một metric khoảng cách được biến đổi để phân tách nhiễu thưa khỏi các cụm dày đặc. \textbf{Core Distance} của điểm $p$, ký hiệu là $d_{core}(p)$, được định nghĩa là khoảng cách đến lân cận thứ $k$. Để đảm bảo các cụm tiềm năng mạnh mẽ, \textbf{Mutual Reachability Distance} giữa các điểm $p$ và $q$ được hình thức hóa như:
-\begin{equation}
-  d_{mreach}(p, q) = \max \{ d_{core}(p), d_{core}(q), d(p, q) \}
-\end{equation}
-Metric này hiệu quả ``đẩy'' các điểm thưa ra xa nhau. Một Cây Bao trùm Tối thiểu (MST) sau đó được xây dựng sử dụng $d_{mreach}$ làm trọng số cạnh. Bằng cách lặp đi lặp lại loại bỏ các cạnh có trọng số cao nhất, HDBSCAN xây dựng một phân cấp các thành phần liên thông, trích xuất các cụm ổn định tồn tại qua một phạm vi rộng các ngưỡng mật độ. Thuộc tính này rất quan trọng cho dữ liệu mạng xã hội, nơi các cụm sự kiện (``Xu hướng Viral'') thường có mật độ cao hơn nhiều so với nhiễu nền (``Trò chuyện Hàng ngày'').
-
-\section{Phân loại Sự kiện và Hệ thống Taxonomy}
-Để đảm bảo các insight có thể hành động, chúng tôi vượt ra ngoài sentiment nhị phân đến một taxonomy dựa trên sử dụng (T1-T7), phân loại các sự kiện theo giá trị của chúng đối với các bên liên quan cụ thể:
-
-\begin{itemize}
-  \item \textbf{T1. Khủng hoảng \& Rủi ro Công cộng} (Đối tượng: Dịch vụ Khẩn cấp)\\
-        \emph{Câu hỏi Cốt lõi: Có cần can thiệp ngay lập tức không?} Bao gồm tai nạn, thảm họa, và bạo loạn.
-
-  \item \textbf{T2. Tín hiệu Chính sách} (Đối tượng: Chính phủ)\\
-        \emph{Câu hỏi Cốt lõi: Công chúng phản ứng thế nào với các chính sách mới?} Bao gồm luật mới và tuyên bố chính thức.
-
-  \item \textbf{T3. Rủi ro Danh tiếng} (Đối tượng: Cơ quan PR)\\
-        \emph{Câu hỏi Cốt lõi: Niềm tin công chúng có bị tổn hại không?} Bao gồm scandal, tẩy chay, và tranh cãi.
-
-  \item \textbf{T4. Cơ hội Thị trường} (Đối tượng: Đội ngũ Marketing)\\
-        \emph{Câu hỏi Cốt lõi: Có nhu cầu có thể kiếm tiền không?} Bao gồm sản phẩm viral và xu hướng lối sống mới nổi.
-
-  \item \textbf{T5. Xu hướng Văn hóa} (Đối tượng: Nhà sáng tạo Nội dung)\\
-        \emph{Câu hỏi Cốt lõi: Xu hướng này có đáng theo để thu hút sự chú ý không?} Bao gồm meme và sự kiện giải trí.
-
-  \item \textbf{T6. Điểm Đau Vận hành} (Đối tượng: Nhà Vận hành Dịch vụ)\\
-        \emph{Câu hỏi Cốt lõi: Mọi người đang phàn nàn về điều gì?} Bao gồm giao thông, sự cố, và lỗi dịch vụ.
-
-  \item \textbf{T7. Thường ngày/Nhiễu} (Đối tượng: Bộ lọc Hệ thống)\\
-        \emph{Câu hỏi Cốt lõi: Có nên lọc điều này không?} Bao gồm thời tiết hàng ngày, thể thao thường xuyên, và kết quả xổ số.
+  \item \textbf{T1. Khủng hoảng \& Rủi ro Công cộng:} tai nạn, thảm họa, bạo loạn.
+  \item \textbf{T2. Tín hiệu Chính sách:} luật mới, tuyên bố chính thức.
+  \item \textbf{T3. Rủi ro Danh tiếng:} scandal, tẩy chay, tranh cãi.
+  \item \textbf{T4. Cơ hội Thị trường:} sản phẩm viral, xu hướng lối sống mới nổi.
+  \item \textbf{T5. Xu hướng Văn hóa:} meme, sự kiện giải trí.
+  \item \textbf{T6. Điểm Đau Vận hành:} giao thông, sự cố, lỗi dịch vụ.
+  \item \textbf{T7. Thường ngày/Nhiễu:} các chủ đề lặp lại thường xuyên như thời tiết, thể thao, xổ số.
 \end{itemize}

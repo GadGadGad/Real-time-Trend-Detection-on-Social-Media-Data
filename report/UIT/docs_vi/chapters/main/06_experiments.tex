@@ -1,38 +1,28 @@
-\chapter{Dữ liệu và Thiết lập Thực nghiệm}
+\section{Dữ liệu và Thiết lập Thực nghiệm}
 
-\section{Nguồn Dữ liệu}
-Hệ thống của chúng tôi giám sát hai luồng dữ liệu chính, được thống nhất vào một schema chung để xử lý:
+\subsection{Nguồn Dữ liệu}
+Hệ thống giám sát ba nguồn dữ liệu và thống nhất về một schema chung:
 \begin{itemize}
-    \item \textbf{Mạng Xã hội (Facebook):} Thu thập từ các Fanpage có tương tác cao (ví dụ: Theanh28, ThongTinChinhPhu). Các trường dữ liệu bao gồm: \texttt{pageName}, \texttt{postId}, \texttt{time} (ISO-8601), nội dung \texttt{text}, và các chỉ số tương tác (\texttt{likes}, \texttt{comments}, \texttt{shares}).
-    \item \textbf{Tin tức Chính thống:} Các bài báo được crawl từ các nguồn đã xác minh (VnExpress, Tuổi Trẻ). Các trường chính: \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, và \texttt{PublishTime}.
-    \item \textbf{Google Trends:} Các từ khóa tìm kiếm thời gian thực hoạt động như \textbf{tín hiệu xác nhận/trễ} để xác thực và ưu tiên các cụm ứng viên được phát hiện từ luồng xã hội.
+    \item \textbf{Mạng xã hội (Facebook):} thu thập từ các fanpage tương tác cao (ví dụ: Theanh28, ThongTinChinhPhu). Trường chính gồm \texttt{pageName}, \texttt{postId}, \texttt{time} (ISO-8601), \texttt{text}, và các chỉ số tương tác (\texttt{likes}, \texttt{comments}, \texttt{shares}).
+    \item \textbf{Tin tức chính thống:} crawl từ các nguồn đã xác minh (ví dụ: VnExpress, Tuổi Trẻ). Trường chính gồm \texttt{ArticleID}, \texttt{URL}, \texttt{Title}, \texttt{Content}, \texttt{PublishTime}.
+    \item \textbf{Google Trends:} đóng vai trò \textbf{tín hiệu xác nhận/trễ} để xác thực và ưu tiên các cụm ứng viên phát hiện từ luồng xã hội.
 \end{itemize}
 
-Bộ dữ liệu thử nghiệm bao gồm \textbf{7.605 mục duy nhất} được thu thập từ 8 đến 22 tháng 12, 2025, bao gồm \textbf{4.644 bài báo tin tức được crawl} và \textbf{2.961 bài đăng mạng xã hội}.
-Sau khi trích xuất nội dung, \textbf{4.603 bài báo tin tức} chứa văn bản body hợp lệ và được sử dụng cho neo và embedding. Ở đây, \textbf{2.961} biểu thị \emph{các bài đăng xã hội duy nhất được sử dụng trong thử nghiệm} sau khi khử trùng lặp và kiểm tra hợp lệ cơ bản (khối lượng crawl thô được báo cáo như một xấp xỉ).
+Bộ dữ liệu thử nghiệm gồm \textbf{7.605 mục duy nhất} thu thập trong giai đoạn \textbf{08--22/12/2025}, gồm \textbf{4.644 bài báo} và \textbf{2.961 bài đăng mạng xã hội}. 
+Sau khi trích xuất nội dung, \textbf{4.603 bài báo} có văn bản body hợp lệ và được dùng để tạo neo/embedding; \textbf{2.961} là số bài đăng xã hội \emph{duy nhất} dùng trong thử nghiệm sau khử trùng lặp và kiểm tra hợp lệ cơ bản.
 
-\section{Phương pháp Thu thập Dữ liệu}
-Để đảm bảo bao phủ toàn diện cảnh quan số Việt Nam, chúng tôi sử dụng chiến lược thu thập lai kết hợp các scraper tùy chỉnh và API bên thứ ba:
-
+\subsection{Phương pháp Thu thập Dữ liệu}
+Chúng tôi sử dụng chiến lược thu thập lai kết hợp scraper tùy chỉnh và dịch vụ bên thứ ba:
 \begin{itemize}
-    \item \textbf{Thu thập Bài báo Tin tức:} Chúng tôi phát triển các web scraper Python tùy chỉnh cho năm tờ báo Việt Nam lớn: VnExpress, Tuổi Trẻ, Thanh Niên, Người Lao Động và VietnamNet. Mỗi scraper triển khai:
-          \begin{itemize}
-              \item Khám phá bài báo đa luồng với pool worker có thể cấu hình
-              \item Lọc theo khoảng thời gian cho thu thập lịch sử có mục tiêu
-              \item Logic retry tự động với exponential backoff để đảm bảo độ bền
-              \item Khử trùng lặp qua URL caching để cho phép crawl tăng dần
-              \item Trích xuất có cấu trúc metadata (tiêu đề, tác giả, thời gian đăng, danh mục) và nội dung bài báo đầy đủ sử dụng BeautifulSoup
-          \end{itemize}
-          Các scraper được điều phối qua Apache Airflow DAGs, chạy theo lịch có thể cấu hình (mặc định: mỗi 6 giờ) để nắm bắt tin tức nóng trong khi tuân thủ rate limits.
-
-    \item \textbf{Thu thập Mạng Xã hội:} Đối với các bài đăng công khai trên Facebook, chúng tôi sử dụng Apify\footnote{\url{https://apify.com/}}, một nền tảng web scraping dựa trên đám mây. Actor Facebook Pages Scraper của Apify được cấu hình để giám sát hơn 40 Fanpage Việt Nam có lưu lượng cao, trích xuất văn bản bài đăng, dấu thời gian và các chỉ số tương tác (likes, comments, shares). Phương pháp này đảm bảo tuân thủ điều khoản dịch vụ của nền tảng đồng thời cung cấp truy cập dữ liệu đáng tin cậy, có khả năng mở rộng mà không cần xác thực API trực tiếp.
-
-    \item \textbf{Google Trends:} Các truy vấn tìm kiếm xu hướng thời gian thực cho Việt Nam được lấy qua unofficial Google Trends API wrapper, cung cấp tín hiệu xác nhận trễ cho ưu tiên hóa sự kiện.
+    \item \textbf{Tin tức chính thống:} scraper Python cho 5 báo lớn: VnExpress, Tuổi Trẻ, Thanh Niên, Người Lao Động, VietnamNet; trích xuất metadata và nội dung bài báo, có cơ chế retry và khử trùng lặp theo URL để crawl tăng dần. Các tác vụ được điều phối bằng Airflow và chạy theo lịch (mặc định: mỗi 6 giờ).
+    \item \textbf{Mạng xã hội:} sử dụng Apify (Facebook Pages Scraper) để giám sát hơn 40 fanpage, trích xuất văn bản, dấu thời gian và tương tác (likes/comments/shares).
+    \item \textbf{Google Trends:} lấy các truy vấn xu hướng thời gian thực cho Việt Nam qua unofficial Google Trends API wrapper để hỗ trợ xác nhận/trễ.
 \end{itemize}
 
 \begin{figure}[ht]
     \centering
     \scalebox{0.75}{
+        % (giữ nguyên tikzpicture như bản gốc)
         \begin{tikzpicture}[
             node distance=0.8cm and 1.2cm,
             box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
@@ -41,27 +31,18 @@ Sau khi trích xuất nội dung, \textbf{4.603 bài báo tin tức} chứa văn
             storage/.style={box, fill=green!20},
             arrow/.style={-{Stealth[scale=0.8]}, thick}
             ]
-            % Airflow Scheduler
             \node[process] (airflow) {Airflow\\Scheduler};
-
-            % News Sources
             \node[source, right=1.5cm of airflow, yshift=1.6cm] (vne) {VnExpress};
             \node[source, right=1.5cm of airflow, yshift=0.8cm] (tt) {Tuổi Trẻ};
             \node[right=2.5cm of airflow, font=\large] (dots) {$\vdots$};
             \node[source, right=1.5cm of airflow, yshift=-0.8cm] (tn) {Thanh Niên};
             \node[source, right=1.5cm of airflow, yshift=-1.6cm] (nld) {NLD / VNN};
 
-            % Scraper Workers
             \node[process, right=1.2cm of tt, yshift=-0.4cm] (workers) {Multi-Thread\\Workers};
-
-            % Processing steps
             \node[process, right=1.2cm of workers] (extract) {HTML Parse\\+ Extract};
             \node[process, right=1.2cm of extract] (dedup) {Dedup\\Cache};
-
-            % Storage
             \node[storage, right=1.2cm of dedup] (csv) {CSV / DB\\Storage};
 
-            % Arrows
             \draw[arrow] (airflow) -- (vne);
             \draw[arrow] (airflow) -- (tt);
             \draw[arrow] (airflow) -- (tn);
@@ -76,7 +57,6 @@ Sau khi trích xuất nội dung, \textbf{4.603 bài báo tin tức} chứa văn
             \draw[arrow] (extract) -- (dedup);
             \draw[arrow] (dedup) -- (csv);
 
-            % Retry loop
             \draw[arrow, dashed] (extract.south) -- ++(0,-0.5) -| node[pos=0.25, below, font=\scriptsize] {Retry} (workers.south);
         \end{tikzpicture}
     }
@@ -84,24 +64,11 @@ Sau khi trích xuất nội dung, \textbf{4.603 bài báo tin tức} chứa văn
     \label{fig:news_pipeline}
 \end{figure}
 
-\noindent Hình \ref{fig:news_pipeline} minh họa quy trình thu thập bài báo tin tức. Mỗi thành phần đóng một vai trò cụ thể:
-\begin{itemize}
-    \item \textbf{Airflow Scheduler:} Apache Airflow điều phối các tác vụ crawl qua Directed Acyclic Graphs (DAGs). Mỗi nguồn tin tức có một DAG riêng được cấu hình chạy theo lịch 6 giờ, đảm bảo nắm bắt kịp thời tin tức nóng trong khi tránh quá tải máy chủ. Airflow cung cấp khả năng chịu lỗi, tự động retry và giám sát tập trung qua giao diện web.
+\noindent Hình \ref{fig:news_pipeline} tóm tắt pipeline thu thập tin tức: Airflow điều phối theo lịch; scraper workers tải và trích xuất nội dung; hệ thống khử trùng lặp theo URL để crawl tăng dần; dữ liệu được lưu trữ để phục vụ các bước downstream.
 
-    \item \textbf{Nguồn Tin tức (VnExpress, Tuổi Trẻ, Thanh Niên, NLD/VNN):} Đây là năm tờ báo Việt Nam lớn được nhắm đến bởi các scraper của chúng tôi. Mỗi nguồn có một triển khai scraper tùy chỉnh phù hợp với cấu trúc HTML và sơ đồ phân trang cụ thể của nó. Các scraper hỗ trợ cả crawl tăng dần (bài báo mới nhất) và thu thập lịch sử (truy vấn theo khoảng thời gian).
 
-    \item \textbf{Multi-Thread Workers:} Mỗi scraper tạo một pool worker threads có thể cấu hình (mặc định: 10) để song song hóa các HTTP requests. Điều này giảm đáng kể tổng thời gian crawl trong khi tuân thủ rate limits thông qua request throttling. Workers sử dụng session chia sẻ với connection pooling để tăng hiệu quả.
-
-    \item \textbf{HTML Parse + Extract:} Các phản hồi HTML thô được phân tích cú pháp sử dụng BeautifulSoup. Logic trích xuất là cụ thể theo nguồn, nhắm vào các phần tử có cấu trúc (ví dụ: \texttt{article-body}, \texttt{h1.title}) để trích xuất tiêu đề, tác giả, thời gian đăng, danh mục và nội dung bài báo đầy đủ. Các lần trích xuất thất bại kích hoạt cơ chế retry với exponential backoff.
-
-    \item \textbf{Dedup Cache:} Một cache dựa trên URL (lưu trữ dưới dạng file local hoặc Redis) theo dõi các bài báo đã crawl trước đó. Trước khi xử lý, mỗi URL được kiểm tra với cache này để bỏ qua các bản sao, cho phép crawl tăng dần hiệu quả giữa các lần chạy.
-
-    \item \textbf{CSV/DB Storage:} Các bài báo đã xác thực được lưu trữ dưới định dạng CSV để di động và tùy chọn chèn vào PostgreSQL cho truy vấn hạ nguồn. Mỗi bản ghi bao gồm tất cả metadata được trích xuất và văn bản bài báo đầy đủ.
-\end{itemize}
-
-\section{Phân tích Dữ liệu Khám phá}
-Bảng \ref{tab:data_dist} trình bày phân phối bộ dữ liệu thử nghiệm của chúng tôi. Chúng tôi quan sát thấy một ``Khoảng cách Sẵn có'' đáng kể: trong khi chúng tôi crawl hơn 9.400 URL tin tức, chỉ \textbf{4.603 bài báo (48,6\%)} chứa văn bản body có thể trích xuất, trong khi \textbf{bài đăng mạng xã hội (2.961 mục)} đạt \emph{gần như hoàn toàn} về tính sẵn có.
-Hơn nữa, có sự phân kỳ cấu trúc: Bài báo tin tức trung bình $>500$ từ với ngữ pháp chính thức, trong khi bài đăng xã hội trung bình $<50$ từ với tiếng lóng thường xuyên. Sự phân đôi này đòi hỏi thiết kế ``Hai Đường'' của chúng tôi, nơi \textbf{Fast Path} xử lý luồng xã hội văn bản ngắn, tốc độ cao, và \textbf{Slow Path} tận dụng LLMs để tổng hợp ngữ cảnh sâu hơn tìm thấy trong các neo tin tức.
+\subsection{Phân tích Dữ liệu Khám phá}
+Bảng \ref{tab:data_dist} trình bày phân phối bộ dữ liệu thử nghiệm. Chúng tôi quan sát thấy ``Khoảng cách Sẵn có'': dù crawl hơn $\approx 9.400$ URL tin tức, chỉ \textbf{4.603 bài báo (48,6\%)} có body trích xuất được; trong khi \textbf{bài đăng mạng xã hội (2.961 mục)} đạt mức sẵn có gần như hoàn toàn. Ngoài ra, hai nguồn có độ dài và phong cách khác biệt: bài báo thường $>500$ từ, còn bài đăng xã hội thường $<50$ từ và nhiều tiếng lóng. Sự phân đôi này thúc đẩy thiết kế hai đường xử lý: \textbf{Fast Path} cho văn bản ngắn tốc độ cao, và \textbf{Slow Path} tận dụng ngữ cảnh sâu từ neo tin tức.
 
 \begin{table}
     \caption{Phân phối Dataset và Tính Sẵn có}\label{tab:data_dist}
@@ -116,57 +83,57 @@ Hơn nữa, có sự phân kỳ cấu trúc: Bài báo tin tức trung bình $>5
     \end{tabular}
 \end{table}
 
-\section{Triển khai và Môi trường Vận hành}
-Để đảm bảo tính tái lập và khả năng mở rộng, hệ thống được container hóa sử dụng \textbf{Docker Compose} với các dịch vụ cốt lõi sau:
+\subsection{Triển khai và Môi trường Vận hành}
+Hệ thống được container hóa bằng \textbf{Docker Compose}. Các thành phần chính gồm Kafka, Spark, PostgreSQL và MongoDB; suy luận embedding sử dụng ONNX Runtime. Mục tiêu của cấu hình này là đảm bảo tính tái lập giữa môi trường demo và vận hành.
+
+
+\subsubsection{Lợi ích Triển khai}
 \begin{itemize}
-    \item \textbf{Ngăn xếp Phần mềm:} Apache Kafka 7.5.0, Apache Spark 3.5.0, PostgreSQL 15, MongoDB 6.0.
-    \item \textbf{Phần cứng:} Tối ưu cho triển khai nút đơn (8GB RAM, 4 vCPUs) hoặc cụm Kubernetes.
-    \item \textbf{Suy luận:} Tăng tốc ONNX Runtime trên GPU NVIDIA T4.
+    \item \textbf{Mở rộng độc lập:} tách thu nhập và xử lý giúp mở rộng theo tải.
+    \item \textbf{Hiệu quả vận hành:} chỉ gọi LLM cho các cụm đã xác minh để giảm chi phí.
+    \item \textbf{Tái lập:} môi trường được định nghĩa thống nhất bằng Docker Compose.
 \end{itemize}
 
-\subsection{Lợi ích Triển khai}
-Kiến trúc microservices container hóa cung cấp ba lợi thế chính:
+\subsection{Dataset Construction Strategy}
+Để huấn luyện mô hình với chi phí gán nhãn thấp, chúng tôi dùng \textbf{Hybrid Labeling Strategy}:
 \begin{enumerate}
-    \item \textbf{Khả năng Mở rộng:} Việc tách rời Thu nhập (Kafka) và Xử lý (Spark/LLM) cho phép mở rộng độc lập. Trong các sự kiện lưu lượng cao (ví dụ: bão), chúng tôi có thể thêm ngang các Spark Workers mà không cần cấu hình lại lớp thu nhập.
-    \item \textbf{Hiệu quả Chi phí:} Bằng cách chuyển phân cụm batch nặng sang phần cứng hàng hóa cục bộ (CPU) và chỉ gọi API LLM trả phí cho các cụm đã xác minh (0,01\% khối lượng), chúng tôi giảm chi phí vận hành khoảng 400 lần so với các phương pháp dựa trên LLM thuần túy.
-    \item \textbf{Tính Tái lập:} Toàn bộ ngăn xếp được định nghĩa trong \texttt{docker-compose.yml}, đảm bảo rằng môi trường ``Demo'' giống hệt ``Sản xuất'', loại bỏ vấn đề ``chạy được trên máy tôi''.
+    \item \textbf{Tự giám sát (Reranker):} khai thác hard negatives để tạo \textbf{877 cặp} chất lượng cao; reranker được dùng như thành phần khớp bổ trợ (xác minh/khôi phục) và module benchmark offline.
+    \item \textbf{Học tích cực với LLM (Sentiment/Taxonomy):} dùng Gemini Pro gán nhãn giả khoảng \textbf{10k} mẫu, sau đó rà soát thủ công các điểm độ tin cậy thấp, thu được \textbf{4.630 mẫu Sentiment} và \textbf{3.687 mẫu Taxonomy} cho huấn luyện.
 \end{enumerate}
 
-\section{Dataset Construction Strategy}
-To train our specialized models without incurring high labeling costs, we employed a \textbf{Hybrid Labeling Strategy}:
-\begin{enumerate}
-    \item \textbf{Học Tự giám sát:} Đối với Cross-Encoder Reranker, chúng tôi khai thác ``Hard Negatives'' (từ khóa tương tự nhưng ngữ nghĩa khác) để tạo 877 cặp chất lượng cao.
-          Reranker này được sử dụng như thành phần khớp bổ trợ (xác minh / khôi phục) và như module benchmark offline.
-    \item \textbf{Học Tích cực với LLM:} Đối với phân loại Sentiment và Taxonomy, chúng tôi sử dụng Gemini Pro để gán nhãn giả khoảng 10k mẫu, sau đó xem xét thủ công các điểm độ tin cậy thấp. Điều này mang lại \textbf{4.630 mẫu cho Sentiment} và \textbf{3.687 mẫu cho Taxonomy} huấn luyện.
-\end{enumerate}
-
-\begin{figure}[h]
-    \centering
-    \begin{verbatim}
-{"text": "Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng.", 
+\begin{figure}[htbp]
+  \centering
+  \begin{BVerbatim}[fontsize=\footnotesize,frame=single]
+{"text": "Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng.",
  "label_sentiment": "Neutral", "label_taxonomy": "T1 - Crisis & Public Risk"}
-{"text": ["Bão số 15 Koto đang ở đâu?", "Áp thấp nhiệt đới mạnh lên thành bão."], 
+{"text": ["Bão số 15 Koto đang ở đâu?", "Áp thấp nhiệt đới mạnh lên thành bão."],
  "label_relevance": 1.0}
-\end{verbatim}
-    \caption{Ví dụ Dữ liệu Huấn luyện JSONL cho Phân loại và Reranking.} \label{fig:jsonl}
+  \end{BVerbatim}
+  \caption{Ví dụ Dữ liệu Huấn luyện JSONL cho Phân loại và Reranking.}
+  \label{fig:jsonl}
 \end{figure}
 
-\section{Lựa chọn Mô hình và Tinh chỉnh}
+
+\subsection{Lựa chọn Mô hình và Tinh chỉnh}
 Chúng tôi tinh chỉnh các mô hình cụ thể cho tiếng Việt để phục vụ làm xương sống của hệ thống. Để đảm bảo tính mạnh mẽ, chúng tôi xây dựng một \textbf{Bộ Kiểm tra Stress} chứa 20 mẫu khó mỗi loại, đặc biệt nhắm vào các trường hợp biên như ``Tiếng lóng'' (ngôn ngữ mạng xã hội), ``Từ đồng nghĩa Bão'' (đặt tên sự kiện mơ hồ), và ``Chồng chéo Miền''. Bảng \ref{tab:training_config} chi tiết các siêu tham số huấn luyện cụ thể, và Bảng \ref{tab:models} hiển thị các metric hiệu suất cuối cùng trên bộ kiểm tra nghiêm ngặt này.
 
-\begin{table}
-    \caption{Cấu hình Huấn luyện Chi tiết và Siêu tham số}\label{tab:training_config}
+\begin{table}[htbp]
+    \caption{Cấu hình Huấn luyện Chi tiết và Siêu tham số}
+    \label{tab:training_config}
     \centering
-    \begin{tabular}{l l l l}
-        \toprule
-        \textbf{Mục tiêu Mô hình} & \textbf{Kiến trúc Cơ sở} & \textbf{Kích thước Dataset} & \textbf{Cấu hình Huấn luyện}    \\
-        \midrule
-        Sentiment                 & \texttt{uitnlp/visobert} & 4.630 (3 lớp)               & Epochs: 20, Batch: 32, LR: 2e-5 \\
-        Taxonomy                  & \texttt{uitnlp/visobert} & 3.687 (7 lớp)               & Epochs: 20, Batch: 16, LR: 2e-5 \\
-        Reranker                  & \texttt{ms-marco-MiniLM} & 877 cặp (Gold)              & Contractive Loss, Epochs: 20    \\
-        \bottomrule
-    \end{tabular}
+    \resizebox{\textwidth}{!}{%
+        \begin{tabular}{l l l l}
+            \toprule
+            \textbf{Mục tiêu Mô hình} & \textbf{Kiến trúc Cơ sở} & \textbf{Kích thước Dataset} & \textbf{Cấu hình Huấn luyện} \\
+            \midrule
+            Sentiment & \texttt{uitnlp/visobert} & 4.630 (3 lớp) & Epochs: 20, Batch: 32, LR: 2e-5 \\
+            Taxonomy  & \texttt{uitnlp/visobert} & 3.687 (7 lớp) & Epochs: 20, Batch: 16, LR: 2e-5 \\
+            Reranker  & \texttt{ms-marco-MiniLM} & 877 cặp (Gold) & Contractive Loss, Epochs: 20 \\
+            \bottomrule
+        \end{tabular}
+    }
 \end{table}
+
 
 \begin{figure}[h]
     \centering

@@ -3,7 +3,9 @@
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{memoir}}
 \ProcessOptions\relax
 \LoadClass[12pt,a4paper]{memoir}
-
+% \AtBeginDocument{%
+%   \fontsize{10}{13.6}\selectfont
+% }
 % Require package
 \RequirePackage{anyfontsize,mathptmx}
 \RequirePackage[T5]{fontenc}
@@ -52,7 +54,7 @@
 \renewcommand{\footrulewidth}{0pt}
 \renewcommand{\large}{\fontsize{15}{15}\selectfont}
 \renewcommand{\Large}{\fontsize{20}{20}\selectfont}
-\renewcommand{\arraystretch}{1.2}
+\renewcommand{\arraystretch}{1.15}
 \usetikzlibrary{calc}
 \geometry{
   paper=a4paper,
@@ -62,7 +64,8 @@
   includeheadfoot=true,
   headheight=30pt
 }
-\OnehalfSpacing
+\renewcommand{\baselinestretch}{1.15}\selectfont
+
 \raggedbottom
 
 % Set depth of numbering for sections and table of contents

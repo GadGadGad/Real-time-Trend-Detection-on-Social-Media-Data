@@ -1,6 +1,6 @@
-\chapter{Phương pháp}
+\section{Phương pháp}
 
-\section{Định nghĩa Bài toán Hình thức}
+\subsection{Định nghĩa Bài toán Hình thức}
 Cho $\mathcal{S} = \{p_1, p_2, ..., p_n\}$ là một luồng liên tục các bài đăng mạng xã hội, nơi mỗi bài đăng $p_t$ tại thời điểm $t$ là một tuple $(u_t, \tau_t, \textbf{v}_t)$, đại diện cho người dùng, dấu thời gian, và vector embedding ngữ nghĩa tương ứng.
 Mục tiêu của phát hiện sự kiện thời gian thực là ánh xạ luồng này thành một tập các cụm rời rạc $\mathcal{C} = \{C_1, C_2, ..., C_k\}$, nơi mỗi cụm $C_i$ đại diện cho một sự kiện thực tế.
 Một cụm sự kiện hợp lệ $C_i$ phải thỏa mãn hai điều kiện:
@@ -15,23 +15,23 @@ Một cụm sự kiện hợp lệ $C_i$ phải thỏa mãn hai điều kiện:
 
 Trong thực tế, chúng tôi sử dụng $\delta_{significant}$ như ngưỡng tác động vận hành trong hệ thống luồng (thường $\delta_{significant}\ge \delta_{min}$) để quyết định khi nào một cụm được đề bạt cho làm giàu và trực quan hóa.
 
-\section{Thu thập và Tiền xử lý Dữ liệu}
+\subsection{Thu thập và Tiền xử lý Dữ liệu}
 
-\subsection{Triển khai Thu thập với Apache Airflow}
+\subsubsection{Triển khai Thu thập với Apache Airflow}
 Lớp thu thập dữ liệu (Ingestion Layer) được điều phối bởi \textbf{Apache Airflow}, đảm bảo tính ổn định và khả năng phục hồi của hệ thống.
 \begin{itemize}
       \item \textbf{Cấu trúc DAG:} Mỗi nguồn dữ liệu (Facebook Fanpage, nguồn tin tức) được ánh xạ thành một task riêng biệt trong Directed Acyclic Graph (DAG). Các task chạy song song để tối đa hóa thông lượng.
       \item \textbf{Cơ chế Retry:} Airflow được cấu hình với chính sách \texttt{retries=3} và \texttt{retry\_delay=5 phút}. Nếu crawler gặp lỗi (ví dụ: rate limit hoặc lỗi mạng), Airflow tự động lập lịch chạy lại mà không cần can thiệp thủ công.
 \end{itemize}
 
-\subsection{Pipeline Dữ liệu với Apache Kafka}
+\subsubsection{Pipeline Dữ liệu với Apache Kafka}
 Dữ liệu thô sau khi thu thập được chuẩn hóa thành JSON và đẩy vào \textbf{Apache Kafka} để phân phối đến các consumers.
 \begin{itemize}
       \item \textbf{Topic Partitioning:} Topic \texttt{posts\_stream\_v1} được cấu hình với 3 partitions. Điều này cho phép Spark Consumers đọc song song từ nhiều partitions, tăng tốc độ xử lý.
       \item \textbf{Ordering Key:} Chúng tôi sử dụng \texttt{post\_id} làm partitioning key. Điều này đảm bảo tất cả các cập nhật (updates/edits) của cùng một bài đăng luôn được đẩy vào cùng một partition, duy trì thứ tự thời gian chính xác khi xử lý cập nhật.
 \end{itemize}
 
-\subsection{Chiến lược Tiền xử lý Dữ liệu}
+\subsubsection{Chiến lược Tiền xử lý Dữ liệu}
 Để đảm bảo đầu vào chất lượng cao cho engine phân cụm, dữ liệu thô từ cả hai đường trải qua các bước tiền xử lý cụ thể sử dụng \textbf{Spark Structured Streaming}:
 
 \begin{itemize}
@@ -48,7 +48,7 @@ Dữ liệu thô sau khi thu thập được chuẩn hóa thành JSON và đẩy
             \end{itemize}
 \end{itemize}
 
-\section{Phân cụm Phân cấp Nhận thức Xã hội (SAHC)}
+\subsection{Phân cụm Phân cấp Nhận thức Xã hội (SAHC)}
 
 Phân cụm tiêu chuẩn (K-Means, DBSCAN) thường thất bại trên dữ liệu xã hội do nhiễu. SAHC hoạt động theo ba giai đoạn:
 \begin{enumerate}
@@ -119,7 +119,7 @@ Ngoài ra, chúng tôi tích hợp module Cross-Encoder tùy chọn: trong cấu
 \end{equation}
 nơi $w_v=0,7$ và $w_k=0,3$ là các trọng số thực nghiệm, $\text{KW}(p,a)\in[0,1]$ là tỷ lệ trùng lặp từ khóa, và tăng cường cố định $\delta_{boost}=0,1$ được áp dụng khi trùng lặp vượt $\tau=0,5$. Thiết kế này vẫn tương thích với các ràng buộc thời gian thực trong khi giảm gắn sai giữa các sự kiện khác biệt về từ vựng.
 
-\section{Logic Tính Điểm Xu hướng}
+\subsection{Logic Tính Điểm Xu hướng}
 Để xác định sự kiện nào đang ``Trending'', chúng tôi tính Điểm Xu hướng Thống nhất ($T$) cho mỗi cụm dựa trên ba tín hiệu có trọng số:
 \begin{equation}
       T = 0.4 \cdot G + 0.35 \cdot N + 0.25 \cdot F
