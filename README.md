@@ -1,6 +1,6 @@
 # Real-time Event Detection on Social Media Data
 
-A production-grade system for detecting and analyzing social trends by fusing **Real-time Social Media Streams (Kafka)** and **Mainstream News (Crawlers)**, enhanced by **LLM Intelligence (Gemini)**.
+An intelligent system for detecting and analyzing emerging social trends by fusing **Real-time Social Media Streams (Kafka)** with **Mainstream News (Crawlers)**, enhanced by **LLM Intelligence (Gemini)**. Developed for the SE363 course.
 
 ## Architecture
 
