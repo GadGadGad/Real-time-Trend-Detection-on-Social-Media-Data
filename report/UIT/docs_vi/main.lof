@@ -1,7 +1,0 @@
-\babel@toc {english}{}\relax 
-\contentsline {figure}{\numberline {4.1}{\ignorespaces Kiến trúc Hệ thống Đề xuất: Xử lý Hai Đường (Fast Path vs. Slow Path).}}{5}{figure.caption.5}%
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Quy trình Phân cụm Phân cấp Nhận thức Xã hội (SAHC).}}{9}{figure.caption.6}%
-\contentsline {figure}{\numberline {6.1}{\ignorespaces Pipeline Thu thập Bài báo Tin tức.}}{12}{figure.caption.7}%
-\contentsline {figure}{\numberline {6.2}{\ignorespaces Ví dụ Dữ liệu Huấn luyện JSONL cho Phân loại và Reranking.}}{14}{figure.caption.9}%
-\contentsline {figure}{\numberline {6.3}{\ignorespaces Kết quả benchmark so sánh các Mô hình Embedding trên các trường hợp biên khác nhau.}}{15}{figure.caption.11}%
-\contentsline {figure}{\numberline {7.1}{\ignorespaces Trực quan hóa t-SNE của các Cụm Sự kiện. Các màu đại diện cho các sự kiện riêng biệt được cô lập bởi thuật toán.}}{17}{figure.caption.14}%

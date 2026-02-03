@@ -4,24 +4,13 @@ A production-grade system for detecting and analyzing social trends by fusing **
 
 ## Architecture
 
-```mermaid
-graph TD
-    A[Social Media / News Sources] --> B[Kafka Producer]
-    B --> C[Apache Kafka]
-    C --> D[Spark Structured Streaming]
-    D --> E[(PostgreSQL)]
-    E --> F[Intelligence Worker]
-    F -- LLM Refinement --> E
-    E --> G[Streamlit Dashboard]
-    H[Airflow Orchestrator] -- Pipeline Control --> D
-    H -- Ingestion Control --> B
-```
+![Architecture](assets/full_pipeline.png)
 
 ## Key Features
 
 - **Hybrid Data Fusion:** Combines high-velocity social signals with authoritative news sources.
 - **Distributed Processing:** Uses **PySpark Structured Streaming** for scalable event clustering.
-- **AI-Powered Insights:** 
+- **AI-Powered Insights:**
   - **Automated Summary:** Generates concise event descriptions in Vietnamese.
   - **Strategic Advice:** Actionable recommendations for Authorities and Businesses.
   - **Taxonomy Classification:** Categorizes events into standard Vietnamese social monitoring topics (T1-T7).
@@ -91,3 +80,6 @@ chmod +x run_full_system.sh
 - **Dashboard:** [http://localhost:8501](http://localhost:8501)
 - **Airflow UI:** [http://localhost:8080](http://localhost:8080)
 - **Kafka / Postgres:** Managed via Docker Compose in `streaming/docker-compose.yml`
+
+---
+If you have any questions or need help regarding the project, please contact [me](mailto:[22521027@gm.uit.edu.vn]).

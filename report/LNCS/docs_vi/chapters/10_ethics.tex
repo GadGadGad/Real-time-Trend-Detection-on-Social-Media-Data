@@ -1,9 +1,0 @@
-\section{Cân nhắc Đạo đức và Hạn chế}
-Với tư cách là một hệ thống tích hợp AI phân tích diễn ngôn công cộng, chúng tôi tuân theo các thực hành dữ liệu đạo đức và thừa nhận rõ ràng các hạn chế chính.
-\begin{itemize}
-    \item \textbf{Bảo vệ Quyền riêng tư:} Mặc dù hệ thống xử lý các bài đăng công khai, chúng tôi che giấu Thông tin Nhận dạng Cá nhân (PII) như số điện thoại và địa chỉ cụ thể trước khi lưu trữ. Chúng tôi trình bày kết quả ở cấp \emph{cụm/sự kiện} để tránh nhắm vào cá nhân.
-    \item \textbf{Thiên lệch và Phạm vi Nguồn:} Các ``neo'' tin tức có thể phản ánh thiên lệch biên tập hoặc phạm vi không đầy đủ. Để giảm thiểu, pipeline hỗ trợ rõ ràng khám phá sự kiện \textbf{Chỉ-Xã-hội} (qua HDBSCAN) để các chủ đề ít được đưa tin vẫn có thể xuất hiện; tuy nhiên, lựa chọn neo có thể ảnh hưởng đến những gì trở thành ``đã xác minh'' trong các tóm tắt hạ nguồn.
-    \item \textbf{An toàn và Độ tin cậy của LLM:} LLMs có thể tạo các tóm tắt có vẻ hợp lý nhưng không chính xác. Do đó, chúng tôi hạn chế việc sử dụng LLM vào \emph{làm giàu hậu kỳ} (không kích hoạt phát hiện) và áp dụng chính sách xác minh \textbf{Human-in-the-Loop} cho các cảnh báo rủi ro cao (T1--Khủng hoảng) trước khi leo thang bên ngoài.
-\end{itemize}
-
-
