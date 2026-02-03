@@ -1,8 +1,8 @@
-# 🚀 Real-time Event Detection on Social Media Data
+# Real-time Event Detection on Social Media Data
 
 A production-grade system for detecting and analyzing social trends by fusing **Real-time Social Media Streams (Kafka)** and **Mainstream News (Crawlers)**, enhanced by **LLM Intelligence (Gemini)**.
 
-## 🏗 Architecture
+## Architecture
 
 ```mermaid
 graph TD
@@ -17,7 +17,7 @@ graph TD
     H -- Ingestion Control --> B
 ```
 
-## 🔥 Key Features
+## Key Features
 
 - **Hybrid Data Fusion:** Combines high-velocity social signals with authoritative news sources.
 - **Distributed Processing:** Uses **PySpark Structured Streaming** for scalable event clustering.
@@ -30,7 +30,7 @@ graph TD
   - **Pro:** Modern **Next.js (React)** + **FastAPI** architecture for production.
 - **Unified Launch Script:** Start the complete stack (Database, Kafka, Spark, Worker, Dashboard) with a single command.
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Streaming:** Apache Kafka, PySpark
 - **Orchestration:** Apache Airflow
@@ -39,7 +39,7 @@ graph TD
 - **Backend:** FastAPI (Pro Mode)
 - **Frontend:** Streamlit (Demo) / Next.js + React (Pro)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Prerequisites
 
@@ -75,7 +75,7 @@ chmod +x run_full_system.sh
 
 *Note: The `demo` mode uses local simulations to showcase system capabilities without requiring live crawler credentials.*
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 ├── airflow_home/      # Airflow configuration and local DB
@@ -86,7 +86,7 @@ chmod +x run_full_system.sh
 └── run_full_system.sh # Main entry point for the demo system
 ```
 
-## 📈 Monitoring
+## Monitoring
 
 - **Dashboard:** [http://localhost:8501](http://localhost:8501)
 - **Airflow UI:** [http://localhost:8080](http://localhost:8080)
