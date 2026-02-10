@@ -66,3 +66,9 @@ airflow_home/
 *.bcf
 *.nav
 *.pdf
+*.lof
+*.lot
+
+# Report
+report/
+slides/
