@@ -1,4 +1,4 @@
-# Real-time Event Detection on Social Media Data
+# Real-time Trend Detection on Social Media Data
 
 An intelligent system for detecting and analyzing emerging social trends by fusing **Real-time Social Media Streams (Kafka)** with **Mainstream News (Crawlers)**, enhanced by **LLM Intelligence (Gemini)**. Developed for the SE363 course.
 
