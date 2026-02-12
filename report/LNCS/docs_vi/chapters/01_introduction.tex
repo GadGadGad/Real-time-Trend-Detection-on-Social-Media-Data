@@ -1,0 +1,35 @@
+\section{Giới thiệu}
+Các nền tảng mạng xã hội đã trở thành nguồn thông tin thời gian thực chính. Tuy nhiên, việc xử lý dữ liệu này đặt ra những thách thức độc đáo: (1) \textbf{Tỷ lệ Nhiễu Cao:} Tin tức có giá trị thường bị chìm trong spam và các cuộc trò chuyện hàng ngày (ví dụ: "Kết quả xổ số", "Thời tiết"); (2) \textbf{Sự Mơ hồ Ngữ nghĩa:} Các cộng đồng khác nhau sử dụng từ vựng hoàn toàn khác nhau để mô tả cùng một sự kiện (ví dụ: "Bão Yagi" so với "Bão số 3"); và (3) \textbf{Thiếu Xác minh:} Tin đồn lan truyền nhanh hơn việc đính chính thực tế.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/dashboard.png}
+    \caption{Bảng điều khiển Hệ thống: Trực quan hóa thời gian thực các sự kiện xu hướng và cảm xúc của chúng.} \label{fig:dashboard}
+\end{figure}
+
+Như minh họa trong Hình \ref{fig:dashboard}, bảng điều khiển hệ thống tích hợp ba chế độ xem chính: (1) Danh sách xếp hạng thời gian thực các sự kiện xu hướng; (2) Biểu đồ chuỗi thời gian theo dõi sự tiến hóa cảm xúc; và (3) Bản đồ địa lý làm nổi bật các điểm nóng sự kiện. Giao diện này cho phép các bên liên quan nhanh chóng nắm bắt "Cái gì, Ở đâu và Như thế nào" của các vấn đề mới nổi.
+
+\noindent\textbf{Khoảng trống Nghiên cứu.}
+Các pipeline phát hiện sự kiện hiện có thường tối ưu hóa cho (i) phát hiện luồng độ trễ thấp sử dụng phân cụm thống kê hoặc dựa trên embedding nhẹ, hoặc (ii) tính nhất quán ngữ nghĩa cao và khả năng diễn giải sử dụng suy luận neural/LLM nặng hơn.
+Tuy nhiên, các triển khai thực tế đòi hỏi \emph{cả ba} đồng thời: \textbf{(a) độ trễ thời gian thực}, \textbf{(b) nhóm sự kiện mạch lạc với văn bản ngắn nhiễu}, và \textbf{(c) đánh giá có khả năng mở rộng} khi nhãn ground-truth khan hiếm trong luồng.
+Điều này tạo ra khoảng cách giữa \emph{ràng buộc thời gian thực cấp hệ thống} và \emph{sự chặt chẽ ngữ nghĩa/đánh giá}.
+
+\noindent\textbf{Câu hỏi Nghiên cứu.}
+Chúng tôi nghiên cứu các câu hỏi sau:
+\begin{itemize}
+    \item \textbf{RQ1:} Làm thế nào chúng ta có thể phát hiện các sự kiện mới nổi từ luồng mạng xã hội nhiễu với ràng buộc độ trễ nghiêm ngặt ($<10$s) trong khi giảm thiểu sự phân mảnh và nhiễu?
+    \item \textbf{RQ2:} Làm thế nào chúng ta có thể cải thiện tính nhất quán ngữ nghĩa và khả năng diễn giải sự kiện mà không chặn pipeline luồng?
+    \item \textbf{RQ3:} Làm thế nào chúng ta có thể đánh giá chất lượng phân cụm ở quy mô khi nhãn người đầy đủ không có sẵn cho dữ liệu luồng?
+\end{itemize}
+
+Để trả lời các câu hỏi này, chúng tôi đề xuất một \textbf{Dual-Path Architecture} tách biệt phát hiện độ trễ thấp khỏi tinh chỉnh ngữ nghĩa.
+Trên Fast Path, chúng tôi thực hiện gắn kết và khám phá luồng thông qua chiến lược \textbf{Phân cụm Phân cấp Nhận thức Mạng xã hội (SAHC)} để giảm nhiễu và phân mảnh quá mức.
+Trên Slow Path, các worker LLM bất đồng bộ tạo các tóm tắt cấu trúc 5W1H và hỗ trợ kiểm soát chất lượng ngữ nghĩa.
+Để lấp khoảng trống đánh giá, chúng tôi kết hợp giao thức \textbf{Mini-Ground Truth} (nhãn thủ công trên tập con nhỏ) với quy trình \textbf{LLM-as-a-Judge} để đánh giá tính nhất quán ngữ nghĩa ở quy mô.
+
+Các đóng góp cụ thể của chúng tôi bao gồm:
+\begin{enumerate}
+    \item Một \textbf{Dual-Path Architecture} cân bằng độ trễ < 10s cho phát hiện và suy luận LLM sâu cho insight.
+    \item Một thuật toán \textbf{Phân cụm Phân cấp Nhận thức Mạng xã hội (SAHC)} sử dụng neo tin tức để giảm nhiễu khoảng ~50\% so với HDBSCAN gốc cùng embedding \& tiền xử lý.
+    \item Một đánh giá chặt chẽ sử dụng cả bộ dữ liệu \textbf{Mini-Ground Truth} (N=300) và các chỉ số \textbf{LLM-as-a-Judge}.
+\end{enumerate}

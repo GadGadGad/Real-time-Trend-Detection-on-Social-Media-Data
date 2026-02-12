@@ -1,0 +1,69 @@
+\chapter{Appendix: Prompt Engineering}
+To ensure reproducibility, we provide the specific prompts used in our system's core modules.
+
+\begin{table}[h]
+    \caption{LLM Refinement Prompt (Phase 6)}\label{tab:prompt_refinement}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Senior News Editor (Vietnamese).                                                                                                               \\
+        \textbf{Task:} Identify title and extract 5W1H structure.                                                                                                     \\
+        \textbf{Rules:}                                                                                                                                               \\
+        1. Title: Concise, factual Vietnamese title ($\le$ 15 words).                                                                                                 \\
+        2. Summary: Detailed 4-6 sentences including numbers, dates, locations.                                                                                       \\
+        3. 5W1H: Extract Who, What, Where, When, Why.                                                                                                                 \\
+        4. Advice: Provide actionable strategic advice for State and Business.                                                                                        \\
+        5. Classification: Assign one of 7 categories (T1-T7).                                                                                                        \\
+        \textbf{Output Format:} JSON dict containing \texttt{refined\_title}, \texttt{summary}, \texttt{category}, \texttt{advice\_state}, \texttt{advice\_business}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{LLM-as-a-Judge Prompt (Evaluation)}\label{tab:prompt_eval}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} News Clustering Quality Expert.                                                                                     \\
+        \textbf{Context:} Two unnamed clusters (A and B) consisting of sample posts.                                                       \\
+        \textbf{Task:} Compare and decide:                                                                                                 \\
+        1. Which cluster is more COHERENT (posts discuss the same topic)?                                                                  \\
+        2. Which cluster is CLEARER (less topic mixing)?                                                                                   \\
+        \textbf{Output Format:} JSON dict with \texttt{better\_cluster} ("A", "B", or "Tie"), \texttt{confidence}, and \texttt{reasoning}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Semantic Deduplication Prompt (Phase 4)}\label{tab:prompt_dedup}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Senior News Editor.                                                      \\
+        \textbf{Task:} Identify titles referring to the EXACT SAME single real-world event.     \\
+        \textbf{Criteria for Match (Must match all 3):}                                         \\
+        1. SAME Location (e.g., "Hanoi" vs "Hanoi" $\checkmark$).                               \\
+        2. SAME Timeframe (e.g., "Today" vs "Today" $\checkmark$).                              \\
+        3. SAME Core Entity (e.g., "Typhoon Yagi" vs "Storm No. 3" $\checkmark$).               \\
+        \textbf{Output Format:} JSON dict mapping \texttt{"Original Title": "Canonical Title"}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Google Trends Filter Prompt (Phase 6)}\label{tab:prompt_trends}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Role:} Google Trends Classifier (Vietnam).                                                          \\
+        \textbf{Task:} Filter NOISE and MERGE duplicates.                                                           \\
+        \textbf{Filter Rules (Remove):}                                                                             \\
+        1. Weather/Utilities (e.g., "weather today", "lottery results").                                            \\
+        2. Generic Broad Terms (e.g., "love", "news", "video").                                                     \\
+        \textbf{Merge Rules (Group):}                                                                               \\
+        - Combine variants of the same event (e.g., "AFF Cup schedule" + "AFF Cup standings" $\to$ "AFF Cup 2024"). \\
+        \textbf{Output Format:} JSON dict with \texttt{filtered} list and \texttt{merged} map.                      \\
+        \hline
+    \end{tabular}
+\end{table}
+\end{document}

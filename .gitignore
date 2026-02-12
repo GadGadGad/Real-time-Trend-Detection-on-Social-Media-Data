@@ -70,5 +70,5 @@ airflow_home/
 *.lot
 
 # Report
-report/
+# report/
 slides/

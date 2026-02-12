@@ -1,0 +1,70 @@
+\chapter{Phụ lục}
+
+\section{Kỹ thuật Prompt (Prompt Engineering)}
+Để đảm bảo tính tái lập, chúng tôi cung cấp các prompt cụ thể được sử dụng trong các module cốt lõi của hệ thống.
+
+\begin{table}[h]
+    \caption{Prompt Tinh chỉnh LLM (Giai đoạn 6)}\label{tab:prompt_refinement}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Vai trò:} Biên tập viên Cấp cao (Tiếng Việt).                                                                                                      \\
+        \textbf{Nhiệm vụ:} Xác định tiêu đề và trích xuất cấu trúc 5W1H.                                                                                           \\
+        \textbf{Quy tắc:}                                                                                                                                          \\
+        1. Tiêu đề: Tiêu đề tiếng Việt ngắn gọn, có sự thật ($\le$ 15 từ).                                                                                         \\
+        2. Tóm tắt: Chi tiết 4-6 câu bao gồm số liệu, ngày tháng, địa điểm.                                                                                        \\
+        3. 5W1H: Trích xuất Ai, Cái gì, Ở đâu, Khi nào, Tại sao.                                                                                                   \\
+        4. Lời khuyên: Cung cấp lời khuyên chiến lược hành động cho Nhà nước và Doanh nghiệp.                                                                      \\
+        5. Phân loại: Gán một trong 7 danh mục (T1-T7).                                                                                                            \\
+        \textbf{Định dạng Đầu ra:} JSON dict chứa \texttt{refined\_title}, \texttt{summary}, \texttt{category}, \texttt{advice\_state}, \texttt{advice\_business}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Prompt LLM-làm-Giám-khảo (Đánh giá)}\label{tab:prompt_eval}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Vai trò:} Chuyên gia Chất lượng Phân cụm Tin tức.                                                                                   \\
+        \textbf{Ngữ cảnh:} Hai cụm không tên (A và B) bao gồm các bài đăng mẫu.                                                                     \\
+        \textbf{Nhiệm vụ:} So sánh và quyết định:                                                                                                   \\
+        1. Cụm nào MẠCH LẠC hơn (các bài đăng thảo luận cùng chủ đề)?                                                                               \\
+        2. Cụm nào RÕ RÀNG hơn (ít trộn chủ đề hơn)?                                                                                                \\
+        \textbf{Định dạng Đầu ra:} JSON dict với \texttt{better\_cluster} (``A'', ``B'', hoặc ``Tie''), \texttt{confidence}, và \texttt{reasoning}. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Prompt Loại bỏ Trùng lặp Ngữ nghĩa (Giai đoạn 4)}\label{tab:prompt_dedup}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Vai trò:} Biên tập viên Cấp cao.                                                          \\
+        \textbf{Nhiệm vụ:} Xác định các tiêu đề tham chiếu đến CÙNG MỘT sự kiện thực trong thế giới thực. \\
+        \textbf{Tiêu chí cho Khớp (Phải khớp tất cả 3):}                                                  \\
+        1. CÙNG Địa điểm (ví dụ: ``Hà Nội'' vs ``Hà Nội'' $\checkmark$).                                  \\
+        2. CÙNG Khung thời gian (ví dụ: ``Hôm nay'' vs ``Hôm nay'' $\checkmark$).                         \\
+        3. CÙNG Thực thể Lõi (ví dụ: ``Bão Yagi'' vs ``Bão số 3'' $\checkmark$).                          \\
+        \textbf{Định dạng Đầu ra:} JSON dict ánh xạ \texttt{``Tiêu đề Gốc'': ``Tiêu đề Chuẩn''}.          \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \caption{Prompt Lọc Google Trends (Giai đoạn 6)}\label{tab:prompt_trends}
+    \centering
+    \begin{tabular}{|p{0.95\linewidth}|}
+        \hline
+        \textbf{Vai trò:} Bộ Phân loại Google Trends (Việt Nam).                                                              \\
+        \textbf{Nhiệm vụ:} Lọc NHIỄU và GỘP các trùng lặp.                                                                    \\
+        \textbf{Quy tắc Lọc (Loại bỏ):}                                                                                       \\
+        1. Thời tiết/Tiện ích (ví dụ: ``thời tiết hôm nay'', ``kết quả xổ số'').                                              \\
+        2. Thuật ngữ Rộng Chung (ví dụ: ``tình yêu'', ``tin tức'', ``video'').                                                \\
+        \textbf{Quy tắc Gộp (Nhóm):}                                                                                          \\
+        - Kết hợp các biến thể của cùng sự kiện (ví dụ: ``lịch AFF Cup'' + ``bảng xếp hạng AFF Cup'' $\to$ ``AFF Cup 2024''). \\
+        \textbf{Định dạng Đầu ra:} JSON dict với danh sách \texttt{filtered} và map \texttt{merged}.                          \\
+        \hline
+    \end{tabular}
+\end{table}

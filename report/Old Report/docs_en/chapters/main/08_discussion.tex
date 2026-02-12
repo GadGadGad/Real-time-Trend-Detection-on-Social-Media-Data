@@ -1,0 +1,18 @@
+\chapter{Discussion}
+
+\section{Challenges and Lessons Learned}
+Deploying the system revealed three major technical hurdles:
+\begin{enumerate}
+    \item \textbf{Semantic Ambiguity:} Different communities use disparate terms for the same event (e.g., "Bão Yagi" vs. "Cơn bão số 3"). We addressed this using \textbf{LLM-based Deduplication} (Appendix Table \ref{tab:prompt_dedup}) and the Hybrid Matching score.
+    \item \textbf{Evaluation Gap:} The lack of labeled ground truth in streaming data made validation difficult. We overcame this by establishing a \textbf{"Mini-Ground Truth"} protocol (manually labeling 300 samples) to standardize our NMI and F1 metrics.
+    \item \textbf{Latency vs. Accuracy Trade-off:} Calling LLMs for every cluster introduced a 2-3s latency. We mitigated this by separating the pipeline into a \textbf{Fast Path} (Spark) for instant detection and a \textbf{Slow Path} (Async Workers) for deep analysis. Furthermore, we implemented an \textbf{Incremental Update Rule}: the LLM is only re-triggered if a cluster grows by $>20\%$ in volume, significantly reducing redundant inference costs.
+\end{enumerate}
+
+
+\section{Ablation Study and Component Analysis}
+To quantify the contribution of each module, we conducted an ablation study by selectively disabling components (Table \ref{tab:ablation}).
+\begin{itemize}
+    \item \textbf{w/o News Anchors:} Removing anchoring noticeably degrades clustering agreement with human labels, confirming that social data alone is too noisy for coherent clustering.
+    \item \textbf{w/o Heuristic Guard:} Disabling the initial regex filter increased the cluster count by 300\%, but most were "spam" (lottery, weather), causing a 60\% drop in F1-score.
+    \item \textbf{w/o LLM Refinement:} Using raw centroids instead of LLM summaries resulted in vague event titles, reducing the interpretability score (human-eval) from 4.5 to 2.1.
+\end{itemize}

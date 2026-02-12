@@ -1,0 +1,141 @@
+\section{Kết quả và Phân tích}
+
+\subsection{Lựa chọn Thuật toán Phân cụm}
+Chúng tôi so sánh phương pháp SAHC của chúng tôi (sử dụng lõi HDBSCAN) với các baselines. HDBSCAN được chọn vì khả năng xử lý Nhiễu và Cân bằng vượt trội.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/trend_tsne.png}
+    \caption{Trực quan hóa t-SNE của các Cụm Sự kiện. Các màu đại diện cho các sự kiện riêng biệt được cô lập bởi thuật toán.} \label{fig:tsne}
+\end{figure}
+
+Phiếu chiếu t-SNE trong Hình \ref{fig:tsne} chứng minh hiệu quả của phân cụm của chúng tôi. Các sự kiện riêng biệt (các cụm màu) được phân tách tốt trong không gian ngữ nghĩa, trong khi các điểm nhiễu (xám) phân tán và được cô lập hiệu quả bởi thuật toán.
+
+\begin{table}
+    \caption{So sánh Phương pháp Phân cụm}\label{tab:clustering_select}
+    \centering
+    \begin{tabular}{l c c c c c}
+        \toprule
+        \textbf{Phương pháp}          & \textbf{Cụm (k)} & \textbf{Điểm Nhiễu} & \textbf{Silh. Score} ($\uparrow$) & \textbf{DB Index} ($\downarrow$) & \textbf{Thời gian} ($\downarrow$) \\
+        \midrule
+        K-Means                       & 253              & 0                   & 0,024                             & 3,177                            & 8,45s                             \\
+        \textbf{HDBSCAN (Baseline)}   & \textbf{460}     & 1.984               & 0,109                             & \textbf{2,094}                   & 16,00s                            \\
+        BERTopic                      & 223              & 1.801               & 0,112                             & 2,363                            & 55,72s                            \\
+        \textbf{SAHC (Của chúng tôi)} & \textbf{315}     & \textbf{985}        & \textbf{0,135}                    & \textbf{1,951}                   & \textbf{18,4s}                    \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Phân tích:} Như hiển thị trong Bảng \ref{tab:clustering_select}, \textbf{K-Means} cho thấy không phù hợp với dữ liệu luồng xã hội vì nó ép tất cả nhiễu vào các cụm. \textbf{HDBSCAN Baseline}, trong khi xác định đúng nhiễu, chịu \textbf{phân mảnh quá mức} (460 cụm) và loại bỏ dữ liệu quá nhiều (1.984 điểm nhiễu), thường chia các sự kiện đơn lẻ thành nhiều micro-cụm.
+Phương pháp \textbf{SAHC} của chúng tôi giải quyết điều này bằng cách sử dụng News Anchors để ``nối'' các micro-cụm này. Điều này thành công cô đặc không gian thành \textbf{315 sự kiện mạch lạc} và khôi phục $\approx 50\%$ dữ liệu hợp lệ trước đó bị loại bỏ là nhiễu (Nhiễu giảm xuống 985), tăng đáng kể Silhouette Score lên \textbf{0,135}.
+
+\subsection{Đánh giá Định lượng (Mini-Ground Truth)}
+Tất cả các metric phân cụm dựa trên nhãn (NMI, Purity, BCubed-F1, Entropy) được tính toán chỉ trên tập con Mini-Ground Truth (N=300), vì bộ dữ liệu đầy đủ không chứa nhãn sự kiện do con người chú thích.
+Bảng \ref{tab:minigt} báo cáo hiệu suất của \textbf{cài đặt SAHC mặc định}, trong khi Bảng \ref{tab:ablation} cho thấy thêm rằng \textbf{pipeline hybrid đầy đủ} (thêm anchoring và tinh chỉnh LLM) cải thiện NMI từ 0,54 lên \textbf{0,5978}.
+
+\begin{table}
+    \caption{Hiệu suất trên Mini-Ground Truth (N=300) -- Cài đặt SAHC Cơ sở}\label{tab:minigt}
+    \centering
+    \begin{tabular}{l c l}
+        \toprule
+        \textbf{Metric}           & \textbf{Giá trị} & \textbf{Diễn giải}                         \\
+        \midrule
+        \textbf{NMI} ($\uparrow$) & \textbf{0,54}    & Thông tin tương hỗ tốt với nhãn người      \\
+        Purity ($\uparrow$)       & 0,65             & Tính nhất quán lớp chiếm ưu thế cao        \\
+        BCubed-F1 ($\uparrow$)    & 0,35             & Precision/recall cân bằng cho phân cụm     \\
+        Entropy ($\downarrow$)    & 4,85             & Entropy thấp hơn chỉ ra cụm tinh khiết hơn \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Định nghĩa Metric:} Để đảm bảo đánh giá nghiêm ngặt, chúng tôi chọn các metric bao phủ các khía cạnh khác nhau của chất lượng phân cụm:
+\begin{itemize}
+    \item \textbf{Thông tin Tương hỗ Chuẩn hóa (NMI):} Đo sự phù hợp giữa nhãn cụm $Y$ và ground truth $C$:
+          \begin{equation}
+              NMI(Y, C) = \frac{2 \cdot I(Y; C)}{H(Y) + H(C)}
+          \end{equation}
+          Nơi $I$ là thông tin tương hỗ và $H$ là entropy.
+    \item \textbf{Purity:} Lượng hóa sự chiếm ưu thế của lớp đa số trong mỗi cụm:
+          \begin{equation}
+              Purity(\Omega, C) = \frac{1}{N} \sum_k \max_j |\omega_k \cap c_j|
+          \end{equation}
+          Nơi $N$ là tổng số điểm dữ liệu, $\Omega = \{\omega_1, ..., \omega_k\}$ là tập các cụm, và $C = \{c_1, ..., c_j\}$ là tập các lớp ground truth.
+    \item \textbf{Entropy:} Đo tính đồng nhất của một cụm (thấp hơn tốt hơn):
+          \begin{equation}
+              E(C) = - \sum_{k} \frac{n_k}{n} \log_2 \frac{n_k}{n}
+          \end{equation}
+          Nơi $n_k$ là số điểm trong cụm $k$. Giá trị gần 0 hm ý cụm chỉ chứa một lớp sự kiện duy nhất.
+    \item \textbf{BCubed-F1:} Metric theo từng phần tử cân bằng tính đồng nhất và hoàn chỉnh của cụm. Nó là trung bình điều hòa của:
+          \begin{itemize}
+              \item \textit{BCubed Precision ($P_{b^3}$):} Precision trung bình theo từng mục. Với mỗi mục $x$, nó tính tỷ lệ các mục trong cụm của $x$ $C(x)$ có cùng nhãn lớp $L(x)$:
+                    \begin{equation}
+                        P_{b^3} = \frac{1}{N} \sum_{x \in X} \frac{|C(x) \cap L(x)|}{|C(x)|}
+                    \end{equation}
+              \item \textit{BCubed Recall ($R_{b^3}$):} Recall trung bình theo từng mục. Với mỗi mục $x$, nó tính tỷ lệ các mục trong lớp của $x$ $L(x)$ được nhóm vào cùng cụm $C(x)$:
+                    \begin{equation}
+                        R_{b^3} = \frac{1}{N} \sum_{x \in X} \frac{|C(x) \cap L(x)|}{|L(x)|}
+                    \end{equation}
+          \end{itemize}
+          \begin{equation}
+              F1_{b^3} = 2 \cdot \frac{P_{b^3} \cdot R_{b^3}}{P_{b^3} + R_{b^3}}
+          \end{equation}
+          Khác với purity, BCubed phạt cả gộp quá mức (Precision thấp) và phân mảnh quá mức (Recall thấp).
+    \item \textbf{Silhouette Score:} Lượng hóa mức độ một đối tượng phù hợp với cụm của nó so với cụm lân cận gần nhất:
+          \begin{equation}
+              S(i) = \frac{b(i) - a(i)}{\max\{a(i), b(i)\}}
+          \end{equation}
+          Nơi $a(i)$ là khoảng cách trung bình trong cụm và $b(i)$ là khoảng cách trung bình đến cụm gần nhất. $S \in [-1, 1]$, nơi các giá trị gần 1 chỉ ra các cụm dày đặc, phân tách tốt.
+\end{itemize}
+
+\subsection{Đánh giá Batch và Phân tích Thành phần}
+Để lượng hóa đóng góp của mỗi module, chúng tôi tiến hành nghiên cứu ablation trên tập con \textbf{Mini-Ground Truth} (N=300), nơi các metric dựa trên nhãn (NMI, BCubed-F1, Entropy) được định nghĩa tốt.
+Bảng \ref{tab:ablation} cho thấy việc thêm dần anchoring và tinh chỉnh LLM cải thiện sự phù hợp phân cụm với nhãn người.
+
+\begin{table}
+    \caption{Nghiên cứu Ablation trên Mini-Ground Truth (N=300)}\label{tab:ablation}
+    \centering
+    \begin{tabular}{l c c c}
+        \toprule
+        \textbf{Cấu hình}               & \textbf{NMI} ($\uparrow$) & \textbf{BCubed-F1} ($\uparrow$) & \textbf{Entropy} ($\downarrow$) \\
+        \midrule
+        Baseline (Chỉ HDBSCAN)          & 0,53                      & 0,31                            & 4,91                            \\
+        \textbf{Pipeline Hybrid Đầy đủ} & \textbf{0,5978}           & \textbf{0,3821}                 & \textbf{4,4178}                 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Phân tích Định tính: LLM-làm-Giám-khảo}
+Các metric truyền thống như Silhouette Score thường không nắm bắt được tính mạch lạc ngữ nghĩa. Để giải quyết điều này, chúng tôi triển khai giao thức \textbf{LLM-làm-Giám-khảo}, nơi một mô hình instruction-tuned mạnh (Gemini Pro) hoạt động như proxy cho đánh giá của con người.
+\begin{itemize}
+    \item \textbf{Giao thức:} LLM được cung cấp nội dung của một cụm và được hỏi hai câu hỏi: (1) ``Cụm này có mô tả một sự kiện duy nhất, riêng biệt không?'' (Tính Nhất quán Chủ đề, đánh giá 0-1), và (2) Cho hai cụm xung đột, ``Cụm nào mạch lạc hơn?'' (Tỷ lệ Thắng Theo cặp).
+    \item \textbf{Prompting:} Chúng tôi sử dụng chiến lược ``Role-Play'' nơi LLM đóng vai như một biên tập viên tin tức chuyên gia. Đặc tả prompt đầy đủ được cung cấp trong Phụ lục Bảng \ref{tab:prompt_eval}.
+\end{itemize}
+Sử dụng framework này, chúng tôi đánh giá 100 cụm ngẫu nhiên:
+\begin{itemize}
+    \item \textbf{Sự kiện Rõ ràng (ví dụ: ``Xung đột Trung Đông''):} Đạt \textbf{Tính Nhất quán $\approx$ 1,0} và Tỷ lệ Thắng cao.
+    \item \textbf{Cụm Hỗn hợp/Nhiễu:} Được LLM đánh dấu chính xác với điểm thấp hơn đáng kể (0,64), xác nhận tính hữu dụng của metric cho đảm bảo chất lượng tự động.
+\end{itemize}
+
+\subsection{Nghiên cứu Trường hợp Chi tiết}
+Để hiểu rõ hơn hành vi của hệ thống, chúng tôi phân tích ba trường hợp cụ thể từ triển khai thử nghiệm:
+
+\begin{enumerate}
+    \item \textbf{Trường hợp Thành công: ``Vụ xả súng Bãi biển Bondi'' (T1).}
+          \begin{itemize}
+              \item \emph{Đầu vào:} ``{\fontencoding{T5}\selectfont Vụ xả súng tại bãi biển Bondi khiến 15 người thiệt mạng sau vụ tấn công bằng dao.}''
+              \item \emph{Phân tích:} Mặc dù tin tức đồng thời về ``Du lịch Úc'', thuật toán SAHC đã cô lập đúng sự kiện này do trùng lặp từ vựng mạnh với các từ khóa ``Khủng hoảng''. LLM gán nó vào \textbf{T1 (Rủi ro Công cộng)} với độ tin cậy cao (>0,9).
+          \end{itemize}
+
+    \item \textbf{Trường hợp Thành công: ``Xung đột Trung Đông'' (T1).}
+          \begin{itemize}
+              \item \emph{Metrics:} Cụm này đạt điểm Tính Nhất quán Ngữ nghĩa \textbf{0,96} và Tỷ lệ Thắng \textbf{0,67} so với các cụm nhiễu.
+              \item \emph{Insight:} Khối lượng lớn các neo tin tức đã xác minh cho phép hệ thống hấp thụ phản ứng mạng xã hội hiệu quả mà không ``trôi'' vào các chủ đề không liên quan.
+          \end{itemize}
+
+    \item \textbf{Phân tích Thất bại: ``Tin Quốc tế Hỗn hợp''.}
+          \begin{itemize}
+              \item \emph{Vấn đề:} Thuật toán gộp ``Vụ kiện gốc Việt'' với ``Xung đột lãnh thổ'' thành một cụm duy nhất.
+              \item \emph{Nguyên nhân Gốc:} Điều này có thể xảy ra do thuật ngữ ngoại giao chung (ví dụ: ``chủ quyền'', ``luật quốc tế'') hoạt động như các neo vector giả, nối hai chủ đề khác nhau về ngữ nghĩa nhưng tương tự về từ vựng.
+              \item \emph{Phát hiện:} Quan trọng là, giao thức \textbf{LLM-làm-Giám-khảo} của chúng tôi đã đánh dấu lỗi này, gán Điểm Tính Nhất quán thấp \textbf{0,64} và \textbf{Tỷ lệ Thắng 0,00}. Điều này chứng minh khả năng của hệ thống tự động phát hiện suy giảm chất lượng để xem xét của con người.
+          \end{itemize}
+\end{enumerate}

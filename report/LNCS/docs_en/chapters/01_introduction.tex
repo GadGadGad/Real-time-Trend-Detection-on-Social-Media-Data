@@ -1,0 +1,35 @@
+\section{Introduction}
+Social media platforms have become the primary source of real-time information. However, processing this data presents unique challenges: (1) \textbf{High Noise Ratio:} Valid news is often buried under spam and daily chatter (e.g., "Lottery results", "Weather"); (2) \textbf{Semantic Ambiguity:} Different communities use vastly different vocabularies to describe the same event (e.g., "Typhoon Yagi" vs. "Storm No. 3"); and (3) \textbf{Lack of Verification:} Viral rumors spread faster than factual corrections.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/dashboard.png}
+    \caption{System Dashboard: Real-time visualization of trending events and their sentiment.} \label{fig:dashboard}
+\end{figure}
+
+As shown in Fig. \ref{fig:dashboard}, the system dashboard integrates three key views: (1) A real-time ranked list of trending events; (2) A time-series chart tracking sentiment evolution; and (3) A geospatial map highlighting event hotspots. This interface allows stakeholders to quickly grasp the "What, Where, and How" of emerging issues.
+
+\noindent\textbf{Research Gap.}
+Existing event detection and classification pipelines often optimize for either (i) low-latency streaming detection using lightweight statistical or embedding-based clustering, or (ii) high semantic coherence and interpretability using heavier neural/LLM reasoning.
+However, practical deployments require \emph{all three} simultaneously: \textbf{(a) real-time latency}, \textbf{(b) coherent event grouping under noisy short texts}, and \textbf{(c) scalable evaluation} when ground-truth labels are scarce in streams.
+This creates a gap between \emph{system-level real-time constraints} and \emph{semantic/evaluation rigor}.
+
+\noindent\textbf{Research Questions.}
+We study the following questions:
+\begin{itemize}
+    \item \textbf{RQ1:} How can we detect emerging events from noisy social streams under strict latency constraints ($<10$s) while minimizing fragmentation and noise?
+    \item \textbf{RQ2:} How can we improve semantic coherence and event interpretability without blocking the streaming pipeline?
+    \item \textbf{RQ3:} How can we evaluate clustering quality at scale when full human labels are unavailable for streaming data?
+\end{itemize}
+
+To answer these questions, we propose a \textbf{Dual-Path Architecture} that separates low-latency detection from semantic refinement.
+In the Fast Path, we perform streaming attachment and discovery via a \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy to reduce noise and over-fragmentation.
+In the Slow Path, asynchronous LLM workers generate structured 5W1H summaries and support semantic quality control.
+To close the evaluation gap, we combine a \textbf{Mini-Ground Truth} protocol (manual labels on a small subset) with an \textbf{LLM-as-a-Judge} procedure to assess semantic coherence at scale.
+
+Our specific contributions include:
+\begin{enumerate}
+    \item A \textbf{Dual-Path Architecture} balancing < 10s latency for detection and deep LLM reasoning for insight.
+    \item A \textbf{Social-Aware Hierarchical Clustering (SAHC)} algorithm using news anchors to reduce noise by ~50\% compared to vanilla HDBSCAN under the same embedding \& preprocessing.
+    \item A rigorous evaluation using both a \textbf{Mini-Ground Truth} dataset (N=300) and \textbf{LLM-as-a-Judge} metrics.
+\end{enumerate}

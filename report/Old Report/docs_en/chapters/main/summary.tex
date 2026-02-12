@@ -1,0 +1,10 @@
+\chapter*{\centering\Large{Abstract}}
+\addcontentsline{toc}{chapter}{Abstract}
+
+In the era of information overload, rapidly detecting and understanding emerging events from social streams is crucial for public safety and market intelligence.
+However, practical systems face two core challenges: (i) \textit{semantic ambiguity} in short, noisy social posts, and (ii) an \textit{evaluation gap} due to the lack of labels in streaming data.
+We present a \textbf{real-time event detection and classification system} built on a novel \textbf{Social-Aware Hierarchical Clustering (SAHC)} strategy and a \textbf{dual-path architecture} that combines Spark/Kafka for low-latency detection with asynchronous LLM workers for deep semantic refinement.
+On a \textbf{Mini-Ground Truth} subset (N=300 manually labeled social posts), our full hybrid pipeline achieves \textbf{NMI = 0.5978}.
+On the full dataset of 7,605 items, we report intrinsic clustering metrics (Silhouette, Davies--Bouldin, noise ratio) and an \textbf{LLM-as-a-Judge} protocol to assess semantic coherence at scale.
+
+\textbf{Keywords:} Event Detection and Classification, Social Media Mining, Real-time Streaming, Large Language Models, Hybrid Clustering.

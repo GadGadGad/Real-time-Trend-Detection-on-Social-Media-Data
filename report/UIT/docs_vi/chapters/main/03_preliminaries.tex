@@ -1,0 +1,26 @@
+\section{Kiến thức Nền tảng}
+
+\subsection{LLM và Tạo sinh Tăng cường Truy xuất (RAG)}
+Mô hình ngôn ngữ lớn (LLM) là các mô hình dựa trên Transformer \cite{ref_bert} có khả năng sinh và suy luận ngôn ngữ tự nhiên, nhưng có thể tạo ra thông tin không chính xác (\emph{hallucination}).
+Tạo sinh Tăng cường Truy xuất (RAG) giảm thiểu hiện tượng này bằng cách cung cấp ngữ cảnh liên quan được truy xuất trước khi sinh phản hồi.
+Trong hệ thống của chúng tôi, các bài đăng trong \emph{cụm} đóng vai trò ngữ cảnh truy xuất để neo tóm tắt của LLM vào dữ liệu quan sát được.
+
+\subsection{Công nghệ xử lý luồng trong hệ thống}
+Hệ thống xử lý dữ liệu theo mô hình \textbf{Kappa}, coi dữ liệu như một luồng liên tục và có thể xử lý lại khi thay đổi logic.
+Trong triển khai của chúng tôi: \textbf{Apache Kafka} làm tầng truyền nhận pub-sub và lưu vết sự kiện; \textbf{Spark Structured Streaming} thực hiện xử lý luồng và tích hợp các bước NLP/AI trong pipeline; \textbf{Apache Airflow} điều phối các tác vụ thu thập theo lịch và cơ chế retry để duy trì đầu vào ổn định.
+
+\subsection{Phân cụm dựa trên mật độ (HDBSCAN)}
+HDBSCAN \cite{ref_hdbscan} là thuật toán phân cụm phân cấp dựa trên mật độ, có khả năng tách các điểm thưa như nhiễu và trích xuất các cụm ổn định.
+Đặc tính này phù hợp với dữ liệu mạng xã hội vốn nhiễu và có mức độ tương tác không đồng đều giữa các sự kiện.
+
+\subsection{Phân loại sự kiện và taxonomy}
+Để đảm bảo các insight có thể hành động, chúng tôi sử dụng taxonomy T1--T7 nhằm phân loại sự kiện theo giá trị đối với các bên liên quan:
+\begin{itemize}
+  \item \textbf{T1. Khủng hoảng \& Rủi ro Công cộng:} tai nạn, thảm họa, bạo loạn.
+  \item \textbf{T2. Tín hiệu Chính sách:} luật mới, tuyên bố chính thức.
+  \item \textbf{T3. Rủi ro Danh tiếng:} scandal, tẩy chay, tranh cãi.
+  \item \textbf{T4. Cơ hội Thị trường:} sản phẩm viral, xu hướng lối sống mới nổi.
+  \item \textbf{T5. Xu hướng Văn hóa:} meme, sự kiện giải trí.
+  \item \textbf{T6. Điểm Đau Vận hành:} giao thông, sự cố, lỗi dịch vụ.
+  \item \textbf{T7. Thường ngày/Nhiễu:} các chủ đề lặp lại thường xuyên như thời tiết, thể thao, xổ số.
+\end{itemize}
