@@ -17,8 +17,6 @@
 \usepackage{caption}
 \usepackage{hyperref}
 \usepackage[sorting=nyt]{biblatex}
-\usepackage{mathtools}
-\usepackage{lipsum}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{fancyvrb} % preamble
@@ -28,7 +26,6 @@
 \usepackage{algorithm}
 \usepackage[noend]{algpseudocode}
 \usepackage{tikz}
-\usepackage{hyperref}
 
 \renewcommand{\figureautorefname}{Hình}
 \renewcommand{\tableautorefname}{Bảng}
@@ -86,7 +83,7 @@
 \uniname{TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN}
 \deptname{KHOA CÔNG NGHỆ PHẦN MỀM}
 \stumajor{KỸ SƯ NGÀNH AN TOÀN THÔNG TIN}
-\title{Hệ thống Phát hiện và Phân loại Sự kiện Thời gian Thực: Tích hợp Luồng Mạng Xã hội và Tin tức Chính thống với Trí tuệ LLM}
+\title{Hệ thống Phát hiện và Phân loại Xu hướng Thời gian Thực: Tích hợp Luồng Mạng Xã hội và Tin tức Chính thống với Trí tuệ LLM}
 \titleen{Real-time Event Detection and Classification System: Integrating Social Media Streams and Official News with LLM}
 \supervisor{GIẢNG VIÊN HƯỚNG DẪN}
 \supervisorname{TIẾN SĨ ĐỖ TRỌNG HỢP \\ NGUYỄN NGỌC QUÍ}
@@ -136,11 +133,13 @@
 \subfile{chapters/main/summary}
 
 % Config page header
-\if @twoside
-    \fancyhead[EL,OR]{\bfseries\nouppercase\rightmark}
-\else
-    \fancyhead[R]{\bfseries\nouppercase\rightmark}
-\fi
+\makeatletter
+\@ifundefined{if@twoside}{}{\if@twoside
+        \fancyhead[EL,OR]{\bfseries\nouppercase\rightmark}
+    \else
+        \fancyhead[R]{\bfseries\nouppercase\rightmark}
+    \fi}
+\makeatother
 
 \subfile{chapters/main/01_introduction}
 \subfile{chapters/main/02_related_work}
